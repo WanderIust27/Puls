@@ -91,7 +91,32 @@ Unter *Plan → Kalibrierung*:
 PULS erinnert alle 10 Wochen ans Nachkalibrieren.
 
 
-## System aktualisieren
+## Installieren und aktualisieren — ein Befehl
+
+```bash
+cd /mnt/user/appdata/puls-coach && \
+  wget -qO update.sh https://codeload.github.com/WanderIust27/Puls/raw/claude/upload-zip-files-git-h41xf4/update.sh && \
+  chmod +x update.sh && ./update.sh
+```
+
+Danach genügt jedes Mal:
+
+```bash
+cd /mnt/user/appdata/puls-coach && ./update.sh
+```
+
+Das Skript lädt den aktuellen Stand, sichert vorher die Datenbank als
+`puls-backup-<Datum>.db` in den Ordner, tauscht nur die Programmdateien aus und
+startet über `deploy.sh` neu. Deine `.env` bleibt stehen, die Volumes
+`puls-data` und `ollama-data` werden nicht angefasst.
+
+| Aufruf | Wirkung |
+|---|---|
+| `./update.sh` | holen, austauschen, deployen |
+| `./update.sh --no-deploy` | nur die Dateien austauschen |
+| `PULS_BRANCH=main ./update.sh` | einen anderen Branch nehmen |
+
+## System aktualisieren (von Hand)
 
 Deine Daten liegen in den Docker-Volumes und deine persönlichen Einstellungen in der
 Datei `.env` — beides fasst ein Update nicht an. Es genügt, die Programmdateien zu
