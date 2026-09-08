@@ -93,16 +93,27 @@ PULS erinnert alle 10 Wochen ans Nachkalibrieren.
 
 ## Installieren und aktualisieren — ein Befehl
 
+Einmalig einrichten:
+
 ```bash
-cd /mnt/user/appdata/puls-coach && \
-  wget -qO /tmp/p.zip https://codeload.github.com/WanderIust27/Puls/zip/refs/heads/claude/upload-zip-files-git-h41xf4 && \
-  unzip -qjo /tmp/p.zip '*/update.sh' -d . && chmod +x update.sh && ./update.sh
+mkdir -p /mnt/user/appdata/puls-coach && cd /mnt/user/appdata/puls-coach && \
+  wget -qO update.sh https://raw.githubusercontent.com/WanderIust27/Puls/main/update.sh && \
+  chmod +x update.sh && ./update.sh
 ```
 
-Danach genügt jedes Mal:
+Ab dann genügt jedes Mal:
 
 ```bash
 cd /mnt/user/appdata/puls-coach && ./update.sh
+```
+
+Sollte `raw.githubusercontent.com` in deinem Netz nicht erreichbar sein, geht
+es auch über das Archiv:
+
+```bash
+mkdir -p /mnt/user/appdata/puls-coach && cd /mnt/user/appdata/puls-coach && \
+  wget -qO /tmp/p.zip https://codeload.github.com/WanderIust27/Puls/zip/refs/heads/main && \
+  unzip -qjo /tmp/p.zip "*/update.sh" -d . && chmod +x update.sh && ./update.sh
 ```
 
 Das Skript lädt den aktuellen Stand, sichert vorher die Datenbank als
@@ -114,7 +125,10 @@ startet über `deploy.sh` neu. Deine `.env` bleibt stehen, die Volumes
 |---|---|
 | `./update.sh` | holen, austauschen, deployen |
 | `./update.sh --no-deploy` | nur die Dateien austauschen |
-| `PULS_BRANCH=main ./update.sh` | einen anderen Branch nehmen |
+| `PULS_BRANCH=xyz ./update.sh` | einen anderen Branch nehmen |
+
+Wenn etwas klemmt, zeigt `sh -x update.sh` jeden Schritt einzeln — daran ist
+meist sofort zu sehen, woran es hängt.
 
 ## System aktualisieren (von Hand)
 
@@ -243,6 +257,37 @@ Ordner muss stattdessen im Stacks-Verzeichnis liegen (Host-Pfad des Mappings auf
 `/opt/stacks`, siehe Dockge-Containereinstellungen), dann erscheint der Stack von
 selbst in der Liste und kann deployt werden. Dockge braucht dafür ein funktionierendes
 `docker compose` im Hintergrund — fehlt das, nimm das Skript oben.
+
+### Grafikkarte für das KI-Modell
+
+Standardmäßig rechnet Ollama auf der CPU, damit die Karte für andere Dienste
+frei bleibt. Zum Zuschalten in die `.env`:
+
+```
+OLLAMA_GPU=all
+```
+
+Danach `./deploy.sh`. Voraussetzung ist, dass Docker eine Karte durchreichen
+kann — auf Unraid das Plugin **Nvidia Driver** aus den Community Apps, danach
+den Server einmal neu starten.
+
+Ob es klappt, sagt dir:
+
+```bash
+./deploy.sh gpu
+```
+
+Das prüft in vier Schritten Treiber, Docker-Runtime, Durchreichbarkeit und ob
+der laufende Container die Karte tatsächlich sieht. Beim Deployen wird dasselbe
+noch einmal geprüft: Ein Container, der zwar startet, aber keine Karte sieht,
+wäre sonst nicht von einem mit Karte zu unterscheiden — er würde still auf der
+CPU rechnen.
+
+Der Unterschied ist erheblich: Auf der CPU dauert eine Coach-Antwort mit
+Qwen3-8B je nach Kernen ein bis mehrere Minuten, auf einer Karte Sekunden.
+Achte auf den VRAM: Qwen3-8B braucht rund 5–6 GB. Passt das Modell nicht ganz
+hinein, teilt Ollama auf — und das ist dann langsamer als reine CPU. Bei
+weniger Speicher lieber `qwen3:4b` unter *Mehr → KI-Modell*.
 
 ### KI-Modell wählen
 

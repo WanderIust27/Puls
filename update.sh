@@ -10,7 +10,7 @@
 # Skript nicht an.
 
 REPO="${PULS_REPO:-WanderIust27/Puls}"
-BRANCH="${PULS_BRANCH:-claude/upload-zip-files-git-h41xf4}"
+BRANCH="${PULS_BRANCH:-main}"
 
 # Das Skript ueberschreibt sich beim Kopieren selbst. Die Shell liest ihre
 # Datei aber waehrend der Ausfuehrung weiter nach — deshalb zuerst nach /tmp
