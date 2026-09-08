@@ -1,0 +1,18 @@
+# Persönliche Konfiguration — Vorlage ist .env.example
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Lokale Daten (im Container liegen sie im Volume /data)
+*.db
+*.db-journal
+*.db-wal
+data/
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
