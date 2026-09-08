@@ -35,7 +35,18 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     # runc = CPU (Standard). Mit OLLAMA_RUNTIME=nvidia in der .env wird die
     # Karte benutzt; beide Zeilen gehören zusammen.
+    #
+    # Falls deine Docker-Version die nvidia-Runtime nicht kennt, aber
+    # --gpus beherrscht, nimm stattdessen den Block darunter und lass
+    # runtime auf runc stehen.
     runtime: ${OLLAMA_RUNTIME:-runc}
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
     volumes:
       - ollama-data:/root/.ollama
     # Optional RAM hart begrenzen:

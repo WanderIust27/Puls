@@ -1067,18 +1067,35 @@ async function pollBackfill() {
   if (!st.running && !st.summary && !st.error) { box.hidden = true; return; }
   box.hidden = false;
 
+  const counted = Object.entries(st.counts || {})
+    .filter(([, v]) => v).map(([k, v]) => `${v} ${k}`).join(" · ");
+
   if (st.error) {
-    box.innerHTML = `<p class="muted">Abgebrochen: ${esc(st.error)}</p>`;
+    box.innerHTML = `<p class="muted">Abgebrochen: ${esc(st.error)}</p>` +
+      (counted ? `<p class="muted">Vorher geladen: ${esc(counted)}</p>` : "");
   } else if (st.running) {
-    const pct = st.total ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
-    box.innerHTML = `<div class="bf-bar"><span style="width:${pct}%"></span></div>
-      <p class="muted">${esc(st.stage || "Läuft")} … ${pct} %</p>`;
+    box.innerHTML = `
+      <div class="bf-head">
+        <span>Schritt ${st.phase_no}/${st.phase_count}: ${esc(st.phase)}</span>
+        <span>${st.percent} %</span>
+      </div>
+      <div class="bf-bar"><span style="width:${st.percent}%"></span></div>
+      <p class="muted">${esc(st.detail || "")}${counted ? ` — ${esc(counted)}` : ""}</p>
+      <button class="btn ghost small" id="btnBackfillCancel">Abbrechen</button>`;
+    const cancel = $("#btnBackfillCancel");
+    if (cancel) cancel.addEventListener("click", async () => {
+      try { await api("/garmin/backfill/cancel", { method: "POST" });
+        toast("Wird abgebrochen — das Geladene bleibt."); }
+      catch (e) { toast(e.message, true); }
+    });
   } else {
-    box.innerHTML = `<p class="muted">Verlauf geladen: ${esc(st.summary)}.</p>`;
+    box.innerHTML = `<p class="muted">${esc(st.summary || "Fertig.")}</p>`;
   }
 
+  /* Solange etwas läuft, alle zwei Sekunden nachfragen. Die Phasen dauern
+     unterschiedlich lang — ohne Nachfragen sähe es aus, als hinge es. */
   if (st.running && !backfillTimer) {
-    backfillTimer = setInterval(pollBackfill, 3000);
+    backfillTimer = setInterval(pollBackfill, 2000);
   } else if (!st.running && backfillTimer) {
     clearInterval(backfillTimer); backfillTimer = null;
     loadDashboard();

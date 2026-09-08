@@ -542,3 +542,7 @@ ul.plain { margin: 0 0 10px; padding-left: 18px; }
 .supp-row input:disabled + .n { color: var(--ink-3); }
 
 nav.bottom button { padding-left: 4px; padding-right: 4px; }
+.bf-head {
+  display: flex; justify-content: space-between; margin-top: 10px;
+  font-size: 0.84em; color: var(--ink-2);
+}

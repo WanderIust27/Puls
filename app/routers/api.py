@@ -744,6 +744,12 @@ def garmin_backfill_status() -> dict[str, Any]:
     return garmin_sync.backfill_state()
 
 
+@router.post("/garmin/backfill/cancel")
+def garmin_backfill_cancel() -> dict[str, Any]:
+    """Laufenden Import abbrechen — das bereits Geholte bleibt."""
+    return garmin_sync.cancel_backfill()
+
+
 # ------------------------------------------------------------ Supplements
 
 class SupplementIn(BaseModel):

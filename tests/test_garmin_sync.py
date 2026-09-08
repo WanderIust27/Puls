@@ -181,7 +181,91 @@ check("Kein doppelter Eintrag beim zweiten Sync", n, 1)
 # --- Verlaufs-Import: Zustandsmeldung ------------------------------------
 state = gs.backfill_state()
 check("Import laeuft anfangs nicht", state["running"], False)
-check("Fortschritt ist ablesbar", set(["running", "done", "total", "stage"]) <= set(state), True)
+check("Fortschritt ist ablesbar",
+      {"running", "done", "total", "phase", "percent"} <= set(state), True)
+
+
+
+# --- Verlaufs-Import ------------------------------------------------------
+# Der Import lief bisher nie in einem Test. Hier wird er komplett
+# durchgespielt: mit Zeitfenstern, Fortschritt und Abbruch.
+
+import datetime as dt                                    # noqa: E402
+
+calls: list[tuple[str, str]] = []
+
+
+class HistoryGarmin(FakeGarmin):
+    """Hat Aktivitaeten bis vor 400 Tagen, davor nichts."""
+
+    def get_activities_by_date(self, start, end):
+        calls.append((start, end))
+        begin = dt.date.fromisoformat(start)
+        if (dt.date.today() - begin).days > 400:
+            return []
+        return [{
+            "activityId": f"a-{start}", "activityName": "Lauf",
+            "activityType": {"typeKey": "running"},
+            "startTimeLocal": f"{start} 07:00:00",
+            "duration": 1800, "distance": 5000.0, "averageHR": 148,
+        }]
+
+    def get_activity_details(self, aid, maxchart=None, maxpoly=None):
+        return {"metricDescriptors": [{"key": "directHeartRate", "metricsIndex": 0},
+                                      {"key": "sumDuration", "metricsIndex": 1}],
+                "activityDetailMetrics": [{"metrics": [140.0 + i % 20, float(i)]}
+                                          for i in range(300)]}
+
+    def get_activity_splits(self, aid):
+        return {"lapDTOs": [{"distance": 1000.0, "duration": 300.0, "averageHR": 150}]}
+
+
+calls.clear()
+history = HistoryGarmin()
+gs.get_client = lambda: history      # statt einer echten Garmin-Verbindung
+gs._backfill.update(running=False, cancel=False)
+gs.run_backfill(days=1080)
+state = gs.backfill_state()
+check("Import beendet", state["running"], False)
+check("Kein Fehler aufgetreten", state["error"], None)
+check("Zusammenfassung vorhanden", bool(state["summary"]), True)
+
+# Die Fenster muessen sich fortbewegen, nicht immer bei heute anfangen
+starts = [c[0] for c in calls]
+check("Zeitfenster wandern zurück", len(set(starts)), len(starts))
+ends = [c[1] for c in calls]
+check("Nicht jedes Fenster endet heute", len(set(ends)) > 1, True)
+
+# Nach zwei leeren Halbjahren muss Schluss sein statt weiter bis zehn Jahre
+check("Bricht ab, wenn nichts mehr kommt", len(calls) < 8, True)
+
+with get_db() as db:
+    acts = db.execute("SELECT COUNT(*) AS n FROM activities").fetchone()["n"]
+    details = db.execute("SELECT COUNT(*) AS n FROM activity_details").fetchone()["n"]
+check("Aktivitäten übernommen", acts > 0, True)
+check("Detaildaten übernommen", details > 0, True)
+check("Zähler gefüllt", state["counts"].get("Aktivitäten", 0) > 0, True)
+
+# Tagesmetriken duerfen nicht ueber die Obergrenze hinausgehen
+check("Tagesmetriken gedeckelt",
+      gs.MAX_DAILY_BACKFILL_DAYS <= 1000, True)
+
+# Zweiter Lauf: nichts ist mehr neu, aber es darf nicht abstuerzen
+gs._backfill.update(running=False, cancel=False)
+gs.run_backfill(days=400)
+check("Zweiter Lauf ohne Fehler", gs.backfill_state()["error"], None)
+
+# Abbrechen
+gs._backfill.update(running=True, cancel=False)
+gs.cancel_backfill()
+check("Abbruch wird vermerkt", gs._backfill["cancel"], True)
+gs._backfill.update(running=False, cancel=False)
+
+# Fortschritt ist ablesbar und in Prozent
+gs._backfill.update(done=25, total=50)
+check("Prozent werden gerechnet", gs.backfill_state()["percent"], 50)
+gs._backfill.update(done=0, total=0)
+check("Kein Absturz bei total=0", gs.backfill_state()["percent"], 0)
 
 if failures:
     print(f"\n{len(failures)} Test(s) fehlgeschlagen:")

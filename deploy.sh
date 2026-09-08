@@ -73,8 +73,47 @@ case "$cmd" in
       curl -fsS "http://localhost:${PULS_PORT}/api/health" 2>/dev/null \
           && echo || c_warn "PULS antwortet noch nicht auf Port ${PULS_PORT}."
       exit 0 ;;
+  gpu)
+      echo
+      c_info "Grafikkarte — Diagnose"
+      echo
+      printf '  1. Treiber auf dem Server\n'
+      if command -v nvidia-smi >/dev/null 2>&1; then
+          nvidia-smi -L 2>&1 | sed 's/^/     /' || true
+      else
+          printf '     nvidia-smi nicht gefunden.\n'
+          printf '     Auf Unraid: Plugin "Nvidia Driver" über die Community Apps,\n'
+          printf '     danach den Server einmal neu starten.\n'
+      fi
+      echo
+      printf '  2. Docker-Runtimes\n'
+      docker info 2>/dev/null | grep -i "runtime" | sed 's/^/     /' \
+          || printf '     konnte docker info nicht lesen\n'
+      echo
+      printf '  3. Kann Docker eine Karte durchreichen?\n'
+      if docker run --rm --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all \
+           ollama/ollama:latest nvidia-smi -L >/dev/null 2>&1; then
+          printf '     ja, über --runtime=nvidia\n'
+      elif docker run --rm --gpus all ollama/ollama:latest nvidia-smi -L >/dev/null 2>&1; then
+          printf '     ja, über --gpus all\n'
+      else
+          printf '     nein — beide Wege scheitern.\n'
+      fi
+      echo
+      printf '  4. Läuft PULS gerade mit Karte?\n'
+      if docker exec puls-ollama nvidia-smi -L 2>/dev/null | sed 's/^/     /'; then
+          :
+      else
+          printf '     nein, puls-ollama sieht keine Karte (oder läuft nicht).\n'
+      fi
+      echo
+      printf '  Eingestellt in der .env:  OLLAMA_GPU=%s\n' "${OLLAMA_GPU:-<leer>}"
+      echo
+      exit 0 ;;
   deploy|--no-build) : ;;
-  *) c_err "Unbekannter Befehl: $cmd"; exit 1 ;;
+  *) c_err "Unbekannter Befehl: $cmd"
+     c_info "Bekannt: deploy, --no-build, status, logs, stop, gpu"
+     exit 1 ;;
 esac
 
 # ------------------------------------------------------------------ Vorbedingungen
@@ -114,16 +153,39 @@ docker pull ollama/ollama:latest >/dev/null 2>&1 || c_warn "Konnte Ollama-Image 
 # Grafikkarte: standardmäßig aus, damit sie für andere Dienste frei bleibt.
 # OLLAMA_GPU in der .env schaltet sie zu — "all" für jede Karte, oder die
 # GPU-UUID aus `nvidia-smi -L`, wenn nur eine von mehreren gemeint ist.
+#
+# Es gibt zwei Wege, eine Karte in einen Container zu geben, und je nach
+# Docker-Version funktioniert nur einer:
+#   --runtime=nvidia   der ältere Weg, den Unraid mit dem Nvidia-Plugin nutzt
+#   --gpus             der neuere Weg des nvidia-container-toolkit
+# Deshalb wird geprüft, was da ist, statt einen der beiden zu raten.
 GPU_ARGS=""
 GPU_NOTE="nur CPU, GPU bleibt frei"
-if [ -n "${OLLAMA_GPU:-}" ]; then
-    if docker info 2>/dev/null | grep -qi "Runtimes:.*nvidia"; then
-        GPU_ARGS="--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=${OLLAMA_GPU} -e NVIDIA_DRIVER_CAPABILITIES=compute,utility"
-        GPU_NOTE="mit Grafikkarte (${OLLAMA_GPU})"
+GPU_WANTED="${OLLAMA_GPU:-}"
+
+if [ -n "$GPU_WANTED" ]; then
+    docker_info=$(docker info 2>/dev/null)
+    has_runtime=$(echo "$docker_info" | grep -ci "nvidia" || true)
+
+    if [ "$has_runtime" -gt 0 ]; then
+        GPU_ARGS="--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=${GPU_WANTED} -e NVIDIA_DRIVER_CAPABILITIES=compute,utility"
+        GPU_NOTE="Grafikkarte über --runtime=nvidia"
+    elif docker run --rm --gpus all alpine true >/dev/null 2>&1; then
+        GPU_ARGS="--gpus ${GPU_WANTED}"
+        [ "$GPU_WANTED" = "all" ] || GPU_ARGS="--gpus device=${GPU_WANTED}"
+        GPU_NOTE="Grafikkarte über --gpus"
     else
-        c_warn "OLLAMA_GPU ist gesetzt, aber Docker kennt keine nvidia-Runtime."
-        c_warn "Auf Unraid: Plugin 'Nvidia Driver' über die Community Apps installieren"
-        c_warn "und den Server einmal neu starten. Bis dahin läuft Ollama auf der CPU."
+        c_warn "OLLAMA_GPU=$GPU_WANTED ist gesetzt, aber Docker kann keine Karte durchreichen."
+        c_warn "Weder die nvidia-Runtime noch --gpus funktioniert."
+        c_warn ""
+        c_warn "Auf Unraid: Plugin 'Nvidia Driver' über die Community Apps"
+        c_warn "installieren und den Server einmal neu starten."
+        c_warn ""
+        c_warn "Prüfen lässt sich das so:"
+        c_warn "  nvidia-smi -L                 zeigt die Karte und ihre UUID"
+        c_warn "  docker info | grep -i nvidia  muss die Runtime nennen"
+        c_warn ""
+        c_warn "PULS startet jetzt auf der CPU weiter."
     fi
 fi
 
@@ -138,7 +200,24 @@ docker run -d \
     $GPU_ARGS \
     -v ollama-data:/root/.ollama \
     ollama/ollama:latest >/dev/null
-c_ok "puls-ollama läuft ($GPU_NOTE)"
+
+# Nachsehen, ob die Karte im Container wirklich ankommt. Ein Container, der
+# zwar startet, aber keine GPU sieht, wäre sonst nicht von einem mit GPU zu
+# unterscheiden — und würde still auf der CPU rechnen.
+if [ -n "$GPU_ARGS" ]; then
+    sleep 2
+    if docker exec puls-ollama nvidia-smi -L >/dev/null 2>&1; then
+        gpu_name=$(docker exec puls-ollama nvidia-smi \
+            --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+        c_ok "puls-ollama läuft mit Grafikkarte: ${gpu_name:-erkannt}"
+    else
+        c_warn "Der Container startet, sieht die Karte aber nicht."
+        c_warn "Prüfen mit:  docker exec puls-ollama nvidia-smi"
+        c_warn "Bis dahin rechnet Ollama auf der CPU."
+    fi
+else
+    c_ok "puls-ollama läuft ($GPU_NOTE)"
+fi
 
 # ----------------------------------------------------------------------- App
 echo

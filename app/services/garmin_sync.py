@@ -128,8 +128,19 @@ def _num(d: dict, *keys: str) -> float | None:
 
 
 def sync_activities(g: Garmin, days: int) -> int:
-    start = (dt.date.today() - dt.timedelta(days=days)).isoformat()
-    end = dt.date.today().isoformat()
+    """Aktivitaeten der letzten `days` Tage."""
+    return sync_activities_range(
+        g, (dt.date.today() - dt.timedelta(days=days)).isoformat(),
+        dt.date.today().isoformat())
+
+
+def sync_activities_range(g: Garmin, start: str, end: str) -> int:
+    """Aktivitaeten eines Zeitfensters.
+
+    Getrennt von sync_activities, weil der Verlaufs-Import rueckwaerts in
+    Scheiben laedt — mit einem "von heute bis X" wuerde jede Scheibe alles
+    davor erneut anfordern, und die letzte zoege zehn Jahre auf einmal.
+    """
     acts = g.get_activities_by_date(start, end) or []
     new = 0
     with get_db() as db:
@@ -150,6 +161,8 @@ def sync_activities(g: Garmin, days: int) -> int:
                 _num(a, "activityTrainingLoad", "trainingLoad"),
                 json.dumps(a),
             )
+            known = db.execute("SELECT 1 FROM activities WHERE garmin_id=?",
+                               (gid,)).fetchone()
             cur = db.execute(
                 """INSERT INTO activities
                    (garmin_id, source, name, sport, start_time, duration_s, distance_m,
@@ -162,7 +175,9 @@ def sync_activities(g: Garmin, days: int) -> int:
                      training_load=excluded.training_load, raw_json=excluded.raw_json""",
                 row,
             )
-            if cur.lastrowid:
+            # lastrowid ist auch nach einem UPDATE gesetzt und taugt hier
+            # nicht als Unterscheidung.
+            if not known:
                 new += 1
     return new
 
@@ -554,7 +569,8 @@ def sync_body_composition(g: Garmin, days: int) -> int:
     return count
 
 
-def sync_activity_details(g: Garmin, limit: int = 20, force: bool = False) -> int:
+def sync_activity_details(g: Garmin, limit: int = 20, force: bool = False,
+                          progress: Any = None) -> int:
     """Karten- und Kurvendaten fuer Aktivitaeten holen, die noch keine haben.
 
     Wird ausgeduennt gespeichert (siehe services/activity_details.py) — rund
@@ -599,6 +615,8 @@ def sync_activity_details(g: Garmin, limit: int = 20, force: bool = False) -> in
                  json.dumps(splits, separators=(",", ":")) if splits else None,
                  packed["point_count"]))
         count += 1
+        if progress and progress(count, f"{count} von {len(pending)}") is False:
+            break
     return count
 
 
@@ -657,67 +675,155 @@ def upload_fit_activity(path: str) -> Any:
 # Zustand des laufenden Imports. Bewusst nur im Speicher: bricht er ab, wird
 # er einfach neu gestartet — die bereits geholten Tage bleiben in der Datenbank.
 _backfill: dict[str, Any] = {
-    "running": False, "done": 0, "total": 0, "stage": "", "error": None,
-    "finished_at": None, "summary": "",
+    "running": False, "cancel": False,
+    "phase": "", "phase_no": 0, "phase_count": 4,
+    "done": 0, "total": 0, "detail": "",
+    "counts": {}, "error": None, "started_at": None, "finished_at": None,
+    "summary": "",
 }
+_backfill_lock = threading.Lock()
+
+# Tagesmetriken kosten je Tag rund sieben Anfragen an Garmin. Ueber zehn Jahre
+# waeren das zehntausende — das laeuft stundenlang und wird gedrosselt.
+# Aktivitaeten dagegen kommen in Jahresscheiben und sind billig.
+MAX_DAILY_BACKFILL_DAYS = 900
+ACTIVITY_SLICE_DAYS = 180
 
 
 def backfill_state() -> dict[str, Any]:
-    return dict(_backfill)
+    st = dict(_backfill)
+    st["percent"] = round(st["done"] / st["total"] * 100) if st["total"] else 0
+    return st
 
 
-def run_backfill(days: int = 3650, chunk: int = 30) -> None:
-    """Holt die gesamte Historie in Etappen nach.
-
-    Laeuft im Hintergrund und meldet den Fortschritt ueber backfill_state().
-    Ohne Vergangenheit kann der Coach keine Tendenzen erklaeren — genau dafuer
-    ist das hier da. Bereits vorhandene Tage werden nur ergaenzt, nie geleert.
-    """
+def cancel_backfill() -> dict[str, Any]:
+    """Laufenden Import abbrechen. Das Geholte bleibt erhalten."""
     if _backfill["running"]:
-        log.info("Verlaufs-Import laeuft bereits.")
-        return
-    _backfill.update(running=True, done=0, total=days, stage="Verbinde",
-                     error=None, finished_at=None, summary="")
-    totals = {"Aktivitäten": 0, "Tage": 0, "Körperwerte": 0, "Detailverläufe": 0}
+        _backfill["cancel"] = True
+    return backfill_state()
+
+
+def _phase(no: int, name: str, total: int) -> None:
+    _backfill.update(phase_no=no, phase=name, total=max(1, total), done=0, detail="")
+
+
+def _tick(done: int, detail: str = "") -> bool:
+    """Fortschritt melden. Gibt False zurueck, wenn abgebrochen werden soll."""
+    _backfill["done"] = done
+    if detail:
+        _backfill["detail"] = detail
+    return not _backfill["cancel"]
+
+
+def _oldest_activity_day() -> str | None:
+    with get_db() as db:
+        row = db.execute("SELECT MIN(substr(start_time,1,10)) AS d "
+                         "FROM activities WHERE start_time IS NOT NULL").fetchone()
+    return row["d"] if row and row["d"] else None
+
+
+def run_backfill(days: int = 3650) -> None:
+    """Holt die Historie nach — in vier Phasen, jede mit eigenem Fortschritt.
+
+    Ohne Vergangenheit kann der Coach keine Tendenzen erklaeren. Vorhandene
+    Tage werden nur ergaenzt, nie geleert.
+    """
+    with _backfill_lock:
+        if _backfill["running"]:
+            log.info("Verlaufs-Import laeuft bereits.")
+            return
+        _backfill.update(running=True, cancel=False, error=None, summary="",
+                         counts={}, finished_at=None,
+                         started_at=dt.datetime.now().isoformat(timespec="seconds"))
+
+    counts = {"Aktivitäten": 0, "Tage": 0, "Körperwerte": 0, "Detailverläufe": 0}
+    today = dt.date.today()
     try:
+        _phase(1, "Verbinde mit Garmin", 1)
         g = get_client()
 
-        _backfill["stage"] = "Aktivitäten"
-        for offset in range(0, days, 90):
-            span = min(90, days - offset)
-            totals["Aktivitäten"] += sync_activities(g, offset + span)
-            _backfill["done"] = min(days, offset + span)
-            if totals["Aktivitäten"] == 0 and offset >= 365:
-                break          # so weit zurueck gibt es nichts mehr
+        # --- 1. Aktivitaeten, rueckwaerts in Scheiben --------------------
+        slices = max(1, days // ACTIVITY_SLICE_DAYS)
+        _phase(1, "Aktivitäten", slices)
+        empty = 0
+        for i in range(slices):
+            end = today - dt.timedelta(days=i * ACTIVITY_SLICE_DAYS)
+            begin = end - dt.timedelta(days=ACTIVITY_SLICE_DAYS)
+            got = sync_activities_range(g, begin.isoformat(), end.isoformat())
+            counts["Aktivitäten"] += got
+            _backfill["counts"] = dict(counts)
+            if not _tick(i + 1, f"bis {begin.isoformat()} — {counts['Aktivitäten']} gefunden"):
+                raise _Cancelled()
+            # Zwei leere Halbjahre hintereinander: davor gibt es nichts mehr.
+            empty = empty + 1 if got == 0 else 0
+            if empty >= 2 and i >= 2:
+                break
 
-        _backfill.update(stage="Schlaf, HRV, Stress", done=0)
-        empty_runs = 0
-        for offset in range(0, days, chunk):
-            got = sync_daily_metrics(g, min(chunk, days - offset), offset=offset)
-            totals["Tage"] += got
-            _backfill["done"] = min(days, offset + chunk)
-            empty_runs = empty_runs + 1 if got == 0 else 0
-            if empty_runs >= 3:
-                break          # drei leere Bloecke: davor gibt es keine Daten
+        # --- 2. Tagesmetriken bis zur aeltesten Aktivitaet ---------------
+        oldest = _oldest_activity_day()
+        span = days
+        if oldest:
+            try:
+                span = (today - dt.date.fromisoformat(oldest)).days + 7
+            except ValueError:
+                pass
+        span = max(30, min(span, days, MAX_DAILY_BACKFILL_DAYS))
+        _phase(2, "Schlaf, HRV, Stress, Body Battery", span)
+        blank = 0
+        for offset in range(span):
+            got = sync_daily_metrics(g, 1, offset=offset)
+            counts["Tage"] += got
+            _backfill["counts"] = dict(counts)
+            day = (today - dt.timedelta(days=offset)).isoformat()
+            if not _tick(offset + 1, f"{day} — {counts['Tage']} Tage geladen"):
+                raise _Cancelled()
+            # 30 Tage am Stueck ohne jeden Wert: davor hat die Uhr nichts erfasst.
+            blank = blank + 1 if got == 0 else 0
+            if blank >= 30:
+                break
 
-        _backfill.update(stage="Körperwerte", done=days)
-        totals["Körperwerte"] = sync_body_composition(g, days)
+        # --- 3. Koerperwerte ---------------------------------------------
+        _phase(3, "Körperwerte", 1)
+        counts["Körperwerte"] = sync_body_composition(g, days)
+        _backfill["counts"] = dict(counts)
+        if not _tick(1):
+            raise _Cancelled()
 
-        _backfill["stage"] = "Karten und Kurven"
-        totals["Detailverläufe"] = sync_activity_details(g, limit=400)
+        # --- 4. Karten und Kurven ----------------------------------------
+        with get_db() as db:
+            pending = db.execute(
+                "SELECT COUNT(*) AS n FROM activities a WHERE a.garmin_id IS NOT NULL "
+                "AND a.id NOT IN (SELECT activity_id FROM activity_details)"
+            ).fetchone()["n"]
+        _phase(4, "Karten und Kurven", max(1, pending))
+        counts["Detailverläufe"] = sync_activity_details(
+            g, limit=pending or 1,
+            progress=lambda n, name: (_backfill["counts"].update(
+                {"Detailverläufe": n}) or _tick(n, name)))
+        _backfill["counts"] = dict(counts)
 
-        summary = ", ".join(f"{v} {k}" for k, v in totals.items() if v)
-        _backfill.update(stage="Fertig", summary=summary or "nichts Neues gefunden")
+        summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
+        _backfill.update(phase="Fertig", summary=summary or "nichts Neues gefunden")
         with get_db() as db:
             db.execute("INSERT INTO sync_log(ok, detail) VALUES(1, ?)",
                        (f"Verlaufs-Import: {summary}",))
         log.info("Verlaufs-Import fertig: %s", summary)
+
+    except _Cancelled:
+        summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
+        _backfill.update(phase="Abgebrochen",
+                         summary=f"Abgebrochen — geladen: {summary or 'nichts'}")
+        log.info("Verlaufs-Import abgebrochen.")
     except Exception as e:
-        _backfill.update(stage="Abgebrochen", error=str(e))
-        log.warning("Verlaufs-Import fehlgeschlagen: %s", e)
+        _backfill.update(phase="Abgebrochen", error=str(e))
+        log.warning("Verlaufs-Import fehlgeschlagen: %s", e, exc_info=True)
     finally:
-        _backfill["running"] = False
-        _backfill["finished_at"] = dt.datetime.now().isoformat(timespec="seconds")
+        _backfill.update(running=False, cancel=False,
+                         finished_at=dt.datetime.now().isoformat(timespec="seconds"))
+
+
+class _Cancelled(Exception):
+    """Der Nutzer hat den Import abgebrochen."""
 
 
 def start_backfill(days: int = 3650) -> dict[str, Any]:
