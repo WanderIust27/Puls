@@ -15,6 +15,8 @@ from garminconnect import Garmin
 
 from ..config import GARMIN_TOKEN_DIR, SYNC_LOOKBACK_DAYS
 from ..db import get_db, get_setting, rows_to_dicts, set_setting
+from . import activity_details as details
+from . import body
 
 log = logging.getLogger("puls.garmin")
 
@@ -348,89 +350,254 @@ def sync_exercise_sets(g: Garmin, days: int) -> int:
     return imported
 
 
-def sync_daily_metrics(g: Garmin, days: int) -> int:
+def _downsample(pairs: list[list[Any]], target: int = 96) -> list[list[Any]]:
+    """Tagesverlaeufe auf rund 96 Punkte bringen (ein Wert je Viertelstunde)."""
+    clean = [[p[0], p[1]] for p in pairs
+             if isinstance(p, (list, tuple)) and len(p) >= 2 and p[1] is not None]
+    if len(clean) <= target:
+        return clean
+    step = len(clean) / target
+    return [clean[int(i * step)] for i in range(target)]
+
+
+def _call(g: Garmin, name: str, *args: Any) -> Any:
+    """Garmin-Methode aufrufen, falls die installierte Version sie kennt.
+
+    Die inoffizielle Connect-Anbindung aendert sich; fehlt eine Methode oder
+    antwortet Garmin nicht, soll das den restlichen Sync nicht aufhalten.
+    """
+    fn = getattr(g, name, None)
+    if fn is None:
+        log.debug("garminconnect kennt %s nicht", name)
+        return None
+    try:
+        return fn(*args)
+    except Exception as e:
+        log.debug("%s: %s", name, e)
+        return None
+
+
+def _collect_day(g: Garmin, day: str) -> dict[str, Any]:
+    """Alle Erholungswerte eines Tages einsammeln."""
+    entry: dict[str, Any] = {"day": day}
+
+    sleep = _call(g, "get_sleep_data", day) or {}
+    daily = sleep.get("dailySleepDTO") or {}
+    if daily:
+        entry["sleep_seconds"] = daily.get("sleepTimeSeconds")
+        entry["sleep_score"] = ((daily.get("sleepScores") or {})
+                                .get("overall") or {}).get("value")
+        entry["sleep_deep_s"] = daily.get("deepSleepSeconds")
+        entry["sleep_light_s"] = daily.get("lightSleepSeconds")
+        entry["sleep_rem_s"] = daily.get("remSleepSeconds")
+        entry["sleep_awake_s"] = daily.get("awakeSleepSeconds")
+        entry["sleep_start"] = daily.get("sleepStartTimestampLocal")
+        entry["sleep_end"] = daily.get("sleepEndTimestampLocal")
+    for key, field in (("avgOvernightHrv", "hrv_avg"),
+                       ("restingHeartRate", "resting_hr"),
+                       ("averageRespirationValue", "respiration_avg"),
+                       ("averageSpO2", "spo2_avg")):
+        if sleep.get(key) is not None:
+            entry.setdefault(field, sleep[key])
+
+    hrv = _call(g, "get_hrv_data", day) or {}
+    summary = hrv.get("hrvSummary") or {}
+    if summary:
+        entry["hrv_avg"] = summary.get("lastNightAvg") or entry.get("hrv_avg")
+        entry["hrv_status"] = summary.get("status")
+        entry["hrv_weekly_avg"] = summary.get("weeklyAvg")
+        baseline = summary.get("baseline") or {}
+        entry["hrv_baseline_low"] = baseline.get("lowUpper")
+        entry["hrv_baseline_high"] = baseline.get("balancedUpper")
+
+    # Stress und Body Battery kommen aus derselben Abfrage
+    stress = _call(g, "get_all_day_stress", day) or _call(g, "get_stress_data", day) or {}
+    if stress:
+        entry["stress_avg"] = stress.get("avgStressLevel")
+        entry["stress_max"] = stress.get("maxStressLevel")
+        entry["stress_rest_min"] = stress.get("restStressDuration")
+        entry["stress_low_min"] = stress.get("lowStressDuration")
+        entry["stress_medium_min"] = stress.get("mediumStressDuration")
+        entry["stress_high_min"] = stress.get("highStressDuration")
+        # Garmin liefert Sekunden; Minuten sind hier die lesbarere Einheit
+        for field in ("stress_rest_min", "stress_low_min", "stress_medium_min",
+                      "stress_high_min"):
+            if entry.get(field) is not None:
+                entry[field] = int(entry[field] // 60)
+        values = stress.get("stressValuesArray") or stress.get("stressValueDescriptorsDTOList")
+        if isinstance(values, list) and values:
+            series = _downsample([v for v in values if isinstance(v, (list, tuple))])
+            if series:
+                entry["stress_series_json"] = json.dumps(series, separators=(",", ":"))
+
+        bb = stress.get("bodyBatteryValuesArray")
+        if isinstance(bb, list) and bb:
+            # Format je nach Version: [ts, status, level, version] oder [ts, level]
+            levels = []
+            for row in bb:
+                if not isinstance(row, (list, tuple)) or len(row) < 2:
+                    continue
+                value = row[2] if len(row) > 2 and isinstance(row[2], (int, float)) \
+                    else row[1]
+                if isinstance(value, (int, float)):
+                    levels.append([row[0], value])
+            if levels:
+                entry["body_battery_series_json"] = json.dumps(
+                    _downsample(levels), separators=(",", ":"))
+                only = [v for _, v in levels]
+                entry["body_battery_min"] = min(only)
+                entry["body_battery_max"] = max(only)
+                entry["body_battery_wake"] = only[0]
+
+    for source, field in (("bodyBatteryChargedValue", "body_battery_charged"),
+                          ("bodyBatteryDrainedValue", "body_battery_drained")):
+        if stress.get(source) is not None:
+            entry[field] = stress[source]
+
+    hr = _call(g, "get_heart_rates", day) or {}
+    if hr:
+        entry["hr_min"] = hr.get("minHeartRate")
+        entry["hr_max"] = hr.get("maxHeartRate")
+        entry.setdefault("resting_hr", hr.get("restingHeartRate"))
+    if entry.get("resting_hr") is None:
+        rhr = _call(g, "get_rhr_day", day) or {}
+        stats = ((rhr.get("allMetrics") or {}).get("metricsMap") or {})
+        values = stats.get("WELLNESS_RESTING_HEART_RATE") or []
+        if values and isinstance(values[0], dict):
+            entry["resting_hr"] = values[0].get("value")
+
+    if entry.get("respiration_avg") is None:
+        resp = _call(g, "get_respiration_data", day) or {}
+        entry["respiration_avg"] = resp.get("avgSleepRespirationValue") or \
+            resp.get("avgWakingRespirationValue")
+
+    tr = _call(g, "get_training_readiness", day)
+    if isinstance(tr, list) and tr:
+        tr = tr[0]
+    if isinstance(tr, dict):
+        entry["training_readiness"] = tr.get("score")
+
+    steps = _call(g, "get_daily_steps", day, day)
+    if isinstance(steps, list) and steps:
+        entry["steps"] = steps[0].get("totalSteps")
+
+    return {k: v for k, v in entry.items() if v is not None}
+
+
+DAILY_FIELDS = (
+    "sleep_seconds", "sleep_score", "sleep_deep_s", "sleep_light_s",
+    "sleep_rem_s", "sleep_awake_s", "sleep_start", "sleep_end",
+    "respiration_avg", "spo2_avg", "hrv_avg", "hrv_status", "hrv_weekly_avg",
+    "hrv_baseline_low", "hrv_baseline_high", "stress_avg", "stress_max",
+    "stress_rest_min", "stress_low_min", "stress_medium_min", "stress_high_min",
+    "stress_series_json", "body_battery_min", "body_battery_max",
+    "body_battery_wake", "body_battery_charged", "body_battery_drained",
+    "body_battery_series_json", "hr_min", "hr_max", "hr_avg", "resting_hr",
+    "training_readiness", "steps",
+)
+
+
+def sync_daily_metrics(g: Garmin, days: int, offset: int = 0) -> int:
+    """Schlaf, HRV, Stress, Body Battery und Puls je Tag."""
     count = 0
-    for i in range(days):
+    for i in range(offset, offset + days):
         day = (dt.date.today() - dt.timedelta(days=i)).isoformat()
-        entry: dict[str, Any] = {"day": day}
-        try:
-            sleep = g.get_sleep_data(day) or {}
-            daily = sleep.get("dailySleepDTO") or {}
-            entry["sleep_seconds"] = daily.get("sleepTimeSeconds")
-            scores = daily.get("sleepScores") or {}
-            entry["sleep_score"] = (scores.get("overall") or {}).get("value")
-        except Exception as e:
-            log.debug("sleep %s: %s", day, e)
-        try:
-            hrv = g.get_hrv_data(day) or {}
-            summary = hrv.get("hrvSummary") or {}
-            entry["hrv_avg"] = summary.get("lastNightAvg") or summary.get("weeklyAvg")
-            entry["hrv_status"] = summary.get("status")
-        except Exception as e:
-            log.debug("hrv %s: %s", day, e)
-        try:
-            tr = g.get_training_readiness(day)
-            if isinstance(tr, list) and tr:
-                tr = tr[0]
-            if isinstance(tr, dict):
-                entry["training_readiness"] = tr.get("score")
-        except Exception as e:
-            log.debug("readiness %s: %s", day, e)
-        try:
-            steps = g.get_daily_steps(day, day)
-            if isinstance(steps, list) and steps:
-                entry["steps"] = steps[0].get("totalSteps")
-        except Exception as e:
-            log.debug("steps %s: %s", day, e)
-        if len(entry) == 1:
+        entry = _collect_day(g, day)
+        if len(entry) <= 1:
             continue
+        row = {"day": day, **{f: entry.get(f) for f in DAILY_FIELDS}}
+        columns = ", ".join(row)
+        placeholders = ", ".join(f":{k}" for k in row)
+        # COALESCE: ein spaeterer Lauf darf vorhandene Werte nicht mit NULL
+        # ueberschreiben, nur ergaenzen.
+        updates = ", ".join(
+            f"{k}=COALESCE(excluded.{k}, daily_metrics.{k})" for k in row if k != "day")
         with get_db() as db:
-            db.execute(
-                """INSERT INTO daily_metrics
-                   (day, sleep_seconds, sleep_score, hrv_avg, hrv_status,
-                    training_readiness, steps)
-                   VALUES(:day,:sleep_seconds,:sleep_score,:hrv_avg,:hrv_status,
-                          :training_readiness,:steps)
-                   ON CONFLICT(day) DO UPDATE SET
-                     sleep_seconds=COALESCE(excluded.sleep_seconds, daily_metrics.sleep_seconds),
-                     sleep_score=COALESCE(excluded.sleep_score, daily_metrics.sleep_score),
-                     hrv_avg=COALESCE(excluded.hrv_avg, daily_metrics.hrv_avg),
-                     hrv_status=COALESCE(excluded.hrv_status, daily_metrics.hrv_status),
-                     training_readiness=COALESCE(excluded.training_readiness, daily_metrics.training_readiness),
-                     steps=COALESCE(excluded.steps, daily_metrics.steps)""",
-                {k: entry.get(k) for k in
-                 ("day", "sleep_seconds", "sleep_score", "hrv_avg", "hrv_status",
-                  "training_readiness", "steps")},
-            )
+            db.execute(f"INSERT INTO daily_metrics({columns}) VALUES({placeholders}) "
+                       f"ON CONFLICT(day) DO UPDATE SET {updates}", row)
         count += 1
     return count
 
 
 def sync_body_composition(g: Garmin, days: int) -> int:
+    """Koerperwerte aus Garmin (z. B. von einer Index-Waage oder App-Eintraegen)."""
     start = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     end = dt.date.today().isoformat()
+    data = _call(g, "get_body_composition", start, end) or {}
     count = 0
-    try:
-        data = g.get_body_composition(start, end) or {}
-    except Exception as e:
-        log.debug("body composition: %s", e)
-        return 0
     for entry in data.get("dateWeightList") or []:
         day = entry.get("calendarDate")
         weight = entry.get("weight")
         if not day or not weight:
             continue
+        stamp = None
+        raw_ts = entry.get("date") or entry.get("timestampGMT")
+        if isinstance(raw_ts, (int, float)):
+            try:
+                stamp = dt.datetime.fromtimestamp(raw_ts / 1000).isoformat(
+                    timespec="seconds")
+            except (OverflowError, OSError, ValueError):
+                stamp = None
+        grams = lambda v: round(v / 1000.0, 2) if isinstance(v, (int, float)) else None  # noqa: E731
+        body.record({
+            "measured_at": stamp,
+            "day": day,
+            "weight_kg": grams(weight),
+            "body_fat_pct": entry.get("bodyFat"),
+            "muscle_kg": grams(entry.get("muscleMass")),
+            "bone_kg": grams(entry.get("boneMass")),
+            "water_pct": entry.get("bodyWater"),
+            "visceral_fat": entry.get("visceralFat"),
+            "bmi": entry.get("bmi"),
+        }, source="garmin")
+        count += 1
+    return count
+
+
+def sync_activity_details(g: Garmin, limit: int = 20, force: bool = False) -> int:
+    """Karten- und Kurvendaten fuer Aktivitaeten holen, die noch keine haben.
+
+    Wird ausgeduennt gespeichert (siehe services/activity_details.py) — rund
+    30-80 kB je Lauf statt ein bis drei Megabyte.
+    """
+    where = "" if force else \
+        " AND a.id NOT IN (SELECT activity_id FROM activity_details)"
+    with get_db() as db:
+        rows = db.execute(
+            f"""SELECT a.id, a.garmin_id FROM activities a
+                WHERE a.garmin_id IS NOT NULL{where}
+                ORDER BY a.start_time DESC LIMIT ?""", (limit,)).fetchall()
+    pending = [(r["id"], r["garmin_id"]) for r in rows]
+
+    count = 0
+    for activity_id, garmin_id in pending:
+        raw = _call(g, "get_activity_details", garmin_id, 2000, 4000)
+        if not raw:
+            continue
+        try:
+            packed = details.condense(raw)
+        except Exception as e:
+            log.warning("Detaildaten von %s nicht verwertbar: %s", garmin_id, e)
+            continue
+        if not packed["series_json"] and not packed["track_json"]:
+            continue
+        splits = _call(g, "get_activity_splits", garmin_id)
         with get_db() as db:
             db.execute(
-                """INSERT INTO body_metrics(day, weight_kg, body_fat_pct, muscle_kg, source)
-                   VALUES(?,?,?,?, 'garmin')
-                   ON CONFLICT(day, source) DO UPDATE SET
-                     weight_kg=excluded.weight_kg,
-                     body_fat_pct=COALESCE(excluded.body_fat_pct, body_metrics.body_fat_pct),
-                     muscle_kg=COALESCE(excluded.muscle_kg, body_metrics.muscle_kg)""",
-                (day, round(weight / 1000.0, 2), entry.get("bodyFat"),
-                 (entry.get("muscleMass") or 0) / 1000.0 or None),
-            )
+                """INSERT INTO activity_details(activity_id, series_json, track_json,
+                                                bounds_json, splits_json, point_count)
+                   VALUES(?,?,?,?,?,?)
+                   ON CONFLICT(activity_id) DO UPDATE SET
+                     fetched_at=datetime('now'),
+                     series_json=excluded.series_json,
+                     track_json=excluded.track_json,
+                     bounds_json=excluded.bounds_json,
+                     splits_json=excluded.splits_json,
+                     point_count=excluded.point_count""",
+                (activity_id, packed["series_json"], packed["track_json"],
+                 packed["bounds_json"],
+                 json.dumps(splits, separators=(",", ":")) if splits else None,
+                 packed["point_count"]))
         count += 1
     return count
 
@@ -444,8 +611,10 @@ def full_sync() -> dict[str, Any]:
         n_runs = sync_running_metrics(g, SYNC_LOOKBACK_DAYS)
         n_days = sync_daily_metrics(g, min(SYNC_LOOKBACK_DAYS, 7))
         n_body = sync_body_composition(g, 90)
+        n_det = sync_activity_details(g, limit=15)
         detail = (f"{n_act} Aktivitäten, {n_sets} Sätze, {n_runs} Läufe bewertet, "
-                  f"{n_days} Tagesmetriken, {n_body} Körperwerte")
+                  f"{n_days} Tagesmetriken, {n_body} Körperwerte, "
+                  f"{n_det} Detailverläufe")
         with get_db() as db:
             db.execute("INSERT INTO sync_log(ok, detail) VALUES(1, ?)", (detail,))
         log.info("Sync ok: %s", detail)
@@ -481,3 +650,79 @@ def push_workout(workout_json: dict[str, Any], planned_date: str | None) -> str:
 def upload_fit_activity(path: str) -> Any:
     g = get_client()
     return g.upload_activity(path)
+
+
+# ------------------------------------------------------- Verlaufs-Import
+
+# Zustand des laufenden Imports. Bewusst nur im Speicher: bricht er ab, wird
+# er einfach neu gestartet — die bereits geholten Tage bleiben in der Datenbank.
+_backfill: dict[str, Any] = {
+    "running": False, "done": 0, "total": 0, "stage": "", "error": None,
+    "finished_at": None, "summary": "",
+}
+
+
+def backfill_state() -> dict[str, Any]:
+    return dict(_backfill)
+
+
+def run_backfill(days: int = 3650, chunk: int = 30) -> None:
+    """Holt die gesamte Historie in Etappen nach.
+
+    Laeuft im Hintergrund und meldet den Fortschritt ueber backfill_state().
+    Ohne Vergangenheit kann der Coach keine Tendenzen erklaeren — genau dafuer
+    ist das hier da. Bereits vorhandene Tage werden nur ergaenzt, nie geleert.
+    """
+    if _backfill["running"]:
+        log.info("Verlaufs-Import laeuft bereits.")
+        return
+    _backfill.update(running=True, done=0, total=days, stage="Verbinde",
+                     error=None, finished_at=None, summary="")
+    totals = {"Aktivitäten": 0, "Tage": 0, "Körperwerte": 0, "Detailverläufe": 0}
+    try:
+        g = get_client()
+
+        _backfill["stage"] = "Aktivitäten"
+        for offset in range(0, days, 90):
+            span = min(90, days - offset)
+            totals["Aktivitäten"] += sync_activities(g, offset + span)
+            _backfill["done"] = min(days, offset + span)
+            if totals["Aktivitäten"] == 0 and offset >= 365:
+                break          # so weit zurueck gibt es nichts mehr
+
+        _backfill.update(stage="Schlaf, HRV, Stress", done=0)
+        empty_runs = 0
+        for offset in range(0, days, chunk):
+            got = sync_daily_metrics(g, min(chunk, days - offset), offset=offset)
+            totals["Tage"] += got
+            _backfill["done"] = min(days, offset + chunk)
+            empty_runs = empty_runs + 1 if got == 0 else 0
+            if empty_runs >= 3:
+                break          # drei leere Bloecke: davor gibt es keine Daten
+
+        _backfill.update(stage="Körperwerte", done=days)
+        totals["Körperwerte"] = sync_body_composition(g, days)
+
+        _backfill["stage"] = "Karten und Kurven"
+        totals["Detailverläufe"] = sync_activity_details(g, limit=400)
+
+        summary = ", ".join(f"{v} {k}" for k, v in totals.items() if v)
+        _backfill.update(stage="Fertig", summary=summary or "nichts Neues gefunden")
+        with get_db() as db:
+            db.execute("INSERT INTO sync_log(ok, detail) VALUES(1, ?)",
+                       (f"Verlaufs-Import: {summary}",))
+        log.info("Verlaufs-Import fertig: %s", summary)
+    except Exception as e:
+        _backfill.update(stage="Abgebrochen", error=str(e))
+        log.warning("Verlaufs-Import fehlgeschlagen: %s", e)
+    finally:
+        _backfill["running"] = False
+        _backfill["finished_at"] = dt.datetime.now().isoformat(timespec="seconds")
+
+
+def start_backfill(days: int = 3650) -> dict[str, Any]:
+    """Import im Hintergrund anstossen, damit die Anfrage nicht wartet."""
+    if _backfill["running"]:
+        return {"status": "läuft bereits", **backfill_state()}
+    threading.Thread(target=run_backfill, args=(days,), daemon=True).start()
+    return {"status": "gestartet", "days": days}

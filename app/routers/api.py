@@ -5,6 +5,7 @@ import datetime as dt
 import io
 import json
 import logging
+import sqlite3
 import threading
 from typing import Any
 
@@ -13,8 +14,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..db import get_db, get_setting, rows_to_dicts, set_setting
-from ..services import (benchmark, coach_ai, fit_import, garmin_sync, metrics,
-                        ollama_client, planner, run_analysis, running)
+from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
+                        metrics, ollama_client, planner, run_analysis, running)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -477,36 +478,58 @@ def upsert_nutrition(n: NutritionIn) -> dict[str, str]:
 
 class BodyIn(BaseModel):
     day: str | None = None
-    weight_kg: float | None = None
+    measured_at: str | None = None      # ISO-Zeitstempel; fehlt er, gilt die
+    weight_kg: float | None = None      # Uhrzeit als unbekannt
     body_fat_pct: float | None = None
     muscle_kg: float | None = None
     water_pct: float | None = None
+    bone_kg: float | None = None
+    visceral_fat: float | None = None
+    bmi: float | None = None
+    note: str | None = None
 
 
 @router.get("/body")
 def list_body(days: int = 365) -> list[dict[str, Any]]:
-    since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
-    with get_db() as db:
-        rows = db.execute("SELECT * FROM body_metrics WHERE day >= ? "
-                          "ORDER BY day DESC", (since,)).fetchall()
-    return rows_to_dicts(rows)
+    """Einzelne Messungen, neueste zuerst — mehrere pro Tag sind moeglich."""
+    return body.measurements(days)
+
+
+@router.get("/body/summary")
+def body_summary(days: int = 180) -> dict[str, Any]:
+    """Trend, letzte Werte und wie diszipliniert zur gleichen Zeit gemessen wird."""
+    return body.summary(days)
 
 
 @router.post("/body")
-def upsert_body(b: BodyIn) -> dict[str, str]:
-    day = b.day or dt.date.today().isoformat()
-    with get_db() as db:
-        db.execute(
-            """INSERT INTO body_metrics(day, weight_kg, body_fat_pct, muscle_kg,
-                                        water_pct, source)
-               VALUES(?,?,?,?,?, 'manual')
-               ON CONFLICT(day, source) DO UPDATE SET
-                 weight_kg=COALESCE(excluded.weight_kg, body_metrics.weight_kg),
-                 body_fat_pct=COALESCE(excluded.body_fat_pct, body_metrics.body_fat_pct),
-                 muscle_kg=COALESCE(excluded.muscle_kg, body_metrics.muscle_kg),
-                 water_pct=COALESCE(excluded.water_pct, body_metrics.water_pct)""",
-            (day, b.weight_kg, b.body_fat_pct, b.muscle_kg, b.water_pct))
+def upsert_body(b: BodyIn) -> dict[str, Any]:
+    return body.record(b.model_dump(exclude_none=True), source="manual")
+
+
+@router.delete("/body/{measurement_id}")
+def delete_body(measurement_id: int) -> dict[str, str]:
+    if not body.delete(measurement_id):
+        raise HTTPException(404, "Diese Messung gibt es nicht (mehr).")
     return {"status": "ok"}
+
+
+class WeighWindowIn(BaseModel):
+    start: str
+    end: str
+
+
+@router.post("/body/window")
+def set_weigh_window(w: WeighWindowIn) -> dict[str, Any]:
+    """Referenzfenster aendern und alle Messungen neu einordnen."""
+    for value in (w.start, w.end):
+        parts = value.split(":")
+        if len(parts) != 2 or not all(p.isdigit() for p in parts) \
+                or not (0 <= int(parts[0]) <= 23 and 0 <= int(parts[1]) <= 59):
+            raise HTTPException(400, f"Ungültige Uhrzeit: {value!r} (erwartet HH:MM)")
+    set_setting("weigh_window_start", w.start)
+    set_setting("weigh_window_end", w.end)
+    updated = body.recompute()
+    return {"status": "ok", "window": body.window_label(), "recomputed": updated}
 
 
 class ScaleReadingIn(BaseModel):
@@ -514,37 +537,31 @@ class ScaleReadingIn(BaseModel):
     body_fat_pct: float | None = None
     muscle_kg: float | None = None
     water_pct: float | None = None
+    bone_kg: float | None = None
+    lbm_kg: float | None = None
+    visceral_fat: float | None = None
     bmi: float | None = None
     impedance: int | None = None
     source: str = "miscale"
     day: str | None = None
+    measured_at: str | None = None
 
 
 @router.post("/body/webhook")
-def body_webhook(body: ScaleReadingIn,
+def body_webhook(reading: ScaleReadingIn,
                  x_puls_token: str = Header(default="")) -> dict[str, Any]:
     """Nimmt Messungen der Waage entgegen (vom BLE-Dienst)."""
     expected = get_setting("api_token", "")
     if not expected or x_puls_token != expected:
         raise HTTPException(401, "Ungültiges Token.")
-    day = body.day or dt.date.today().isoformat()
+    row = body.record(reading.model_dump(exclude_none=True), source=reading.source)
     with get_db() as db:
-        db.execute(
-            """INSERT INTO body_metrics(day, weight_kg, body_fat_pct, muscle_kg,
-                                        water_pct, source)
-               VALUES(?,?,?,?,?,?)
-               ON CONFLICT(day, source) DO UPDATE SET
-                 weight_kg=excluded.weight_kg,
-                 body_fat_pct=COALESCE(excluded.body_fat_pct, body_metrics.body_fat_pct),
-                 muscle_kg=COALESCE(excluded.muscle_kg, body_metrics.muscle_kg),
-                 water_pct=COALESCE(excluded.water_pct, body_metrics.water_pct)""",
-            (day, body.weight_kg, body.body_fat_pct, body.muscle_kg,
-             body.water_pct, body.source))
         db.execute("INSERT INTO sync_log(ok, detail) VALUES(1, ?)",
-                   (f"Waage: {body.weight_kg} kg"
-                    + (f", {body.body_fat_pct} % Fett" if body.body_fat_pct else ""),))
-    log.info("Waagen-Messung übernommen: %s kg", body.weight_kg)
-    return {"status": "ok", "day": day}
+                   (f"Waage: {reading.weight_kg} kg"
+                    + (f", {reading.body_fat_pct} % Fett" if reading.body_fat_pct else ""),))
+    log.info("Waagen-Messung übernommen: %s kg um %s",
+             reading.weight_kg, row["measured_at"])
+    return {"status": "ok", "day": row["day"], "in_window": row["in_window"]}
 
 
 # Letzter Zustand des Waagen-Dienstes — bewusst nur im Speicher, nicht in der DB:
@@ -600,7 +617,7 @@ def scale_status() -> dict[str, Any]:
     with get_db() as db:
         last = db.execute(
             "SELECT * FROM body_metrics WHERE source='miscale' "
-            "ORDER BY day DESC LIMIT 1").fetchone()
+            "ORDER BY measured_at DESC LIMIT 1").fetchone()
 
     return {
         "state": state,
@@ -614,8 +631,12 @@ def scale_status() -> dict[str, Any]:
 @router.post("/body/import")
 async def import_body_csv(file: UploadFile) -> dict[str, Any]:
     """CSV-Import, z. B. Export aus Zepp/Mi Fit oder openScale.
+
     Erwartete Spalten (flexibel): datum/date, gewicht/weight, fett/fat,
-    muskel/muscle, wasser/water."""
+    muskel/muscle, wasser/water, knochen/bone. Steht in der Datumsspalte auch
+    eine Uhrzeit, wird sie uebernommen — sonst gilt die Messung als
+    "Uhrzeit unbekannt" und bleibt aus dem Referenzfenster heraus.
+    """
     import csv
     text = (await file.read()).decode("utf-8", errors="replace")
     first = text.splitlines()[0] if text.splitlines() else ""
@@ -627,43 +648,96 @@ async def import_body_csv(file: UploadFile) -> dict[str, Any]:
         "body_fat_pct": ("fat", "fett", "bodyfat", "body_fat", "fat(%)"),
         "muscle_kg": ("muscle", "muskel", "muscle_mass", "muskelmasse"),
         "water_pct": ("water", "wasser", "water(%)"),
+        "bone_kg": ("bone", "knochen", "bone_mass", "knochenmasse"),
+        "visceral_fat": ("visceral", "viszeral", "visceral_fat"),
     }
     imported = 0
+    for raw in reader:
+        row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+        rec: dict[str, Any] = {}
+        for target, keys in aliases.items():
+            for k in keys:
+                if k in row and row[k]:
+                    rec[target] = row[k]
+                    break
+        if "day" not in rec or "weight_kg" not in rec:
+            continue
+
+        stamp = rec["day"].strip().replace("/", "-").replace(".", "-")
+        date_part, _, time_part = stamp.replace("T", " ").partition(" ")
+        parts = date_part.split("-")
+        if len(parts) == 3 and len(parts[0]) <= 2:      # DD-MM-YYYY -> ISO
+            date_part = f"{parts[2]}-{parts[1]:0>2}-{parts[0]:0>2}"
+
+        def fnum(key: str) -> float | None:
+            try:
+                return float(str(rec.get(key, "")).replace(",", "."))
+            except ValueError:
+                return None
+
+        weight = fnum("weight_kg")
+        if not weight:
+            continue
+        entry: dict[str, Any] = {
+            "day": date_part, "weight_kg": weight,
+            "body_fat_pct": fnum("body_fat_pct"), "muscle_kg": fnum("muscle_kg"),
+            "water_pct": fnum("water_pct"), "bone_kg": fnum("bone_kg"),
+            "visceral_fat": fnum("visceral_fat"),
+        }
+        time_part = time_part.strip()
+        if len(time_part) >= 5 and time_part[:2].isdigit():
+            entry["measured_at"] = f"{date_part}T{time_part[:8]:0<8}"
+        try:
+            body.record(entry, source="import")
+        except (ValueError, sqlite3.Error) as e:
+            log.debug("CSV-Zeile übersprungen (%s): %s", e, rec)
+            continue
+        imported += 1
+    return {"imported": imported, "window": body.window_label()}
+
+
+# ------------------------------------------------------- Erholung & Details
+
+@router.get("/recovery")
+def recovery(days: int = 30) -> dict[str, Any]:
+    """Schlaf, HRV, Stress, Body Battery und Ruhepuls im Zusammenhang."""
+    return metrics.recovery_series(days)
+
+
+@router.get("/activities/{activity_id}/details")
+def activity_details(activity_id: int) -> dict[str, Any]:
+    """Karte und Kurven zu einer Aktivitaet."""
     with get_db() as db:
-        for raw in reader:
-            row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
-            rec: dict[str, Any] = {}
-            for target, keys in aliases.items():
-                for k in keys:
-                    if k in row and row[k]:
-                        rec[target] = row[k]
-                        break
-            if "day" not in rec or "weight_kg" not in rec:
-                continue
-            day = rec["day"][:10].replace(".", "-").replace("/", "-")
-            parts = day.split("-")
-            if len(parts) == 3 and len(parts[0]) <= 2:  # DD-MM-YYYY -> ISO
-                day = f"{parts[2]}-{parts[1]:0>2}-{parts[0]:0>2}"
-            def fnum(key: str) -> float | None:
-                try:
-                    return float(str(rec.get(key, "")).replace(",", "."))
-                except ValueError:
-                    return None
-            w = fnum("weight_kg")
-            if not w:
-                continue
-            db.execute(
-                """INSERT INTO body_metrics(day, weight_kg, body_fat_pct,
-                                            muscle_kg, water_pct, source)
-                   VALUES(?,?,?,?,?, 'import')
-                   ON CONFLICT(day, source) DO UPDATE SET
-                     weight_kg=excluded.weight_kg,
-                     body_fat_pct=excluded.body_fat_pct,
-                     muscle_kg=excluded.muscle_kg,
-                     water_pct=excluded.water_pct""",
-                (day, w, fnum("body_fat_pct"), fnum("muscle_kg"), fnum("water_pct")))
-            imported += 1
-    return {"imported": imported}
+        act = db.execute("SELECT * FROM activities WHERE id=?",
+                         (activity_id,)).fetchone()
+        row = db.execute("SELECT * FROM activity_details WHERE activity_id=?",
+                         (activity_id,)).fetchone()
+    if not act:
+        raise HTTPException(404, "Diese Aktivität gibt es nicht.")
+
+    out: dict[str, Any] = {"activity": dict(act), "has_details": bool(row)}
+    if not row:
+        out["hint"] = ("Für diese Einheit wurden noch keine Detaildaten geholt. "
+                       "Sie kommen beim nächsten Sync — oder sofort über "
+                       "Mehr → Garmin → Verlauf nachladen.")
+        return out
+    for field in ("series", "track", "bounds", "splits"):
+        raw = row[f"{field}_json"]
+        out[field] = json.loads(raw) if raw else None
+    out["fetched_at"] = row["fetched_at"]
+    out["point_count"] = row["point_count"]
+    return out
+
+
+@router.post("/garmin/backfill")
+def garmin_backfill(days: int = 3650) -> dict[str, Any]:
+    """Gesamten Verlauf nachladen — laeuft im Hintergrund."""
+    return garmin_sync.start_backfill(days)
+
+
+@router.get("/garmin/backfill/status")
+def garmin_backfill_status() -> dict[str, Any]:
+    return garmin_sync.backfill_state()
 
 
 # --------------------------------------------------------------------- Coach
