@@ -192,6 +192,44 @@ with TestClient(app) as client:
     check("Unbekannter Eintrag meldet 404",
           client.delete("/api/mood/999999").status_code, 404)
 
+    # --- Rezepte -----------------------------------------------------------
+    r = client.get("/api/recipes/suggest").json()
+    check("Rezepte vorgeschlagen", len(r["recipes"]), 3)
+    check("Begruendung mitgeliefert", bool(r["reason"]), True)
+    check("Naehrwerte vorhanden", r["recipes"][0]["kcal"] > 0, True)
+    check("Zubereitung vorhanden", len(r["recipes"][0]["steps"]) > 0, True)
+    check("Nach Mahlzeit filterbar",
+          all("breakfast" in x["tags"]
+              for x in client.get("/api/recipes/suggest?meal=breakfast").json()["recipes"]),
+          True)
+    check("Einzelnes Rezept abrufbar",
+          client.get(f"/api/recipes/{r['recipes'][0]['id']}").status_code, 200)
+    check("Unbekanntes Rezept meldet 404",
+          client.get("/api/recipes/gibtsnicht").status_code, 404)
+
+    # Naehrwerte gegenrechnen: Eiweiss und Kohlenhydrate 4 kcal/g, Fett 9.
+    # Die Angaben sind gerundet, deshalb 20 % Toleranz — grobe Tippfehler
+    # faengt das trotzdem.
+    all_recipes = client.get("/api/recipes").json()
+    off = [r["name"] for r in all_recipes
+           if abs(r["protein"] * 4 + r["carbs"] * 4 + r["fat"] * 9 - r["kcal"])
+           > r["kcal"] * 0.2]
+    check(f"Nährwerte aller {len(all_recipes)} Rezepte stimmig", off, [])
+    check("Jedes Rezept hat Zutaten und Zubereitung",
+          all(r["ingredients"] and r["steps"] for r in all_recipes), True)
+    check("Jedes Rezept ist einer Mahlzeit zugeordnet",
+          all(any(t in r["tags"] for t in ("breakfast", "main", "snack"))
+              for r in all_recipes), True)
+
+    # --- Aktivitaetsprotokoll ----------------------------------------------
+    log = client.get("/api/activities/log").json()
+    check("Protokoll antwortet", len(log["activities"]) >= 1, True)
+    check("Summen gerechnet", len(log["totals"]) >= 1, True)
+    check("Nach Sportart filterbar",
+          all(a["sport"] == "running"
+              for a in client.get("/api/activities/log?sport=running").json()["activities"]),
+          True)
+
     # --- Bestehende Ansichten duerfen nicht kaputtgegangen sein -----------
     for path in ("/api/dashboard", "/api/health", "/api/settings", "/api/exercises",
                  "/api/workouts", "/api/nutrition", "/api/plan/overview",

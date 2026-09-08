@@ -17,7 +17,7 @@ from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
 from ..services import activity_details as activity_details_svc
-from ..services import gym_analysis, mood, supplements
+from ..services import gym_analysis, mood, recipes, supplements
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -748,6 +748,66 @@ def garmin_backfill_status() -> dict[str, Any]:
 def garmin_backfill_cancel() -> dict[str, Any]:
     """Laufenden Import abbrechen — das bereits Geholte bleibt."""
     return garmin_sync.cancel_backfill()
+
+
+# ---------------------------------------------------------------- Rezepte
+
+@router.get("/recipes/suggest")
+def recipes_suggest(day: str | None = None, meal: str | None = None,
+                    count: int = 3) -> dict[str, Any]:
+    """Rezepte passend zur heutigen Trainingslage."""
+    return recipes.suggest(day, meal, count)
+
+
+@router.post("/recipes/explain")
+def recipes_explain(day: str | None = None, meal: str | None = None
+                    ) -> dict[str, str]:
+    """Begruendung vom Modell — die Zahlen kommen aus der Auswahl."""
+    return {"text": recipes.explain(recipes.suggest(day, meal))}
+
+
+@router.get("/recipes")
+def recipes_all(meal: str | None = None) -> list[dict[str, Any]]:
+    return recipes.all_recipes(meal)
+
+
+@router.get("/recipes/{recipe_id}")
+def recipe_one(recipe_id: str) -> dict[str, Any]:
+    r = recipes.get(recipe_id)
+    if not r:
+        raise HTTPException(404, "Dieses Rezept gibt es nicht.")
+    return r
+
+
+@router.get("/activities/log")
+def activity_log(days: int = 365, sport: str | None = None,
+                 limit: int = 300) -> dict[str, Any]:
+    """Vollstaendiges Trainingsprotokoll, filterbar nach Sportart."""
+    since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    clause = " AND a.sport = ?" if sport else ""
+    params: list[Any] = [since] + ([sport] if sport else []) + [limit]
+    with get_db() as db:
+        rows = db.execute(
+            f"""SELECT a.id, a.name, a.sport, a.start_time, a.duration_s,
+                       a.distance_m, a.avg_hr, a.max_hr, a.calories, a.source,
+                       a.elevation_gain, a.aerobic_te, a.training_load,
+                       (a.analysis_json IS NOT NULL) AS has_analysis,
+                       (d.activity_id IS NOT NULL) AS has_details
+                FROM activities a
+                LEFT JOIN activity_details d ON d.activity_id = a.id
+                WHERE substr(a.start_time,1,10) >= ?{clause}
+                ORDER BY a.start_time DESC LIMIT ?""", params).fetchall()
+        totals = db.execute(
+            f"""SELECT a.sport, COUNT(*) AS n, SUM(a.duration_s) AS seconds,
+                       SUM(a.distance_m) AS meters
+                FROM activities a
+                WHERE substr(a.start_time,1,10) >= ?{clause}
+                GROUP BY a.sport""", params[:-1]).fetchall()
+    return {
+        "activities": rows_to_dicts(rows),
+        "totals": rows_to_dicts(totals),
+        "days": days,
+    }
 
 
 # ------------------------------------------------------------ Supplements

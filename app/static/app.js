@@ -549,22 +549,7 @@ function exTargetText(e) {
 async function loadExercises() {
   exerciseData = await api("/exercises");
   renderExercises();
-  const acts = await api("/activities?limit=15");
-  $("#activityList").innerHTML = acts.length ? acts.map((a) => `
-    <div class="list-item" data-run-id="${a.id}" style="cursor:pointer">
-      ${kindTag(a.sport)}
-      <div class="grow">
-        <div class="title">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
-        <div class="meta">${fmtDate(a.start_time)} · ${fmtDur(a.duration_s)}
-          ${a.distance_m ? " · " + (a.distance_m / 1000).toFixed(1) + " km" : ""}
-          ${a.avg_hr ? " · Ø " + Math.round(a.avg_hr) + " bpm" : ""}
-          · <span class="badge">${a.source === "garmin" ? "Garmin" : a.source === "fit" ? "FIT" : "manuell"}</span></div>
-      </div>
-      <span class="muted">${a.sport === "strength" ? "Auswertung" : "Analyse"} ›</span>
-    </div>`).join("") : "Noch keine.";
-
-  $$("[data-run-id]").forEach((el) => el.addEventListener("click", () =>
-    openRunAnalysis(+el.dataset.runId)));
+  loadActivityLog();
 }
 
 function renderExercises() {
@@ -916,6 +901,7 @@ $("#runDialog").addEventListener("click", (e) => {
 /* --------------------------------------------------------------- Ernährung */
 
 async function loadNutrition() {
+  loadRecipes();
   const [list, s] = await Promise.all([api("/nutrition?days=14"), api("/settings")]);
   const kcalT = s.kcal_target, protT = s.protein_target;
   $("#nutTargetInfo").textContent = kcalT || protT
@@ -1217,6 +1203,7 @@ function watchNote() {
 }
 
 async function loadMood() {
+  loadRecovery();
   const d = await api("/mood?days=30");
   moodMeta = { regions: d.regions, kinds: d.kinds };
   renderScales(); renderComplaintPicker(); renderChosen();
@@ -1338,6 +1325,175 @@ $("#btnAddSupp").addEventListener("click", (e) => withSpinner(e.currentTarget, a
 $("#suppTrigger").addEventListener("change", () => {
   $("#suppTime").disabled = $("#suppTrigger").value !== "time";
 });
+
+
+/* ----------------------------------------------------------- Erholung */
+
+function fmtSleep(sec) {
+  if (!sec) return "–";
+  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+  return `${h}:${String(m).padStart(2, "0")} h`;
+}
+
+/* Ein Wert im Verhältnis zur eigenen Basislinie sagt mehr als die nackte
+   Zahl: 58 ms HRV sind gut oder schlecht, je nachdem, was für dich normal ist. */
+function baselineNote(b, invert = false) {
+  if (!b || b.delta == null) return "";
+  const better = invert ? b.delta < 0 : b.delta > 0;
+  const cls = Math.abs(b.delta) < 0.5 ? "" : better ? "down" : "up";
+  const sign = b.delta > 0 ? "+" : "";
+  return `<span class="d ${cls}">${sign}${b.delta} ggü. Schnitt</span>`;
+}
+
+async function loadRecovery() {
+  let d;
+  try { d = await api("/recovery?days=60"); } catch (e) { return; }
+  const series = d.series || [];
+  const l = d.latest || {};
+  const b = d.baselines || {};
+
+  const facts = [
+    { v: l.hrv_avg != null ? Math.round(l.hrv_avg) : null, u: "ms", l: "HRV",
+      extra: baselineNote(b.hrv_avg) },
+    { v: l.resting_hr != null ? Math.round(l.resting_hr) : null, u: "", l: "Ruhepuls",
+      extra: baselineNote(b.resting_hr, true) },
+    { v: l.sleep_seconds ? fmtSleep(l.sleep_seconds) : null, u: "", l: "Schlaf" },
+    { v: l.sleep_score != null ? Math.round(l.sleep_score) : null, u: "", l: "Schlafscore" },
+    { v: l.body_battery_max != null ? Math.round(l.body_battery_max) : null,
+      u: "", l: "Body Battery" },
+    { v: l.stress_avg != null ? Math.round(l.stress_avg) : null, u: "", l: "Stress Ø" },
+    { v: l.training_readiness != null ? Math.round(l.training_readiness) : null,
+      u: "", l: "Bereitschaft" },
+    { v: l.respiration_avg != null ? l.respiration_avg.toFixed(1) : null,
+      u: "/min", l: "Atmung" },
+  ].filter((f) => f.v != null);
+
+  $("#recoveryFacts").innerHTML = facts.length ? facts.map((f) => `
+    <div class="f"><div class="v">${esc(String(f.v))}<span class="u">${f.u}</span></div>
+      <div class="l">${f.l}</div>${f.extra || ""}</div>`).join("")
+    : `<p class="muted">${esc(d.hint || "Noch keine Erholungsdaten.")}</p>`;
+
+  $("#recoveryNotes").innerHTML = (d.observations || []).map((o) =>
+    `<div class="finding ${o.level}"><div class="d">${esc(o.text)}</div></div>`).join("");
+
+  const pick = (key) => series.filter((r) => r[key] != null)
+    .map((r) => ({ value: r[key], label: r.day.slice(5), tip: r.day }));
+
+  lineChart($("#hrvChart"), pick("hrv_avg"), { unit: " ms" });
+  lineChart($("#sleepChart"), series.filter((r) => r.sleep_seconds)
+    .map((r) => ({ value: +(r.sleep_seconds / 3600).toFixed(2),
+                   label: r.day.slice(5), tip: r.day })), { unit: " h" });
+
+  /* Schlafphasen der letzten Nacht als Anteilsbalken */
+  const stages = [["sleep_deep_s", "Tief", "z4"], ["sleep_rem_s", "REM", "z3"],
+                  ["sleep_light_s", "Leicht", "z2"], ["sleep_awake_s", "Wach", "z1"]];
+  const total = stages.reduce((sum, [k]) => sum + (l[k] || 0), 0);
+  $("#sleepStages").innerHTML = total > 0 ? `
+    <div class="zone-bar">${stages.map(([k, , cls]) => {
+      const pct = ((l[k] || 0) / total) * 100;
+      return pct > 0.5 ? `<span class="${cls}" style="width:${pct}%"></span>` : "";
+    }).join("")}</div>
+    <div class="zone-legend">${stages.map(([k, label]) =>
+      l[k] ? `<span>${label}: ${fmtSleep(l[k])}</span>` : "").join("")}</div>` : "";
+
+  barChart($("#stressChart"), series.filter((r) => r.stress_avg != null)
+    .map((r) => ({ value: Math.round(r.stress_avg), label: r.day.slice(8),
+                   tip: `${r.day} — Stress Ø` })), { color: "var(--warn)" });
+  lineChart($("#batteryChart"), pick("body_battery_max"), { color: "var(--good)" });
+}
+
+/* ------------------------------------------------------------ Rezepte */
+
+let recipeCache = [];
+
+async function loadRecipes() {
+  const meal = $("#recipeMeal").value;
+  let d;
+  try { d = await api(`/recipes/suggest?count=3${meal ? `&meal=${meal}` : ""}`); }
+  catch (e) { return; }
+  recipeCache = d.recipes;
+  $("#recipeReason").textContent = d.reason || "";
+  $("#recipeList").innerHTML = d.recipes.map((r, i) => `
+    <div class="list-item recipe" data-recipe="${i}" style="cursor:pointer">
+      <div class="grow">
+        <div class="title">${esc(r.name)}</div>
+        <div class="meta">${r.kcal} kcal · ${r.protein} g Eiweiß ·
+          ${r.carbs} g KH · ${r.minutes} min
+          ${r.tags.includes("mealprep") ? ' · <span class="badge">vorkochbar</span>' : ""}
+          ${r.tags.includes("vegan") ? ' · <span class="badge">vegan</span>'
+            : r.tags.includes("veg") ? ' · <span class="badge">vegetarisch</span>' : ""}</div>
+      </div>
+      <span class="muted">Rezept ›</span>
+    </div>`).join("") || '<p class="muted">Keine passenden Rezepte gefunden.</p>';
+
+  $$("[data-recipe]").forEach((el) => el.addEventListener("click", () =>
+    openRecipe(recipeCache[+el.dataset.recipe])));
+}
+
+function openRecipe(r) {
+  if (!r) return;
+  $("#recipeTitle").textContent = r.name;
+  $("#recipeBody").innerHTML = `
+    <div class="run-facts">
+      <div class="f"><div class="v">${r.kcal}</div><div class="l">kcal</div></div>
+      <div class="f"><div class="v">${r.protein}</div><div class="l">g Eiweiß</div></div>
+      <div class="f"><div class="v">${r.carbs}</div><div class="l">g Kohlenhydrate</div></div>
+      <div class="f"><div class="v">${r.fat}</div><div class="l">g Fett</div></div>
+      <div class="f"><div class="v">${r.minutes}</div><div class="l">Minuten</div></div>
+    </div>
+    <div class="detail-section"><h4>Zutaten</h4>
+      <ul class="plain">${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>
+    <div class="detail-section"><h4>Zubereitung</h4>
+      <ol class="plain">${r.steps.map((i) => `<li>${esc(i)}</li>`).join("")}</ol></div>
+    ${r.note ? `<p class="muted">${esc(r.note)}</p>` : ""}`;
+  $("#recipeDialog").hidden = false;
+}
+
+$("#recipeClose").addEventListener("click", () => { $("#recipeDialog").hidden = true; });
+$("#recipeMeal").addEventListener("change", loadRecipes);
+$("#btnRecipeExplain").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const meal = $("#recipeMeal").value;
+  const r = await api(`/recipes/explain${meal ? `?meal=${meal}` : ""}`, { method: "POST" });
+  $("#recipeAdvice").hidden = false;
+  $("#recipeAdvice").textContent = r.text;
+}));
+
+/* -------------------------------------------------- Aktivitätsprotokoll */
+
+async function loadActivityLog() {
+  const sport = $("#logSport").value;
+  const days = $("#logDays").value;
+  let d;
+  try { d = await api(`/activities/log?days=${days}${sport ? `&sport=${sport}` : ""}`); }
+  catch (e) { return; }
+
+  $("#logTotals").innerHTML = d.totals.map((t) =>
+    `${SPORT_LABEL[t.sport] || t.sport}: ${t.n}× · ${fmtDur(t.seconds)}` +
+    (t.meters ? ` · ${(t.meters / 1000).toFixed(0)} km` : "")).join(" &nbsp;·&nbsp; ")
+    || "Keine Einträge in diesem Zeitraum.";
+
+  $("#activityList").innerHTML = d.activities.length ? d.activities.map((a) => `
+    <div class="list-item" data-run-id="${a.id}" style="cursor:pointer">
+      ${kindTag(a.sport)}
+      <div class="grow">
+        <div class="title">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
+        <div class="meta">${fmtDate(a.start_time)} · ${fmtDur(a.duration_s)}
+          ${a.distance_m ? " · " + (a.distance_m / 1000).toFixed(1) + " km" : ""}
+          ${a.avg_hr ? " · Ø " + Math.round(a.avg_hr) + " bpm" : ""}
+          ${a.elevation_gain ? " · " + Math.round(a.elevation_gain) + " hm" : ""}
+          ${a.has_details ? ' · <span class="badge">Karte</span>' : ""}
+          · <span class="badge">${a.source === "garmin" ? "Garmin"
+            : a.source === "fit" ? "FIT" : "manuell"}</span></div>
+      </div>
+      <span class="muted">${a.sport === "strength" ? "Auswertung" : "Analyse"} ›</span>
+    </div>`).join("") : '<p class="muted">Nichts gefunden.</p>';
+
+  $$("[data-run-id]").forEach((el) => el.addEventListener("click", () =>
+    openRunAnalysis(+el.dataset.runId)));
+}
+
+$("#logSport").addEventListener("change", loadActivityLog);
+$("#logDays").addEventListener("change", loadActivityLog);
 
 /* ------------------------------------------------------------------- Coach */
 

@@ -213,6 +213,22 @@
 
   <div class="card">
     <h3>Letzte Aktivitäten</h3>
+    <div class="row" style="margin-bottom:8px">
+      <select id="logSport" class="small">
+        <option value="">alle Sportarten</option>
+        <option value="running">Laufen</option>
+        <option value="strength">Kraft</option>
+        <option value="mobility">Mobilität</option>
+        <option value="cardio">Cardio</option>
+      </select>
+      <select id="logDays" class="small">
+        <option value="30">30 Tage</option>
+        <option value="90">90 Tage</option>
+        <option value="365" selected>1 Jahr</option>
+        <option value="3650">alles</option>
+      </select>
+    </div>
+    <div id="logTotals" class="muted"></div>
     <div id="activityList" class="muted">Noch keine.</div>
   </div>
 </section>
@@ -278,6 +294,16 @@
 </div>
 
 <!-- Laufanalyse -->
+<div id="recipeDialog" class="modal" hidden>
+  <div class="modal-box">
+    <h3 id="recipeTitle">Rezept</h3>
+    <div id="recipeBody"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn ghost" id="recipeClose">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <div id="runDialog" class="modal" hidden>
   <div class="modal-box">
     <h3 id="runDialogTitle">Laufanalyse</h3>
@@ -313,6 +339,22 @@
 
 <!-- ============================== ERNÄHRUNG ============================== -->
 <section id="view-nutrition" class="view">
+  <div class="card">
+    <h3>Passend zu heute</h3>
+    <div id="recipeReason" class="muted"></div>
+    <div id="recipeList"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost small" id="btnRecipeExplain">Coach fragen</button>
+      <select id="recipeMeal" class="small">
+        <option value="">alles</option>
+        <option value="breakfast">Frühstück</option>
+        <option value="main">Hauptgericht</option>
+        <option value="snack">Snack</option>
+      </select>
+    </div>
+    <div id="recipeAdvice" class="coach-msg" hidden></div>
+  </div>
+
   <div class="card">
     <h3>Heute eintragen</h3>
     <div class="grid3">
@@ -407,6 +449,20 @@
   <div class="card" id="adaptCard" hidden>
     <h3>Was der Coach daraus macht</h3>
     <div id="adaptBody"></div>
+  </div>
+
+  <div class="card">
+    <h3>Erholung</h3>
+    <div id="recoveryFacts" class="body-facts"></div>
+    <div id="recoveryNotes"></div>
+    <div class="detail-section"><h4>HRV und Ruhepuls</h4>
+      <div class="chart-wrap" id="hrvChart"></div></div>
+    <div class="detail-section"><h4>Schlaf</h4>
+      <div class="chart-wrap" id="sleepChart"></div>
+      <div id="sleepStages"></div></div>
+    <div class="detail-section"><h4>Stress und Body Battery</h4>
+      <div class="chart-wrap" id="stressChart"></div>
+      <div class="chart-wrap" id="batteryChart"></div></div>
   </div>
 
   <div class="card">

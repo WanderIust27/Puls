@@ -546,3 +546,10 @@ nav.bottom button { padding-left: 4px; padding-right: 4px; }
   display: flex; justify-content: space-between; margin-top: 10px;
   font-size: 0.84em; color: var(--ink-2);
 }
+select.small, .btn.small {
+  font-size: 0.84em; padding: 5px 10px; background: var(--surface-2);
+  border: 1px solid var(--border); color: var(--ink-2); border-radius: 7px;
+}
+.list-item.recipe .title { font-weight: 600; }
+ol.plain { margin: 0 0 10px; padding-left: 20px; }
+ol.plain li, ul.plain li { margin-bottom: 5px; }
