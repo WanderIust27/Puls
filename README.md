@@ -95,8 +95,8 @@ PULS erinnert alle 10 Wochen ans Nachkalibrieren.
 
 ```bash
 cd /mnt/user/appdata/puls-coach && \
-  wget -qO update.sh https://codeload.github.com/WanderIust27/Puls/raw/claude/upload-zip-files-git-h41xf4/update.sh && \
-  chmod +x update.sh && ./update.sh
+  wget -qO /tmp/p.zip https://codeload.github.com/WanderIust27/Puls/zip/refs/heads/claude/upload-zip-files-git-h41xf4 && \
+  unzip -qjo /tmp/p.zip '*/update.sh' -d . && chmod +x update.sh && ./update.sh
 ```
 
 Danach genügt jedes Mal:
