@@ -91,6 +91,156 @@ Unter *Plan → Kalibrierung*:
 PULS erinnert alle 10 Wochen ans Nachkalibrieren.
 
 
+## Der Coach-Score
+
+Ganz oben auf dem Dashboard steht, wie zufrieden der Coach gerade ist — eine
+Zahl von 0 bis 100, und daneben die fünf Säulen, aus denen sie entsteht. Ein
+einzelner Wert ohne Begründung wäre leicht misszuverstehen; wer 82 sieht, soll
+danebenlesen können, woraus die 82 kommt.
+
+| Säule | Gewicht | Woraus sie entsteht |
+|---|---|---|
+| Beständigkeit | 30 % | Wie oft du deine eigene Wochenstruktur tatsächlich einhältst |
+| Fortschritt | 25 % | Werden Gewichte schwerer und Läufe schneller bei gleichem Puls |
+| Erholung | 20 % | Schlaf, HRV und Ruhepuls gegenüber *deiner* Basislinie |
+| Belastung | 15 % | Belastungsverhältnis (ACWR) — Aufbau oder Überlastung |
+| Alltag | 10 % | Supplements, Wiegen im Referenzfenster, Befinden eintragen |
+
+Säulen ohne ausreichende Datengrundlage werden **nicht geraten**, sondern als
+solche ausgewiesen; ihr Gewicht verteilt sich auf die übrigen, damit eine
+fehlende Quelle den Wert nicht künstlich drückt.
+
+Darunter steht, **wo am meisten Potenzial liegt** — sortiert danach, was
+rechnerisch die meisten Punkte liegen lässt, mit einer konkreten Ansage statt
+einer Mängelliste.
+
+Gerechnet wird der Wert im Code. Das Modell darf ihn kommentieren, aber nicht
+bestimmen — sonst wäre er von Tag zu Tag beliebig.
+
+## Gemütszustand und Beschwerden
+
+Ein eigener Tab, mehrmals am Tag nutzbar: Stimmung, Energie und Stress auf
+einer Fünferskala, antippbare Beschwerden nach Körperregion und Art
+(Schmerz, Muskelkater, Verspannung …) und ein Freitextfeld. Schreibst du
+„Rücken zwickt seit gestern", liest das lokale Modell das mit und **schlägt**
+den passenden Eintrag vor — übernommen wird er erst, wenn du drauftippst.
+
+**Das ändert den Plan, nicht nur die Statistik.** Eine gemeldete
+Rückenbeschwerde nimmt die betroffenen Muskelgruppen aus der nächsten
+Gym-Einheit und zieht die passenden Yoga-Stellungen im Abendprogramm nach
+vorn. Bliebe dadurch zu wenig übrig, wird die Einschränkung wieder aufgehoben
+— eine Einheit aus zwei Übungen hilft niemandem.
+
+Beschwerden klingen unterschiedlich schnell ab: Muskelkater zählt drei Tage,
+Schmerz sieben, eine Verletzung drei Wochen. Bei Muskelkater kommt ein
+Ernährungshinweis dazu, bei Schmerz wird ausgesetzt statt dosiert.
+
+Die Zuordnung von Beschwerde zu Konsequenz steht als Tabelle im Code, nicht
+als Modellanfrage: „Rückenschmerzen" muss jedes Mal dasselbe auslösen.
+
+## Supplements
+
+Unter *Mehr → Supplements*. Jedes Mittel ist entweder zu einer festen Uhrzeit
+fällig oder an eine Einheit gekoppelt — was am Gym hängt, wird an einem
+Ruhetag gar nicht erst fällig, und „wartet noch auf die Einheit" ist etwas
+anderes als „vergessen". Nur das Zweite wird hervorgehoben.
+
+Voreingestellt sind Kreatin (5 g morgens), Zink (abends) und ein Eiweiß-Shake
+nach dem Gym; alles änderbar. Offene Einnahmen stehen auf dem Dashboard zum
+Abhaken und tauchen in der Tagesnachricht des Coaches auf.
+
+## Rezepte
+
+Unter *Essen*. Zwanzig Gerichte mit echten Nährwerten je Portion, gewichtet
+auf vegetarisch, schnell und vorkochbar. Die Auswahl trifft der Code aus dem,
+was du heute tatsächlich trainiert hast: Krafttraining stellt Eiweiß nach
+vorn, ein langer Lauf die Kohlenhydrate, gemeldeter Muskelkater holt die
+regenerativen Gerichte dazu, und wenn dir bis zum Eiweißziel noch viel fehlt,
+schlägt das alles andere.
+
+Das Modell schreibt nur die zwei Sätze Begründung — es liefert keine einzige
+Zahl. Ein 8B-Modell auf CPU würde plausibel klingende Nährwerte erfinden, und
+an erfundenen Werten lässt sich keine Bilanz führen. Ein Test rechnet für
+jedes Rezept die Kalorien aus den Makros nach, damit ein Tippfehler in der
+Tabelle auffällt.
+
+## Erholung
+
+Im Gemüt-Tab: HRV, Ruhepuls, Schlaf mit seinen Phasen, Schlafscore, Body
+Battery, Stress und Atemfrequenz. Jeder Wert steht **im Verhältnis zu deiner
+eigenen Basislinie** — 58 ms HRV sagen nichts, solange man nicht weiß, was
+für dich normal ist.
+
+Zusammenhänge werden nur gemeldet, wenn sie belastbar sind: mindestens
+14 Tage Daten und ein Zusammenhang von mindestens 0,35. Sonst würde die
+Auswertung Zufall als Einsicht verkaufen.
+
+## Aktivitätsprotokoll, Karten und Kurven
+
+Unter *Übungen* steht das vollständige Protokoll, filterbar nach Sportart und
+Zeitraum, mit Summen je Sportart.
+
+Ein **Lauf** öffnet sich mit der GPS-Spur, eingefärbt nach Puls, wahlweise mit
+OpenStreetMap-Hintergrund (in den Einstellungen zuschaltbar, standardmäßig
+aus — ohne das geht keine Anfrage nach außen). Darunter Puls, Tempo, Höhe und
+Schrittfrequenz als Kurven mit einem gemeinsamen Fadenkreuz: Fährst du über
+die Kurve, wandert ein Punkt über die Karte. Dazu die Kilometerzeiten.
+
+Eine **Gym-Einheit** öffnet Sätze, Volumen, Muskelgruppen und je Übung den
+Vergleich zur letzten Einheit — schwerer, mehr Wiederholungen, unverändert
+oder runter. Die Hinweise kommen aus den Zahlen: eine Übung, die stillsteht;
+eine, die durchgehend leicht lief; Volumen deutlich über oder unter deinem
+Vier-Wochen-Schnitt.
+
+Die Detaildaten werden beim Sync ausgedünnt gespeichert — Kurven auf rund 400
+Messpunkte gemittelt, die GPS-Spur mit Douglas-Peucker vereinfacht. An einem
+45-Minuten-Lauf gemessen: 539 kB roh, 23 kB gespeichert, größte Abweichung der
+Spur 1,2 m. So passt jeder Lauf dauerhaft ins Volume.
+
+## Körperdaten und Referenzfenster
+
+Zwischen der Messung früh nüchtern und der abends nach dem Essen liegen leicht
+anderthalb Kilo, ohne dass sich am Körper etwas geändert hätte. Deshalb
+arbeitet PULS mit einem **Referenzfenster** (Standard 6–9 Uhr, einstellbar):
+Nur Messungen darin bilden die Trendlinie. Alle anderen werden gespeichert,
+markiert und über ein Tagesgang-Modell umgerechnet.
+
+Das Modell startet mit Erfahrungswerten und **kalibriert sich auf dich**,
+sobald fünf Tage mit Morgen- *und* Abendmessung vorliegen. Messungen ohne
+bekannte Uhrzeit (Altbestand, CSV-Import) werden als solche geführt und nicht
+korrigiert — eine Uhrzeit zu raten wäre schlimmer als die Lücke.
+
+Die Waage funkt nur Gewicht und Impedanz. Körperfett, Muskelmasse, Wasser,
+Knochenmasse und Viszeralfett sind daraus **geschätzt** und in der Oberfläche
+mit einem ≈ markiert. Gut für den Trend, nicht als medizinische Aussage.
+Jede Messung ist einzeln löschbar.
+
+## Wenn keine Daten ankommen
+
+Unter *Mehr → Garmin → „Es kommen keine Daten an?" → Prüfen*. Das geht der
+Reihe nach durch: Ist Garmin verknüpft, steht die Verbindung, liefert Garmin
+überhaupt Aktivitäten und Tageswerte, und was davon ist in der Datenbank
+gelandet — dazu die letzten Protokolleinträge. Damit lässt sich unterscheiden,
+ob die Verbindung, die Abfrage oder das Speichern klemmt.
+
+Der Verlaufs-Import läuft in vier Schritten mit eigenem Fortschritt und lässt
+sich abbrechen; das bereits Geholte bleibt. Bleibt er hängen, gilt er nach
+fünf Minuten ohne Fortschritt als tot und ist über „Import zurücksetzen"
+wieder startbar.
+
+## Tests
+
+```bash
+./tests/run_all.sh
+```
+
+Acht Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+nicht angefasst. Abgedeckt sind der Waagen-Parser, das Referenzfenster mit
+seiner Kalibrierung, das Ausdünnen der Laufdaten, die Gym-Auswertung, die
+Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync
+samt Verlaufs-Import gegen einen nachgebauten Client, die komplette API gegen
+die echte Anwendung, und die Frontend-Struktur.
+
 ## Installieren und aktualisieren — ein Befehl
 
 Einmalig einrichten:
@@ -433,6 +583,16 @@ Der Waagen-Webhook ist per Token geschützt.
 FastAPI + SQLite (Volume `puls-data`), Ollama als eigener Container, Mi-Scale-Dienst mit
 `bleak`, Frontend als abhängigkeitsfreie Vanilla-JS-PWA. Scheduler: Garmin-Sync (alle
 `SYNC_INTERVAL_HOURS`), Tagesnachricht (7:30), Forschungs-Häppchen (Mo 6:00).
+
+Diagramme und Karte sind selbst gezeichnetes Inline-SVG — auch die Karte, denn
+eine unbewegliche Karte braucht keine Kartenbibliothek: Es genügt, die
+Kachelnummern für den Ausschnitt auszurechnen und die Bilder an die richtige
+Stelle zu legen. Das sind ein paar Zeilen statt 150 kB Fremdcode.
+
+Der durchgehende Grundsatz: **Der Code rechnet, das Modell formuliert.**
+Trainingsgewichte, Tempozonen, 1RM, VO₂max, Progression, Nährwerte und der
+Score sind deterministisch. Das Modell wählt aus und erklärt — es erfindet
+keine Zahlen.
 
 | Env-Variable | Default | Bedeutung |
 |---|---|---|
