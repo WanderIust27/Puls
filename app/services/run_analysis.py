@@ -18,11 +18,12 @@ Alle Bewertungen sind Hinweise, keine Diagnosen — fehlende Daten werden
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 from typing import Any
 
-from ..db import get_db, get_setting
+from ..db import get_db, get_setting, rows_to_dicts
 from . import running
 
 log = logging.getLogger("puls.run_analysis")
@@ -411,3 +412,175 @@ def recent_summary(limit: int = 8) -> dict[str, Any]:
         "anteil_locker_prozent": round(easy_s / total * 100) if total else None,
         "gesamt_km": round(sum(r["km"] for r in runs), 1),
     }
+
+
+# ------------------------------------------------------------- Formtrend
+
+# Unter dieser Distanz sagt ein Lauf ueber die Form wenig — Ein- und
+# Auslaufen wiegen dann zu schwer.
+MIN_TREND_DISTANCE_M = 2000
+MIN_RUNS_FOR_TREND = 4
+
+
+def efficiency(distance_m: float | None, duration_s: float | None,
+               avg_hr: float | None) -> float | None:
+    """Effizienzfaktor: zurueckgelegte Meter je Minute, geteilt durch den Puls.
+
+    Der ehrlichste Fortschrittsanzeiger im Ausdauersport. Schneller zu werden
+    ist leicht — schneller zu werden, ohne dass der Puls mitsteigt, ist der
+    eigentliche Formgewinn. Steigt der Wert ueber Wochen, wird die Grundlage
+    besser, ganz gleich wie sich das Tempo einzelner Laeufe anfuehlt.
+    """
+    if not distance_m or not duration_s or not avg_hr or avg_hr < 60:
+        return None
+    speed_m_per_min = distance_m / (duration_s / 60.0)
+    return round(speed_m_per_min / avg_hr, 3)
+
+
+def _iso_week(day: str) -> str:
+    try:
+        d = dt.date.fromisoformat(day)
+    except ValueError:
+        return day
+    year, week, _ = d.isocalendar()
+    return f"{year}-KW{week:02d}"
+
+
+def form_trend(days: int = 365) -> dict[str, Any]:
+    """Entwicklung ueber alle Laeufe: Effizienz, Umfang, Intensitaet, Bestwerte."""
+    since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    with get_db() as db:
+        rows = rows_to_dicts(db.execute(
+            """SELECT id, name, start_time, distance_m, duration_s, avg_hr,
+                      avg_cadence, elevation_gain, hr_zones_json, analysis_json
+               FROM activities
+               WHERE sport='running' AND substr(start_time,1,10) >= ?
+                 AND distance_m IS NOT NULL AND duration_s > 0
+               ORDER BY start_time""", (since,)).fetchall())
+
+    runs: list[dict[str, Any]] = []
+    for r in rows:
+        day = (r["start_time"] or "")[:10]
+        ef = efficiency(r["distance_m"], r["duration_s"], r["avg_hr"])
+        pace = _pace_s_per_km(r["distance_m"], r["duration_s"])
+        analysis = {}
+        if r["analysis_json"]:
+            try:
+                analysis = json.loads(r["analysis_json"])
+            except (ValueError, TypeError):
+                analysis = {}
+        runs.append({
+            "id": r["id"], "day": day, "name": r["name"],
+            "km": round((r["distance_m"] or 0) / 1000, 2),
+            "duration_s": r["duration_s"], "pace_s": pace,
+            "avg_hr": round(r["avg_hr"]) if r["avg_hr"] else None,
+            "efficiency": ef,
+            "cadence": round(r["avg_cadence"]) if r["avg_cadence"] else None,
+            "intent": analysis.get("intent") or guess_intent(r["name"]),
+            "zones": r["hr_zones_json"],
+        })
+
+    # --- Effizienz: einzelne Laeufe und ein ruhiger Verlauf darueber ------
+    usable = [r for r in runs
+              if r["efficiency"] and (r["km"] * 1000) >= MIN_TREND_DISTANCE_M]
+    eff_points = []
+    for i, r in enumerate(usable):
+        window = [x["efficiency"] for x in usable[max(0, i - 4):i + 1]]
+        eff_points.append({
+            "day": r["day"], "value": r["efficiency"],
+            "smooth": round(sum(window) / len(window), 3),
+            "km": r["km"], "hr": r["avg_hr"], "pace_s": r["pace_s"],
+        })
+
+    change = None
+    if len(usable) >= MIN_RUNS_FOR_TREND * 2:
+        half = len(usable) // 2
+        early = [r["efficiency"] for r in usable[:half]]
+        late = [r["efficiency"] for r in usable[half:]]
+        a, b = sum(early) / len(early), sum(late) / len(late)
+        change = {
+            "from": round(a, 3), "to": round(b, 3),
+            "percent": round((b - a) / a * 100, 1),
+            "runs": len(usable),
+        }
+
+    # --- Wochenumfang -----------------------------------------------------
+    per_week: dict[str, dict[str, float]] = {}
+    for r in runs:
+        w = per_week.setdefault(_iso_week(r["day"]), {"km": 0.0, "runs": 0,
+                                                      "seconds": 0.0})
+        w["km"] += r["km"]
+        w["runs"] += 1
+        w["seconds"] += r["duration_s"] or 0
+    weeks = [{"week": k, "km": round(v["km"], 1), "runs": int(v["runs"]),
+              "seconds": int(v["seconds"])} for k, v in sorted(per_week.items())]
+
+    # --- Intensitaetsverteilung ------------------------------------------
+    easy_s = hard_s = 0.0
+    for r in runs:
+        if not r["zones"]:
+            continue
+        try:
+            z = {int(k): float(v) for k, v in json.loads(r["zones"]).items()}
+        except (ValueError, TypeError):
+            continue
+        easy_s += z.get(1, 0) + z.get(2, 0)
+        hard_s += z.get(3, 0) + z.get(4, 0) + z.get(5, 0)
+    total_z = easy_s + hard_s
+    easy_share = round(easy_s / total_z * 100) if total_z else None
+
+    # --- Bestwerte je Distanz --------------------------------------------
+    bests = []
+    for label, metres in (("1 km", 1000), ("5 km", 5000), ("10 km", 10000),
+                          ("Halbmarathon", 21097)):
+        candidates = [r for r in runs if (r["km"] * 1000) >= metres * 0.97
+                      and r["pace_s"]]
+        if not candidates:
+            continue
+        best = min(candidates, key=lambda r: r["pace_s"])
+        bests.append({
+            "label": label, "pace_s": best["pace_s"], "day": best["day"],
+            "id": best["id"], "km": best["km"],
+            # Auf die Distanz hochgerechnet, nicht als gelaufene Zeit
+            "time_s": round(best["pace_s"] * metres / 1000),
+        })
+
+    hints = []
+    if change and change["percent"] >= 1.5:
+        hints.append({
+            "level": "good",
+            "text": (f"Deine Laufeffizienz ist über {change['runs']} Läufe um "
+                     f"{change['percent']} % gestiegen. Das heißt: gleiches Tempo "
+                     f"bei niedrigerem Puls — der Fortschritt, auf den es ankommt.")})
+    elif change and change["percent"] <= -1.5:
+        hints.append({
+            "level": "warn",
+            "text": (f"Deine Laufeffizienz ist um {abs(change['percent'])} % "
+                     f"gesunken. Das passiert bei zu viel Intensität, zu wenig "
+                     f"Schlaf oder beidem — oft auch nur vorübergehend bei Hitze.")})
+    if easy_share is not None and easy_share < 70:
+        hints.append({
+            "level": "warn",
+            "text": (f"Nur {easy_share} % deiner Laufzeit lagen in Zone 1–2. "
+                     f"Der häufigste Fehler im Breitensport ist, die lockeren "
+                     f"Läufe zu schnell zu laufen. 75–80 % wären das Ziel.")})
+    elif easy_share is not None and easy_share >= 80:
+        hints.append({
+            "level": "good",
+            "text": (f"{easy_share} % deiner Laufzeit in Zone 1–2 — die "
+                     f"Verteilung stimmt. Genau so wird die Grundlage breiter.")})
+
+    return {
+        "runs": len(runs),
+        "efficiency": eff_points,
+        "change": change,
+        "weeks": weeks[-26:],
+        "easy_share": easy_share,
+        "bests": bests,
+        "hints": hints,
+        "recent": list(reversed(runs[-10:])),
+        "hint": None if runs else
+        ("Noch keine Läufe im Zeitraum. Nach dem Garmin-Sync erscheint hier "
+         "die Entwicklung."),
+    }
+

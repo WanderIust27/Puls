@@ -31,6 +31,7 @@ for name, attrs in (("garminconnect", {"Garmin": type("Garmin", (), {})}),
 
 from fastapi.testclient import TestClient    # noqa: E402
 from app.main import app                     # noqa: E402
+from app.services import run_analysis as ra  # noqa: E402
 
 failures = []
 
@@ -191,6 +192,17 @@ with TestClient(app) as client:
     check("Eintrag loeschbar", client.delete(f"/api/mood/{entry_id}").status_code, 200)
     check("Unbekannter Eintrag meldet 404",
           client.delete("/api/mood/999999").status_code, 404)
+
+    # --- Laufform ------------------------------------------------------------
+    tr = client.get("/api/running/trend").json()
+    check("Formtrend antwortet", "runs" in tr, True)
+    check("Ohne Läufe ein Hinweis statt leerer Zahlen",
+          bool(tr["hint"]) or tr["runs"] > 0, True)
+    # 5000 m in 1500 s sind 200 m/min; bei Puls 150 also 1,333
+    check("Effizienz wird gerechnet", ra.efficiency(5000, 1500, 150), 1.333)
+    check("Ohne Puls keine Effizienz", ra.efficiency(5000, 1500, None), None)
+    check("Unsinniger Puls wird verworfen", ra.efficiency(5000, 1500, 20), None)
+    check("Ohne Distanz keine Effizienz", ra.efficiency(None, 1500, 150), None)
 
     # --- Score --------------------------------------------------------------
     sc = client.get("/api/score").json()

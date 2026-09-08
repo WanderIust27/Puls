@@ -1286,6 +1286,12 @@ def activity_analysis(activity_id: int) -> dict[str, Any]:
     return {"activity": act, "analysis": analysis, "gym": gym}
 
 
+@router.get("/running/trend")
+def running_trend(days: int = 365) -> dict[str, Any]:
+    """Entwicklung ueber alle Laeufe: Effizienz, Umfang, Intensitaet, Bestwerte."""
+    return run_analysis.form_trend(days)
+
+
 @router.get("/running/summary")
 def running_summary(limit: int = 8) -> dict[str, Any]:
     return run_analysis.recent_summary(limit)

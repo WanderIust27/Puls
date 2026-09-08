@@ -1459,9 +1459,71 @@ $("#btnRecipeExplain").addEventListener("click", (e) => withSpinner(e.currentTar
   $("#recipeAdvice").textContent = r.text;
 }));
 
+
+/* --------------------------------------------------------- Laufform */
+
+function paceStr(sec) {
+  if (!sec) return "–";
+  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
+}
+
+async function loadRunTrend() {
+  let t;
+  try { t = await api("/running/trend?days=365"); } catch (e) { return; }
+  const card = $("#runTrendCard");
+  if (!t.runs) {
+    card.hidden = false;
+    $("#trendFacts").innerHTML = `<p class="muted">${esc(t.hint || "Noch keine Läufe.")}</p>`;
+    $("#trendHints").innerHTML = "";
+    return;
+  }
+  card.hidden = false;
+
+  const totalKm = t.weeks.reduce((s, w) => s + w.km, 0);
+  const facts = [
+    { v: t.runs, u: "", l: "Läufe" },
+    { v: Math.round(totalKm), u: "km", l: "gesamt" },
+    t.change ? { v: `${t.change.percent > 0 ? "+" : ""}${t.change.percent}`, u: "%",
+                 l: "Effizienz", cls: t.change.percent >= 0 ? "down" : "up" } : null,
+    t.easy_share != null ? { v: t.easy_share, u: "%", l: "locker gelaufen" } : null,
+  ].filter(Boolean);
+  $("#trendFacts").innerHTML = facts.map((f) => `
+    <div class="f"><div class="v">${esc(String(f.v))}<span class="u">${f.u}</span></div>
+      <div class="l">${f.l}</div></div>`).join("");
+
+  $("#trendHints").innerHTML = (t.hints || []).map((h) =>
+    `<div class="finding ${h.level}"><div class="d">${esc(h.text)}</div></div>`).join("");
+
+  /* Die geglättete Linie zeigt den Trend, die Rohwerte wären zu unruhig */
+  lineChart($("#trendEffChart"), t.efficiency.map((p) => ({
+    value: p.smooth, label: p.day.slice(5),
+    tip: `${p.day} — ${p.km} km, ${paceStr(p.pace_s)}/km, ${p.hr || "?"} bpm`,
+  })));
+
+  barChart($("#trendWeekChart"), t.weeks.map((w) => ({
+    value: Math.round(w.km), label: w.week.slice(-2),
+    tip: `${w.week}: ${w.runs} Läufe`,
+  })), { color: "var(--teal)", unit: " km" });
+
+  $("#trendBests").innerHTML = t.bests.length ? `
+    <div class="bests">${t.bests.map((b) => `
+      <div class="best" data-run-id="${b.id}" style="cursor:pointer">
+        <div class="bl">${esc(b.label)}</div>
+        <div class="bv">${paceStr(b.pace_s)}<span class="u">/km</span></div>
+        <div class="bd">${fmtDate(b.day)}</div>
+      </div>`).join("")}</div>
+    <p class="muted">Bestes Durchschnittstempo über die jeweilige Distanz —
+      hochgerechnet, nicht als Wettkampfzeit gelaufen.</p>`
+    : '<p class="muted">Noch keine Distanz oft genug gelaufen.</p>';
+
+  $$("#trendBests [data-run-id]").forEach((el) => el.addEventListener("click", () =>
+    openRunAnalysis(+el.dataset.runId)));
+}
+
 /* -------------------------------------------------- Aktivitätsprotokoll */
 
 async function loadActivityLog() {
+  loadRunTrend();
   const sport = $("#logSport").value;
   const days = $("#logDays").value;
   let d;

@@ -588,3 +588,15 @@ ol.plain li, ul.plain li { margin-bottom: 5px; }
 .diag .row.bad .m { color: var(--bad); }
 .diag .row.bad .v { color: var(--bad); }
 .diag .row .v { color: var(--ink-3); text-align: right; }
+
+/* ---------------------------------------------------------- Laufform */
+.bests { display: flex; flex-wrap: wrap; gap: 10px; }
+.best {
+  flex: 1 1 110px; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 12px;
+}
+.best:hover { border-color: var(--ink-3); }
+.best .bl { font-size: 0.76em; color: var(--ink-3); letter-spacing: 0.04em; }
+.best .bv { font-family: var(--serif); font-size: 1.32em; line-height: 1.2; }
+.best .bv .u { font-size: 0.5em; color: var(--ink-3); margin-left: 2px; }
+.best .bd { font-size: 0.74em; color: var(--ink-3); }
