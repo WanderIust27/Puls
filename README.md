@@ -261,15 +261,25 @@ selbst in der Liste und kann deployt werden. Dockge braucht dafür ein funktioni
 ### Grafikkarte für das KI-Modell
 
 Standardmäßig rechnet Ollama auf der CPU, damit die Karte für andere Dienste
-frei bleibt. Zum Zuschalten in die `.env`:
+frei bleibt. Einschalten:
 
-```
-OLLAMA_GPU=all
+```bash
+./deploy.sh gpu on      # trägt OLLAMA_GPU=all in die .env ein
+./deploy.sh             # übernehmen
 ```
 
-Danach `./deploy.sh`. Voraussetzung ist, dass Docker eine Karte durchreichen
-kann — auf Unraid das Plugin **Nvidia Driver** aus den Community Apps, danach
-den Server einmal neu starten.
+Hast du mehrere Karten und willst nur eine abgeben, nimm ihre UUID aus
+`nvidia-smi -L`:
+
+```bash
+./deploy.sh gpu on GPU-57266007-2214-4d3e-9579-09f114a625b8
+```
+
+Wieder abschalten: `./deploy.sh gpu off`, dann `./deploy.sh`.
+
+Voraussetzung ist, dass Docker eine Karte durchreichen kann — auf Unraid das
+Plugin **Nvidia Driver** aus den Community Apps, danach den Server einmal neu
+starten.
 
 Ob es klappt, sagt dir:
 
@@ -278,7 +288,10 @@ Ob es klappt, sagt dir:
 ```
 
 Das prüft in vier Schritten Treiber, Docker-Runtime, Durchreichbarkeit und ob
-der laufende Container die Karte tatsächlich sieht. Beim Deployen wird dasselbe
+der laufende Container die Karte tatsächlich sieht. Geprüft wird dabei auf die
+Gerätedatei `/dev/nvidia0`, nicht auf `nvidia-smi`: Das Ollama-Image bringt
+diese Binary nicht mit, ein Test darauf würde also auch dann scheitern, wenn
+alles läuft. Beim Deployen wird dasselbe
 noch einmal geprüft: Ein Container, der zwar startet, aber keine Karte sieht,
 wäre sonst nicht von einem mit Karte zu unterscheiden — er würde still auf der
 CPU rechnen.
