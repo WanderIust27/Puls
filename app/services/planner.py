@@ -18,6 +18,7 @@ from typing import Any
 
 from ..db import get_db, get_setting
 from . import exercises as ex_lib
+from . import mood
 from . import running
 
 log = logging.getLogger("puls.planner")
@@ -121,6 +122,25 @@ def build_gym_session(minutes: int | None = None, name: str | None = None
     minutes = minutes or int(get_setting("gym_minutes", "75") or 75)
     sizes = _block_sizes(minutes)
     lib = ex_lib.list_exercises(only_active=True)
+
+    # Gemeldete Beschwerden gehen direkt in den Plan: betroffene Muskelgruppen
+    # fallen heraus, statt dass du sie selbst wegklickst. Bleibt danach zu
+    # wenig uebrig, wird die Einschraenkung wieder aufgehoben — eine Einheit
+    # aus zwei Uebungen hilft niemandem.
+    adapt = mood.adaptations()
+    spared = set(adapt["spare_groups"])
+    skipped: list[str] = []
+    if spared:
+        keep = [e for e in lib if e.get("muscle_group") not in spared
+                or e.get("slot") in ("cardio", "stretch")]
+        main_left = [e for e in keep if (e.get("slot") or "main") == "main"]
+        if len(main_left) >= max(2, sizes["main"]):
+            skipped = sorted({e["muscle_group"] for e in lib
+                              if e.get("muscle_group") in spared})
+            lib = keep
+        else:
+            spared = set()
+
     by_slot: dict[str, list[dict[str, Any]]] = {}
     for e in lib:
         by_slot.setdefault(e.get("slot") or "main", []).append(e)
@@ -163,7 +183,33 @@ def build_gym_session(minutes: int | None = None, name: str | None = None
 
     groups = sorted({ex_lib.MUSCLE_LABELS.get(e["muscle_group"], e["muscle_group"])
                      for e in used if e.get("slot") == "main"})
+
+    # Ausgleichende Dehnung fuer die betroffene Stelle ans Ende
+    if adapt["relief_poses"]:
+        pool = {p["name"]: p for p in ex_lib.EVENING_YOGA_POOL}
+        for pose_name in adapt["relief_poses"][:2]:
+            pose = pool.get(pose_name)
+            if pose:
+                steps.append({"type": "cooldown", "name": pose["name"],
+                              "duration_s": pose["duration_s"],
+                              "notes": pose.get("cue"),
+                              "garmin_category": "YOGA",
+                              "garmin_exercise": pose["garmin_exercise"]})
+
+    adapted = None
+    if skipped or adapt["relief_poses"]:
+        reason = "; ".join(adapt["summary"][:2])
+        parts = []
+        if skipped:
+            labels = ", ".join(ex_lib.MUSCLE_LABELS.get(g, g) for g in skipped)
+            parts.append(f"{labels} ausgelassen")
+        if adapt["relief_poses"]:
+            parts.append("ausgleichende Dehnung ergänzt")
+        adapted = {"reason": reason, "changes": parts,
+                   "complaints": adapt["complaints"]}
+
     return {
+        "adapted": adapted,
         "name": name or f"Gym Ganzkörper {minutes} min",
         "sport": "strength",
         "description": (f"Kettlebell-Auftakt, Klimmzug-Arbeit, dann Maschinen "
@@ -190,10 +236,19 @@ def _pose_step(pose: dict[str, Any], step_type: str = "work") -> dict[str, Any]:
 
 def build_evening_yoga(minutes: int = 12) -> dict[str, Any]:
     """Kurze Einheit zum Runterkommen — geht als Yoga-Workout auf die Uhr."""
+    # Bei gemeldeten Beschwerden kommen die passenden Stellungen zuerst —
+    # die Abendeinheit ist die naheliegendste Stelle, etwas dagegen zu tun.
+    adapt = mood.adaptations()
+    preferred = adapt["relief_poses"]
     pool = [p for p in ex_lib.EVENING_YOGA_POOL if p["name"] != "Totenstellung"]
     # Tagesabhängig rotieren, damit es nicht jeden Abend dasselbe ist
     rnd = random.Random(dt.date.today().toordinal())
     rnd.shuffle(pool)
+    # Entlastungsstellungen nach vorn holen — die Reihenfolge entscheidet,
+    # was ins Zeitbudget passt.
+    if preferred:
+        pool.sort(key=lambda p: preferred.index(p["name"])
+                  if p["name"] in preferred else len(preferred))
     budget = minutes * 60
     steps: list[dict[str, Any]] = [
         {"type": "warmup", "name": "Ankommen und atmen", "duration_s": 60,
@@ -213,7 +268,16 @@ def build_evening_yoga(minutes: int = 12) -> dict[str, Any]:
     steps.append(_pose_step(final, "cooldown"))
     chosen.append(final)
 
+    adapted = None
+    if preferred:
+        hit = [p["name"] for p in chosen if p["name"] in preferred]
+        if hit:
+            adapted = {"reason": "; ".join(adapt["summary"][:2]),
+                       "changes": [f"{', '.join(hit)} vorgezogen"],
+                       "complaints": adapt["complaints"]}
+
     return {
+        "adapted": adapted,
         "name": f"Abend-Yoga {minutes} min", "sport": "mobility",
         "description": ("Ruhige Einheit vor dem Schlafen. Die Stellungen erscheinen "
                         "namentlich auf der Uhr; die Anleitung dazu steht in PULS "

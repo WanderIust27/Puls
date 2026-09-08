@@ -17,7 +17,7 @@ from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
 from ..services import activity_details as activity_details_svc
-from ..services import gym_analysis
+from ..services import gym_analysis, mood, supplements
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -742,6 +742,118 @@ def garmin_backfill(days: int = 3650) -> dict[str, Any]:
 @router.get("/garmin/backfill/status")
 def garmin_backfill_status() -> dict[str, Any]:
     return garmin_sync.backfill_state()
+
+
+# ------------------------------------------------------------ Supplements
+
+class SupplementIn(BaseModel):
+    name: str
+    dose: str | None = None
+    trigger_kind: str = "time"        # time | after_gym | after_run
+    at_time: str | None = None
+    weekdays: list[str] | None = None
+    note: str | None = None
+    active: bool = True
+    sort_order: int = 100
+
+
+@router.get("/supplements")
+def supplements_today(day: str | None = None) -> dict[str, Any]:
+    """Was heute ansteht — mit Faelligkeit und Stand."""
+    return supplements.today(day)
+
+
+@router.get("/supplements/all")
+def supplements_all() -> list[dict[str, Any]]:
+    return supplements.list_all()
+
+
+@router.post("/supplements")
+def supplement_create(s: SupplementIn) -> dict[str, Any]:
+    try:
+        return {"id": supplements.upsert(s.model_dump())}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.patch("/supplements/{supp_id}")
+def supplement_update(supp_id: int, s: SupplementIn) -> dict[str, Any]:
+    try:
+        return {"id": supplements.upsert(s.model_dump(), supp_id)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.delete("/supplements/{supp_id}")
+def supplement_delete(supp_id: int) -> dict[str, str]:
+    if not supplements.delete(supp_id):
+        raise HTTPException(404, "Dieses Supplement gibt es nicht.")
+    return {"status": "ok"}
+
+
+@router.post("/supplements/{supp_id}/taken")
+def supplement_taken(supp_id: int, day: str | None = None,
+                     taken: bool = True) -> dict[str, Any]:
+    supplements.mark(supp_id, day, taken)
+    return supplements.today(day)
+
+
+@router.get("/supplements/streak")
+def supplement_streak(days: int = 30) -> dict[str, Any]:
+    return supplements.streak(days)
+
+
+# ------------------------------------------------------- Gemuetszustand
+
+class MoodIn(BaseModel):
+    recorded_at: str | None = None
+    mood: int | None = None
+    energy: int | None = None
+    stress: int | None = None
+    note: str | None = None
+    complaints: list[dict[str, Any]] | None = None
+
+
+class MoodTextIn(BaseModel):
+    note: str
+
+
+@router.get("/mood")
+def mood_list(days: int = 30) -> dict[str, Any]:
+    """Eintraege, Verlauf und was daraus fuers Training folgt."""
+    return {
+        "entries": mood.entries(days),
+        "trend": mood.trend(days),
+        "adaptations": mood.adaptations(),
+        "regions": mood.REGIONS,
+        "kinds": mood.KINDS,
+    }
+
+
+@router.post("/mood")
+def mood_create(m: MoodIn) -> dict[str, Any]:
+    return mood.record(m.model_dump(exclude_none=True))
+
+
+@router.delete("/mood/{entry_id}")
+def mood_delete(entry_id: int) -> dict[str, str]:
+    if not mood.delete(entry_id):
+        raise HTTPException(404, "Diesen Eintrag gibt es nicht.")
+    return {"status": "ok"}
+
+
+@router.post("/mood/suggest")
+def mood_suggest(m: MoodTextIn) -> dict[str, Any]:
+    """Freitext auf Beschwerden lesen — als Vorschlag, nicht als Tatsache."""
+    found = mood.suggest_from_text(m.note)
+    return {"complaints": [
+        {**c, "region_label": mood.REGIONS[c["region"]],
+         "kind_label": mood.KINDS[c["kind"]]} for c in found]}
+
+
+@router.get("/mood/adaptations")
+def mood_adaptations() -> dict[str, Any]:
+    return mood.adaptations()
 
 
 # --------------------------------------------------------------------- Coach

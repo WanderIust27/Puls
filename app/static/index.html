@@ -22,6 +22,7 @@
   <button data-view="plan">Plan</button>
   <button data-view="exercises">Übungen</button>
   <button data-view="nutrition">Essen</button>
+  <button data-view="mood">Gemüt</button>
   <button data-view="coach">Coach</button>
   <button data-view="settings">Mehr</button>
 </nav>
@@ -46,7 +47,12 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="suppCard" hidden>
+    <h3>Heute einnehmen</h3>
+    <div id="suppList"></div>
+  </div>
+
+<div class="card">
     <h3>Dein Coach sagt</h3>
     <div class="coach-msg" id="coachMessage">Noch keine Nachricht — hol dir unten eine.</div>
     <div class="row" style="margin-top:10px">
@@ -363,7 +369,79 @@
 </section>
 
 <!-- ============================== EINSTELLUNGEN ========================== -->
+<section id="view-mood" class="view">
+  <div class="card">
+    <h3>Wie geht es dir gerade?</h3>
+    <p class="muted">Mehrmals am Tag eintragbar — der Verlauf über den Tag sagt
+      mehr als ein einzelner Wert am Abend.</p>
+
+    <div class="scales">
+      <div class="scale" data-scale="mood">
+        <label class="field">Stimmung</label>
+        <div class="dots"></div>
+      </div>
+      <div class="scale" data-scale="energy">
+        <label class="field">Energie</label>
+        <div class="dots"></div>
+      </div>
+      <div class="scale" data-scale="stress">
+        <label class="field">Stress</label>
+        <div class="dots"></div>
+      </div>
+    </div>
+
+    <label class="field" style="margin-top:14px">Beschwerden</label>
+    <div id="complaintPicker" class="chips"></div>
+    <div id="complaintChosen" class="chips chosen"></div>
+
+    <label class="field" style="margin-top:12px">Notiz</label>
+    <textarea id="moodNote" rows="3"
+      placeholder="Was war heute los? Rückenschmerzen, Muskelkater, schlecht geschlafen …"></textarea>
+    <div id="moodSuggest" class="muted" hidden></div>
+
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnSaveMood">Eintragen</button>
+    </div>
+  </div>
+
+  <div class="card" id="adaptCard" hidden>
+    <h3>Was der Coach daraus macht</h3>
+    <div id="adaptBody"></div>
+  </div>
+
+  <div class="card">
+    <h3>Verlauf</h3>
+    <div class="chart-wrap" id="moodChart"></div>
+    <div id="moodList"></div>
+  </div>
+</section>
+
 <section id="view-settings" class="view">
+  <div class="card">
+    <h3>Supplements</h3>
+    <p class="muted">Feste Uhrzeit oder ans Training gekoppelt. Was ans Training
+      gekoppelt ist, wird an trainingsfreien Tagen gar nicht erst fällig.</p>
+    <div id="suppManage"></div>
+    <details style="margin-top:12px">
+      <summary class="field" style="cursor:pointer">Neues Supplement</summary>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="field">Name</label><input id="suppName"></div>
+        <div><label class="field">Dosis</label><input id="suppDose" placeholder="5 g"></div>
+        <div><label class="field">Fällig</label>
+          <select id="suppTrigger">
+            <option value="time">zu einer Uhrzeit</option>
+            <option value="after_gym">nach der Gym-Einheit</option>
+            <option value="after_run">nach dem Lauf</option>
+          </select></div>
+        <div><label class="field">Uhrzeit</label><input id="suppTime" type="time" value="08:00"></div>
+      </div>
+      <label class="field" style="margin-top:8px">Hinweis (optional)</label>
+      <input id="suppNote" placeholder="z. B. mit Abstand zu Milchprodukten">
+      <button class="btn" id="btnAddSupp" style="margin-top:8px">Anlegen</button>
+    </details>
+  </div>
+
+
   <div class="card">
     <h3>Garmin Connect</h3>
     <div id="garminStatus" class="muted">Status wird geladen …</div>

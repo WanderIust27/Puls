@@ -138,10 +138,66 @@ with TestClient(app) as client:
     check("Knochenmasse aus CSV uebernommen",
           any(m["bone_kg"] == 3.15 for m in imported), True)
 
+    # --- Supplements -------------------------------------------------------
+    st = client.get("/api/supplements").json()
+    names = [i["name"] for i in st["items"]]
+    check("Kreatin voreingestellt", "Kreatin" in names, True)
+    check("Zink voreingestellt", "Zink" in names, True)
+    kre = [i for i in st["items"] if i["name"] == "Kreatin"][0]
+    check("Noch nicht genommen", kre["taken"], False)
+    r = client.post(f"/api/supplements/{kre['id']}/taken")
+    check("Abhaken funktioniert",
+          [i for i in r.json()["items"] if i["id"] == kre["id"]][0]["taken"], True)
+    r = client.post(f"/api/supplements/{kre['id']}/taken?taken=false")
+    check("Haken wieder entfernbar",
+          [i for i in r.json()["items"] if i["id"] == kre["id"]][0]["taken"], False)
+
+    r = client.post("/api/supplements", json={"name": "Magnesium", "dose": "300 mg",
+                                              "trigger_kind": "time", "at_time": "22:00"})
+    new_id = r.json()["id"]
+    check("Neues Supplement angelegt", r.status_code, 200)
+    check("Ohne Namen abgelehnt",
+          client.post("/api/supplements", json={"name": "  "}).status_code, 400)
+    check("Loeschen funktioniert",
+          client.delete(f"/api/supplements/{new_id}").status_code, 200)
+    check("Unbekanntes meldet 404",
+          client.delete("/api/supplements/999999").status_code, 404)
+
+    # --- Gemuetszustand ----------------------------------------------------
+    r = client.post("/api/mood", json={"mood": 3, "energy": 2, "stress": 4,
+                                       "note": "Rücken zwickt seit gestern",
+                                       "complaints": [{"region": "back_low",
+                                                       "kind": "pain", "severity": 3}]})
+    check("Eintrag angenommen", r.status_code, 200)
+    entry_id = r.json()["id"]
+
+    m = client.get("/api/mood").json()
+    check("Eintrag gelistet", len(m["entries"]), 1)
+    check("Beschwerde lesbar", m["entries"][0]["complaint_labels"][0],
+          "Unterer Rücken: Schmerz")
+    check("Regionen mitgeliefert", "back_low" in m["regions"], True)
+    check("Anpassung abgeleitet", len(m["adaptations"]["relief_poses"]) > 0, True)
+    check("Muskelgruppen zum Schonen benannt",
+          "back" in m["adaptations"]["spare_groups"], True)
+
+    r = client.post("/api/mood/suggest", json={"note": "Mein Nacken ist total verspannt"})
+    check("Freitext erkennt den Nacken",
+          any(c["region"] == "neck" for c in r.json()["complaints"]), True)
+
+    # Der eigentliche Punkt: die Gym-Einheit muss sich ändern
+    sess = client.post("/api/plan/gym-session", json={}).json()
+    check("Einheit wurde angepasst", sess.get("adapted") is not None, True)
+
+    check("Eintrag loeschbar", client.delete(f"/api/mood/{entry_id}").status_code, 200)
+    check("Unbekannter Eintrag meldet 404",
+          client.delete("/api/mood/999999").status_code, 404)
+
     # --- Bestehende Ansichten duerfen nicht kaputtgegangen sein -----------
     for path in ("/api/dashboard", "/api/health", "/api/settings", "/api/exercises",
                  "/api/workouts", "/api/nutrition", "/api/plan/overview",
-                 "/api/scale/status", "/api/coach/messages", "/api/running/summary"):
+                 "/api/scale/status", "/api/coach/messages", "/api/running/summary",
+                 "/api/supplements", "/api/supplements/all", "/api/mood",
+                 "/api/mood/adaptations", "/api/recovery"):
         code = client.get(path).status_code
         check(f"{path} antwortet", code, 200)
 

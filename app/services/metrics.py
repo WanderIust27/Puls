@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 from typing import Any
 
 from ..db import get_db, get_setting, rows_to_dicts
+
+log = logging.getLogger("puls.metrics")
 
 
 def _week_start(day: dt.date) -> dt.date:
@@ -188,7 +191,43 @@ def coach_context() -> dict[str, Any]:
     except Exception:
         overview, lib = {}, []
 
+    # Befinden, Beschwerden, Einnahme und Erholung. Erst hier importiert,
+    # weil mood und supplements ihrerseits auf Kennzahlen zurueckgreifen.
+    # Jeder Teil einzeln abgesichert: ein fehlendes Stueck darf nicht den
+    # ganzen Kontext des Coaches kosten.
+    extra: dict[str, Any] = {}
+    try:
+        from . import mood as _mood
+        adapt = _mood.adaptations()
+        if adapt["complaints"]:
+            extra["beschwerden"] = adapt["summary"]
+            extra["muskelgruppen_schonen"] = adapt["spare_groups"]
+            extra["entlastende_stellungen"] = adapt["relief_poses"]
+        befinden = _mood.entries(3)
+        if befinden:
+            extra["befinden"] = [
+                {"wann": r["recorded_at"][:16], "stimmung": r["mood"],
+                 "energie": r["energy"], "stress": r["stress"], "notiz": r["note"]}
+                for r in befinden[:4]]
+    except Exception as e:
+        log.debug("Befinden nicht im Kontext: %s", e)
+    try:
+        from . import supplements as _supp
+        line = _supp.context_line()
+        if line:
+            extra["supplements"] = line
+    except Exception as e:
+        log.debug("Supplements nicht im Kontext: %s", e)
+    try:
+        rec = recovery_series(14)
+        if rec["observations"]:
+            extra["erholung"] = [o["text"] for o in rec["observations"]]
+        extra["basislinien"] = rec["baselines"]
+    except Exception as e:
+        log.debug("Erholung nicht im Kontext: %s", e)
+
     return {
+        **extra,
         "week_structure": overview,
         "exercise_library": lib,
         "date": dt.date.today().isoformat(),

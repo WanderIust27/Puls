@@ -52,6 +52,50 @@ CREATE TABLE IF NOT EXISTS activity_details (
     bounds_json TEXT,                             -- Eckpunkte der Spur fuer den Kartenausschnitt
     point_count INTEGER
 );
+CREATE TABLE IF NOT EXISTS supplements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    dose TEXT,                                    -- "5 g", "1 Tablette"
+    -- Wann faellig: feste Uhrzeit oder an eine Einheit gekoppelt.
+    trigger_kind TEXT NOT NULL DEFAULT 'time',    -- time | after_gym | after_run
+    at_time TEXT,                                 -- HH:MM bei trigger_kind='time'
+    weekdays TEXT NOT NULL DEFAULT '["Mo","Di","Mi","Do","Fr","Sa","So"]',
+    note TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 100,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS supplement_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplement_id INTEGER NOT NULL REFERENCES supplements(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    taken_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(supplement_id, day)
+);
+CREATE TABLE IF NOT EXISTS mood_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,                    -- ISO; mehrmals taeglich moeglich
+    mood INTEGER,                                 -- 1..5
+    energy INTEGER,                               -- 1..5
+    stress INTEGER,                               -- 1..5
+    note TEXT,
+    complaints TEXT NOT NULL DEFAULT '[]',        -- JSON: [{region, kind, severity}]
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_mood_day ON mood_entries(day);
+CREATE TABLE IF NOT EXISTS coach_adaptations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    day TEXT,
+    kind TEXT NOT NULL,                           -- complaint | structure | recovery
+    trigger TEXT,                                 -- was den Vorschlag ausgeloest hat
+    title TEXT NOT NULL,
+    detail TEXT,
+    payload_json TEXT,                            -- was uebernommen wuerde
+    status TEXT NOT NULL DEFAULT 'open',          -- open | applied | dismissed | auto
+    applied_at TEXT
+);
 CREATE TABLE IF NOT EXISTS planned_workouts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -243,6 +287,10 @@ DEFAULT_SETTINGS = {
     "pullup_goal": "10",
     "pullup_best": "",
     # Laufleistung aus dem Benchmark (m in 12 min, Cooper)
+    "supplements_seeded": "0",
+    # Ernaehrung: Schwerpunkte fuer die Rezeptauswahl
+    "diet_style": json.dumps(["vegetarian_lean", "quick", "mealprep"]),
+    "diet_exclude": "",
     # Waage: Referenzfenster fuer vergleichbare Messungen
     "weigh_window_start": "06:00",
     "weigh_window_end": "09:00",
@@ -385,6 +433,8 @@ def init_db() -> None:
                        (secrets.token_urlsafe(24),))
     from .services.exercises import seed_default_exercises
     seed_default_exercises()
+    from .services.supplements import seed_defaults
+    seed_defaults()
 
 
 @contextmanager

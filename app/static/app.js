@@ -231,6 +231,7 @@ function renderGoals(gp) {
 
 
 async function loadDashboard() {
+  loadSupplements();
   const d = await api("/dashboard");
 
   ringChart($("#weekRing"), d.week.workouts, d.week.target);
@@ -1092,6 +1093,235 @@ $("#btnBackfill").addEventListener("click", (e) => withSpinner(e.currentTarget, 
   pollBackfill();
 }));
 
+
+/* ------------------------------------------------------ Gemütszustand */
+
+const SCALE_WORDS = {
+  mood: ["mies", "gedrückt", "geht so", "gut", "bestens"],
+  energy: ["leer", "schlapp", "mittel", "frisch", "voll da"],
+  stress: ["ruhig", "entspannt", "mittel", "angespannt", "am Anschlag"],
+};
+let moodScales = { mood: null, energy: null, stress: null };
+let moodComplaints = [];
+let moodMeta = { regions: {}, kinds: {} };
+
+function renderScales() {
+  $$(".scale").forEach((box) => {
+    const key = box.dataset.scale;
+    const value = moodScales[key];
+    box.querySelector(".dots").innerHTML = [1, 2, 3, 4, 5].map((n) =>
+      `<button class="dot${value === n ? " on" : ""}" data-scale-set="${key}"
+        data-value="${n}" title="${SCALE_WORDS[key][n - 1]}">${n}</button>`
+    ).join("") + (value ? `<span class="w">${SCALE_WORDS[key][value - 1]}</span>` : "");
+  });
+  $$("[data-scale-set]").forEach((b) => b.addEventListener("click", () => {
+    const key = b.dataset.scaleSet;
+    /* Nochmal antippen hebt die Auswahl auf — nicht jeder Regler muss gesetzt sein */
+    moodScales[key] = moodScales[key] === +b.dataset.value ? null : +b.dataset.value;
+    renderScales();
+  }));
+}
+
+/* Nur die Körperstellen, die im Alltag wirklich vorkommen — die vollständige
+   Liste kommt über „mehr“. */
+const QUICK_REGIONS = ["back_low", "neck", "shoulder", "knee", "thigh", "calf"];
+
+function renderComplaintPicker(all = false) {
+  const regions = all ? Object.keys(moodMeta.regions) : QUICK_REGIONS;
+  $("#complaintPicker").innerHTML = regions.map((r) =>
+    `<button class="chip" data-region="${r}">${esc(moodMeta.regions[r] || r)}</button>`
+  ).join("") + (all ? "" :
+    '<button class="chip ghost" id="moreRegions">mehr …</button>');
+
+  $$("[data-region]").forEach((b) => b.addEventListener("click", () => pickKind(b.dataset.region)));
+  const more = $("#moreRegions");
+  if (more) more.addEventListener("click", () => renderComplaintPicker(true));
+}
+
+function pickKind(region) {
+  const kinds = Object.entries(moodMeta.kinds);
+  $("#complaintPicker").innerHTML =
+    `<span class="muted" style="align-self:center">${esc(moodMeta.regions[region])}:</span>` +
+    kinds.map(([k, label]) => `<button class="chip" data-kind="${k}">${esc(label)}</button>`).join("") +
+    '<button class="chip ghost" id="cancelKind">zurück</button>';
+  $$("[data-kind]").forEach((b) => b.addEventListener("click", () => {
+    if (!moodComplaints.some((c) => c.region === region && c.kind === b.dataset.kind)) {
+      moodComplaints.push({ region, kind: b.dataset.kind, severity: 2 });
+    }
+    renderChosen(); renderComplaintPicker();
+  }));
+  $("#cancelKind").addEventListener("click", () => renderComplaintPicker());
+}
+
+const SEVERITY_WORDS = ["", "leicht", "deutlich", "stark"];
+
+function renderChosen() {
+  $("#complaintChosen").innerHTML = moodComplaints.map((c, i) => `
+    <span class="chip on">
+      ${esc(moodMeta.regions[c.region])}: ${esc(moodMeta.kinds[c.kind])}
+      <button class="sev" data-sev="${i}" title="Stärke ändern">${SEVERITY_WORDS[c.severity]}</button>
+      <button class="x" data-drop="${i}" title="Entfernen">×</button>
+    </span>`).join("");
+  $$("[data-drop]").forEach((b) => b.addEventListener("click", () => {
+    moodComplaints.splice(+b.dataset.drop, 1); renderChosen();
+  }));
+  $$("[data-sev]").forEach((b) => b.addEventListener("click", () => {
+    const c = moodComplaints[+b.dataset.sev];
+    c.severity = c.severity >= 3 ? 1 : c.severity + 1;
+    renderChosen();
+  }));
+}
+
+/* Freitext vom Modell lesen lassen — nur als Vorschlag. Erst nach einer Pause,
+   damit nicht bei jedem Tastendruck eine Anfrage losgeht. */
+let suggestTimer = null;
+function watchNote() {
+  clearTimeout(suggestTimer);
+  const text = $("#moodNote").value.trim();
+  if (text.length < 10) { $("#moodSuggest").hidden = true; return; }
+  suggestTimer = setTimeout(async () => {
+    let found = [];
+    try { found = (await api("/mood/suggest", { method: "POST",
+      body: JSON.stringify({ note: text }) })).complaints; }
+    catch (e) { return; }
+    const fresh = found.filter((f) =>
+      !moodComplaints.some((c) => c.region === f.region));
+    const box = $("#moodSuggest");
+    if (!fresh.length) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = "Aus deiner Notiz gelesen: " + fresh.map((f, i) =>
+      `<button class="chip" data-take="${i}">${esc(f.region_label)}: ${esc(f.kind_label)} +</button>`
+    ).join(" ");
+    $$("[data-take]").forEach((b) => b.addEventListener("click", () => {
+      moodComplaints.push(fresh[+b.dataset.take]);
+      renderChosen(); watchNote();
+    }));
+  }, 900);
+}
+
+async function loadMood() {
+  const d = await api("/mood?days=30");
+  moodMeta = { regions: d.regions, kinds: d.kinds };
+  renderScales(); renderComplaintPicker(); renderChosen();
+
+  const pts = (d.trend.points || []);
+  lineChart($("#moodChart"), pts.filter((p) => p.mood != null)
+    .map((p) => ({ value: p.mood, label: p.day.slice(5), tip: p.day })), { unit: "/5" });
+
+  $("#moodList").innerHTML = d.entries.length ? d.entries.slice(0, 20).map((e) => `
+    <div class="mood-row">
+      <div class="when">${fmtDate(e.day)}, ${e.recorded_at.slice(11, 16)}</div>
+      <div class="vals">${[
+        e.mood != null ? `Stimmung ${e.mood}` : null,
+        e.energy != null ? `Energie ${e.energy}` : null,
+        e.stress != null ? `Stress ${e.stress}` : null,
+      ].filter(Boolean).join(" · ")}</div>
+      ${e.complaint_labels.length ? `<div class="cmp">${e.complaint_labels.map(esc).join(" · ")}</div>` : ""}
+      ${e.note ? `<div class="note">${esc(e.note)}</div>` : ""}
+      <button class="link-del" data-del-mood="${e.id}" title="Eintrag löschen">×</button>
+    </div>`).join("") : '<p class="muted">Noch nichts eingetragen.</p>';
+
+  $$("[data-del-mood]").forEach((b) => b.addEventListener("click", async () => {
+    try { await api(`/mood/${b.dataset.delMood}`, { method: "DELETE" });
+      toast("Gelöscht"); loadMood(); }
+    catch (e) { toast(e.message, true); }
+  }));
+
+  const a = d.adaptations;
+  const card = $("#adaptCard");
+  if (a.complaints.length) {
+    card.hidden = false;
+    $("#adaptBody").innerHTML = `
+      <ul class="plain">${a.summary.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+      ${a.relief_poses.length ? `<p>Beim Abend-Yoga zuerst: <b>${a.relief_poses.map(esc).join(", ")}</b>.</p>` : ""}
+      ${a.spare_groups.length ? '<p class="muted">Die betroffenen Muskelgruppen fallen aus der nächsten Gym-Einheit heraus — bleibt dann zu wenig übrig, plant PULS wieder normal.</p>' : ""}
+      ${a.nutrition.length ? a.nutrition.map((n) => `<p>${esc(n)}</p>`).join("") : ""}`;
+  } else {
+    card.hidden = true;
+  }
+}
+
+$("#btnSaveMood").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  if (moodScales.mood == null && moodScales.energy == null &&
+      moodScales.stress == null && !moodComplaints.length && !$("#moodNote").value.trim()) {
+    toast("Nichts einzutragen.", true); return;
+  }
+  await api("/mood", { method: "POST", body: JSON.stringify({
+    ...moodScales, note: $("#moodNote").value.trim() || null,
+    complaints: moodComplaints }) });
+  moodScales = { mood: null, energy: null, stress: null };
+  moodComplaints = []; $("#moodNote").value = ""; $("#moodSuggest").hidden = true;
+  toast("Eingetragen"); loadMood(); loadDashboard();
+}));
+
+$("#moodNote").addEventListener("input", watchNote);
+
+/* ------------------------------------------------------ Supplements */
+
+async function loadSupplements() {
+  let d;
+  try { d = await api("/supplements"); } catch (e) { return; }
+  const card = $("#suppCard");
+  if (!d.total) { card.hidden = true; return; }
+  card.hidden = false;
+  $("#suppList").innerHTML = d.items.map((i) => `
+    <label class="supp-row${i.taken ? " done" : ""}${i.overdue ? " over" : ""}">
+      <input type="checkbox" data-supp="${i.id}" ${i.taken ? "checked" : ""}
+        ${i.waiting_for ? "disabled" : ""}>
+      <span class="n">${esc(i.name)}${i.dose ? ` <span class="muted">${esc(i.dose)}</span>` : ""}</span>
+      <span class="t">${esc(i.due_label)}</span>
+    </label>`).join("") +
+    (d.overdue.length ? `<p class="muted">Überfällig: ${d.overdue.map(esc).join(", ")}.</p>` : "");
+
+  $$("[data-supp]").forEach((box) => box.addEventListener("change", async () => {
+    try {
+      await api(`/supplements/${box.dataset.supp}/taken?taken=${box.checked}`,
+                { method: "POST" });
+      loadSupplements();
+    } catch (e) { toast(e.message, true); box.checked = !box.checked; }
+  }));
+}
+
+const TRIGGER_WORDS = { time: "", after_gym: "nach dem Gym", after_run: "nach dem Lauf" };
+
+async function loadSupplementManager() {
+  let list;
+  try { list = await api("/supplements/all"); } catch (e) { return; }
+  $("#suppManage").innerHTML = list.length ? list.map((s) => `
+    <div class="list-item">
+      <div class="grow">
+        <div class="title">${esc(s.name)}${s.dose ? ` — ${esc(s.dose)}` : ""}</div>
+        <div class="meta">${s.trigger_kind === "time" ? esc(s.at_time || "")
+          : esc(TRIGGER_WORDS[s.trigger_kind] || s.trigger_kind)}
+          ${s.note ? ` · ${esc(s.note)}` : ""}</div>
+      </div>
+      <button class="link-del" data-del-supp="${s.id}" title="Entfernen">×</button>
+    </div>`).join("") : '<p class="muted">Noch keine angelegt.</p>';
+
+  $$("[data-del-supp]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("Dieses Supplement entfernen?")) return;
+    try { await api(`/supplements/${b.dataset.delSupp}`, { method: "DELETE" });
+      loadSupplementManager(); loadSupplements(); }
+    catch (e) { toast(e.message, true); }
+  }));
+}
+
+$("#btnAddSupp").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const kind = $("#suppTrigger").value;
+  await api("/supplements", { method: "POST", body: JSON.stringify({
+    name: $("#suppName").value.trim(),
+    dose: $("#suppDose").value.trim() || null,
+    trigger_kind: kind,
+    at_time: kind === "time" ? $("#suppTime").value : null,
+    note: $("#suppNote").value.trim() || null }) });
+  $("#suppName").value = ""; $("#suppDose").value = ""; $("#suppNote").value = "";
+  toast("Angelegt"); loadSupplementManager(); loadSupplements();
+}));
+
+$("#suppTrigger").addEventListener("change", () => {
+  $("#suppTime").disabled = $("#suppTrigger").value !== "time";
+});
+
 /* ------------------------------------------------------------------- Coach */
 
 function addBubble(kind, text, label) {
@@ -1264,7 +1494,8 @@ function renderDayChips() {
 
 async function loadSettings() {
   const [s, g, h] = await Promise.all([api("/settings"), api("/garmin/status"), api("/health")]);
-  pollBackfill();      // zeigt einen laufenden Verlaufs-Import auch nach Neuladen
+  pollBackfill();
+  loadSupplementManager();      // zeigt einen laufenden Verlaufs-Import auch nach Neuladen
   selectedGoals = s.goals; renderGoalChips();
   runDays = s.run_days || []; gymDays = s.gym_days || []; renderDayChips();
   $("#setWeeklyTarget").value = s.weekly_workout_target;
@@ -1414,7 +1645,8 @@ function startScalePolling() {
 
 const LOADERS = {
   dashboard: loadDashboard, plan: loadPlan, exercises: loadExercises,
-  nutrition: loadNutrition, coach: loadCoach, settings: loadSettings,
+  nutrition: loadNutrition, mood: loadMood, coach: loadCoach,
+  settings: loadSettings,
 };
 
 function goto(view) {
