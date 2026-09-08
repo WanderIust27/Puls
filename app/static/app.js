@@ -550,7 +550,7 @@ async function loadExercises() {
   renderExercises();
   const acts = await api("/activities?limit=15");
   $("#activityList").innerHTML = acts.length ? acts.map((a) => `
-    <div class="list-item" ${a.sport === "running" ? `data-run-id="${a.id}" style="cursor:pointer"` : ""}>
+    <div class="list-item" data-run-id="${a.id}" style="cursor:pointer">
       ${kindTag(a.sport)}
       <div class="grow">
         <div class="title">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
@@ -559,7 +559,7 @@ async function loadExercises() {
           ${a.avg_hr ? " · Ø " + Math.round(a.avg_hr) + " bpm" : ""}
           · <span class="badge">${a.source === "garmin" ? "Garmin" : a.source === "fit" ? "FIT" : "manuell"}</span></div>
       </div>
-      ${a.sport === "running" ? '<span class="muted">Analyse ›</span>' : ""}
+      <span class="muted">${a.sport === "strength" ? "Auswertung" : "Analyse"} ›</span>
     </div>`).join("") : "Noch keine.";
 
   $$("[data-run-id]").forEach((el) => el.addEventListener("click", () =>
@@ -756,24 +756,41 @@ const LEVEL_WORD = { good: "Gut", ok: "Okay", warn: "Achtung" };
 async function openRunAnalysis(activityId) {
   $("#runContent").innerHTML = '<p class="muted"><span class="spin"></span> Wird ausgewertet …</p>';
   $("#runDialog").hidden = false;
-  let d;
+
+  /* Bewertung und Detaildaten parallel holen — die Detaildaten dürfen fehlen,
+     ohne dass die Ansicht deswegen leer bleibt. */
+  let d, det = null;
   try { d = await api(`/activities/${activityId}/analysis`); }
   catch (e) { $("#runContent").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+  try { det = await api(`/activities/${activityId}/details`); }
+  catch (e) { /* ohne Details geht es auch */ }
 
   const a = d.activity, an = d.analysis;
-  $("#runDialogTitle").textContent = a.name || "Laufanalyse";
+  const isGym = a.sport === "strength";
+  $("#runDialogTitle").textContent = a.name || (isGym ? "Gym-Einheit" : "Laufanalyse");
 
   const km = a.distance_m ? (a.distance_m / 1000).toFixed(2) : null;
-  const facts = [
+  const facts = (isGym ? [
+    a.duration_s ? { v: fmtDur(a.duration_s), l: "Dauer" } : null,
+    d.gym?.sets ? { v: d.gym.sets, l: "Sätze" } : null,
+    d.gym?.volume_kg ? { v: Math.round(d.gym.volume_kg).toLocaleString("de-DE"), l: "Volumen kg" } : null,
+    d.gym?.exercises ? { v: d.gym.exercises, l: "Übungen" } : null,
+    a.avg_hr ? { v: Math.round(a.avg_hr), l: "Ø Puls" } : null,
+    a.calories ? { v: Math.round(a.calories), l: "Kalorien" } : null,
+  ] : [
     km ? { v: km, l: "Kilometer" } : null,
     a.duration_s ? { v: fmtDur(a.duration_s), l: "Dauer" } : null,
     an?.pace_text ? { v: an.pace_text, l: "Tempo /km" } : null,
     a.avg_hr ? { v: Math.round(a.avg_hr), l: "Ø Puls" } : null,
+    a.max_hr ? { v: Math.round(a.max_hr), l: "Max Puls" } : null,
     a.avg_cadence ? { v: Math.round(a.avg_cadence), l: "Schritte/min" } : null,
     a.avg_stride_m ? { v: a.avg_stride_m.toFixed(2), l: "Schrittlänge m" } : null,
     a.elevation_gain ? { v: Math.round(a.elevation_gain), l: "Höhenmeter" } : null,
+    a.ground_contact_ms ? { v: Math.round(a.ground_contact_ms), l: "Bodenkontakt ms" } : null,
+    a.vertical_osc_cm ? { v: a.vertical_osc_cm.toFixed(1), l: "Vertikal cm" } : null,
     a.aerobic_te ? { v: a.aerobic_te.toFixed(1), l: "Trainingseffekt" } : null,
-  ].filter(Boolean);
+    a.avg_power ? { v: Math.round(a.avg_power), l: "Watt" } : null,
+  ]).filter(Boolean);
 
   let html = "";
   if (an) {
@@ -800,16 +817,94 @@ async function openRunAnalysis(activityId) {
     }
   }
 
+  const hasTrack = det?.track?.length > 1;
+  const hasSeries = det?.series?.t?.length > 1;
+  const hasSplits = det?.splits?.length > 1;
+
+  if (hasTrack) {
+    html += `<div class="detail-section"><h4>Strecke</h4>
+      <div id="runMap"></div>
+      <label class="map-toggle"><input type="checkbox" id="mapTiles">
+        Kartenhintergrund laden (fragt bei OpenStreetMap an)</label></div>`;
+  }
+  if (hasSeries) html += '<div class="detail-section"><h4>Verlauf</h4><div id="runProfile"></div></div>';
+  if (hasSplits) html += '<div class="detail-section"><h4>Kilometer</h4><div id="runSplits"></div></div>';
+
+  if (isGym && d.gym) {
+    const g = d.gym;
+    if (g.detail?.length) {
+      html += '<div class="detail-section"><h4>Übungen</h4><div class="gym-list">' +
+        g.detail.map((e) => {
+          const sets = e.reps.map((r, i) => {
+            const w = e.weights[i];
+            return r == null ? "–" : `${r}${w ? `×${w} kg` : ""}`;
+          }).join(" · ");
+          const ch = e.change;
+          const cls = !ch ? "" : ch.kind === "weight" || ch.kind === "reps" ? "up"
+            : ch.kind === "hold" ? "hold" : "down";
+          return `<div class="gym-ex">
+            <div class="n">${esc(e.name)}</div>
+            <div class="s">${esc(sets)}</div>
+            ${ch ? `<div class="c ${cls}">${esc(ch.text)}</div>` : ""}
+          </div>`;
+        }).join("") + "</div></div>";
+    }
+    if (g.tips?.length) {
+      html += '<div class="detail-section"><h4>Hinweise</h4>' + g.tips.map((t) =>
+        `<div class="finding ${t.level}"><div class="d">${esc(t.text)}</div></div>`
+      ).join("") + "</div>";
+    }
+  }
+
   if (an?.findings?.length) {
-    html += an.findings.map((f) => `
+    html += '<div class="detail-section"><h4>Bewertung</h4>' + an.findings.map((f) => `
       <div class="finding ${f.level}">
         <div class="t">${esc(f.title)}${f.value ? ` — ${esc(f.value)}` : ""}</div>
         <div class="d">${esc(f.detail)}</div>
-      </div>`).join("");
-  } else {
+      </div>`).join("") + "</div>";
+  } else if (!isGym) {
     html += '<p class="muted">Für eine Bewertung fehlen noch Daten. Nach dem nächsten Garmin-Sync klappt es.</p>';
   }
+
+  if (det && !det.has_details && det.hint) {
+    html += `<p class="muted">${esc(det.hint)}</p>`;
+  }
   $("#runContent").innerHTML = html;
+
+  /* --- Diagramme zeichnen, nachdem das Gerüst im Dokument steht --- */
+  let moveDot = null;
+  if (hasTrack) {
+    const paint = (tiles) => {
+      moveDot = routeMap($("#runMap"), det.track, det.bounds, {
+        tiles, values: det.series?.hr,
+      });
+    };
+    paint(localStorage.getItem("mapTiles") === "1");
+    const box = $("#mapTiles");
+    box.checked = localStorage.getItem("mapTiles") === "1";
+    box.addEventListener("change", () => {
+      localStorage.setItem("mapTiles", box.checked ? "1" : "0");
+      paint(box.checked);
+    });
+  }
+
+  if (hasSeries) {
+    const tracks = [
+      { key: "hr", label: "Puls", color: "var(--bad)", fill: true },
+      { key: "pace", label: "Tempo", color: "var(--teal)",
+        fmt: (v) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")} /km`,
+        fmtAxis: (v) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")}` },
+      { key: "ele", label: "Höhe", color: "var(--ink-3)", fill: true,
+        fmt: (v) => `${Math.round(v)} m` },
+      { key: "cadence", label: "Schrittfrequenz", color: "var(--accent)" },
+    ];
+    runProfile($("#runProfile"), det.series, {
+      tracks,
+      onHover: (i) => { if (moveDot) moveDot(i == null ? null : i / (det.series.t.length - 1)); },
+    });
+  }
+
+  if (hasSplits) splitChart($("#runSplits"), det.splits);
 }
 
 $("#runClose").addEventListener("click", () => { $("#runDialog").hidden = true; });
@@ -849,24 +944,105 @@ $("#btnNutritionAdvice").addEventListener("click", (e) => withSpinner(e.currentT
 /* ------------------------------------------------------------------ K\u00f6rper */
 
 async function loadBody() {
-  const list = await api("/body?days=365");
-  const byDay = {};
-  [...list].reverse().forEach((b) => { if (b.weight_kg) byDay[b.day] = b; });
-  const points = Object.values(byDay).map((b) => ({
-    value: b.weight_kg, label: b.day.slice(5), tip: b.day + " (" + b.source + ")" }));
+  const [summary, list] = await Promise.all([
+    api("/body/summary?days=365"), api("/body?days=365"),
+  ]);
+
+  /* Kopfzeile: aktuelle Werte mit Veränderung */
+  const arrow = (v) => v == null ? "" :
+    `<span class="d ${v < 0 ? "down" : v > 0 ? "up" : ""}">${v > 0 ? "+" : ""}${v.toFixed(1)} kg</span>`;
+  const l = summary.latest || {};
+  const est = new Set(summary.estimated_fields || []);
+  const cells = [
+    { v: summary.current_kg?.toFixed(1), u: "kg", l: "Gewicht", extra: arrow(summary.delta_7d) },
+    { v: l.body_fat_pct, u: "%", l: "Körperfett", f: "body_fat_pct" },
+    { v: l.muscle_kg, u: "kg", l: "Muskeln", f: "muscle_kg" },
+    { v: l.water_pct, u: "%", l: "Wasser", f: "water_pct" },
+    { v: l.bone_kg, u: "kg", l: "Knochen", f: "bone_kg" },
+    { v: l.visceral_fat, u: "", l: "Viszeralfett", f: "visceral_fat" },
+    { v: l.bmi, u: "", l: "BMI" },
+  ].filter((c) => c.v != null && c.v !== "");
+  $("#bodyFacts").innerHTML = cells.map((c) => `
+    <div class="f${est.has(c.f) ? " est" : ""}">
+      <div class="v">${esc(String(c.v))}<span class="u">${c.u}</span></div>
+      <div class="l">${c.l}${est.has(c.f) ? '<span title="aus der Impedanz geschätzt, nicht gemessen"> ≈</span>' : ""}</div>
+      ${c.extra || ""}
+    </div>`).join("") || '<p class="muted">Noch keine Messung.</p>';
+
+  /* Trendlinie aus den Referenzmessungen */
+  const points = (summary.points || [])
+    .filter((p) => p.smooth_kg != null)
+    .map((p) => ({ value: p.smooth_kg, label: p.day.slice(5),
+                   tip: `${p.day}${p.measured ? "" : " (umgerechnet)"}` }));
   lineChart($("#bodyChart"), points, { unit: " kg" });
+
+  const disc = summary.discipline || {};
+  const deltas = [
+    summary.delta_30d != null ? `30 Tage ${summary.delta_30d > 0 ? "+" : ""}${summary.delta_30d.toFixed(1)} kg` : null,
+    summary.delta_90d != null ? `90 Tage ${summary.delta_90d > 0 ? "+" : ""}${summary.delta_90d.toFixed(1)} kg` : null,
+  ].filter(Boolean).join(" · ");
+  $("#bodyDiscipline").innerHTML = [
+    deltas,
+    disc.total ? `${disc.in_window} von ${disc.total} Messungen im Fenster ${esc(disc.window)}` : "",
+    disc.factor && disc.factor !== 1 ? `Tagesgang auf dich kalibriert (Faktor ${disc.factor})` : "",
+    disc.hint ? `<br>${esc(disc.hint)}` : "",
+  ].filter(Boolean).join(" · ");
+
+  /* Einzelmessungen — löschbar, mit Uhrzeit und Fenster-Kennzeichnung */
   $("#bodyList").innerHTML = list.length ? `
-    <table class="datatable"><tr><th>Tag</th><th>Gewicht</th><th>Fett %</th><th>Quelle</th></tr>
-    ${list.slice(0, 10).map((b) => `<tr><td>${fmtDate(b.day)}</td><td>${b.weight_kg ?? "\u2013"} kg</td>
-      <td>${b.body_fat_pct ?? "\u2013"}</td><td>${b.source === "miscale" ? "Waage" : b.source}</td></tr>`).join("")}</table>` : "";
+    <table class="datatable">
+      <tr><th>Zeitpunkt</th><th>Gewicht</th><th>Fett %</th><th>Quelle</th><th></th></tr>
+      ${list.slice(0, 30).map((b) => {
+        const when = b.time_known
+          ? `${fmtDate(b.day)}, ${b.measured_at.slice(11, 16)}`
+          : `${fmtDate(b.day)} <span class="muted">(Zeit unbekannt)</span>`;
+        const mark = b.in_window ? '<span class="in-win" title="im Referenzfenster">●</span> ' : "";
+        const adj = !b.in_window && b.time_known && b.weight_adj_kg != null
+          && Math.abs(b.weight_adj_kg - b.weight_kg) > 0.05
+          ? ` <span class="muted">→ ${b.weight_adj_kg.toFixed(1)}</span>` : "";
+        return `<tr>
+          <td>${mark}${when}</td>
+          <td>${b.weight_kg ?? "\u2013"} kg${adj}</td>
+          <td>${b.body_fat_pct ?? "\u2013"}</td>
+          <td>${b.source === "miscale" ? "Waage" : b.source === "garmin" ? "Garmin" : b.source}</td>
+          <td><button class="link-del" data-del-body="${b.id}" title="Messung löschen">×</button></td>
+        </tr>`;
+      }).join("")}
+    </table>
+    <p class="muted">● = im Referenzfenster gemessen. Der Pfeil zeigt den auf das
+      Fenster umgerechneten Wert.</p>` : "";
+
+  $$("[data-del-body]").forEach((btn) => btn.addEventListener("click", async () => {
+    if (!confirm("Diese Messung löschen?")) return;
+    try {
+      await api(`/body/${btn.dataset.delBody}`, { method: "DELETE" });
+      toast("Gelöscht"); loadBody(); loadDashboard();
+    } catch (e) { toast(e.message, true); }
+  }));
+
+  if (disc.window) {
+    const [a, b] = disc.window.split("\u2013");
+    if (a && b) { $("#winStart").value = a; $("#winEnd").value = b; }
+  }
   return list;
 }
 
 $("#btnSaveBody").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const day = $("#bodyDay").value || null;
+  const time = $("#bodyTime").value;
   await api("/body", { method: "POST", body: JSON.stringify({
-    day: $("#bodyDay").value || null, weight_kg: +$("#bodyWeight").value || null,
+    day,
+    measured_at: day && time ? `${day}T${time}:00` : null,
+    weight_kg: +$("#bodyWeight").value || null,
     body_fat_pct: +$("#bodyFat").value || null }) });
   toast("Gespeichert"); loadBody(); loadDashboard();
+}));
+
+$("#btnSaveWindow").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/body/window", { method: "POST", body: JSON.stringify({
+    start: $("#winStart").value, end: $("#winEnd").value }) });
+  toast(`Fenster ${r.window} — ${r.recomputed} Messungen neu eingeordnet`);
+  loadBody();
 }));
 
 $("#bodyCsv").addEventListener("change", async (e) => {
@@ -877,6 +1053,44 @@ $("#bodyCsv").addEventListener("change", async (e) => {
   catch (err) { toast(err.message, true); }
   e.target.value = "";
 });
+
+/* ---------------------------------------------------- Verlaufs-Import */
+
+let backfillTimer = null;
+
+async function pollBackfill() {
+  let st;
+  try { st = await api("/garmin/backfill/status"); }
+  catch (e) { return; }
+  const box = $("#backfillProgress");
+  if (!st.running && !st.summary && !st.error) { box.hidden = true; return; }
+  box.hidden = false;
+
+  if (st.error) {
+    box.innerHTML = `<p class="muted">Abgebrochen: ${esc(st.error)}</p>`;
+  } else if (st.running) {
+    const pct = st.total ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
+    box.innerHTML = `<div class="bf-bar"><span style="width:${pct}%"></span></div>
+      <p class="muted">${esc(st.stage || "Läuft")} … ${pct} %</p>`;
+  } else {
+    box.innerHTML = `<p class="muted">Verlauf geladen: ${esc(st.summary)}.</p>`;
+  }
+
+  if (st.running && !backfillTimer) {
+    backfillTimer = setInterval(pollBackfill, 3000);
+  } else if (!st.running && backfillTimer) {
+    clearInterval(backfillTimer); backfillTimer = null;
+    loadDashboard();
+  }
+}
+
+$("#btnBackfill").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/garmin/backfill", { method: "POST" });
+  toast(r.status === "gestartet"
+    ? "Verlauf wird geladen — das dauert ein paar Minuten."
+    : "Der Import läuft bereits.");
+  pollBackfill();
+}));
 
 /* ------------------------------------------------------------------- Coach */
 
@@ -1050,6 +1264,7 @@ function renderDayChips() {
 
 async function loadSettings() {
   const [s, g, h] = await Promise.all([api("/settings"), api("/garmin/status"), api("/health")]);
+  pollBackfill();      // zeigt einen laufenden Verlaufs-Import auch nach Neuladen
   selectedGoals = s.goals; renderGoalChips();
   runDays = s.run_days || []; gymDays = s.gym_days || []; renderDayChips();
   $("#setWeeklyTarget").value = s.weekly_workout_target;

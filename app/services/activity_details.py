@@ -199,3 +199,40 @@ def condense(details: dict[str, Any]) -> dict[str, Any]:
         "bounds_json": json.dumps(bounds, separators=(",", ":")) if bounds else None,
         "point_count": series.get("points", 0),
     }
+
+
+def normalize_splits(raw: Any) -> list[dict[str, Any]]:
+    """Garmins Runden in eine Form bringen, die sich zeichnen laesst.
+
+    Kilometer-Runden bekommen die Nummer als Beschriftung, angebrochene
+    Schlussrunden ihre tatsaechliche Laenge — sonst steht ein 300-Meter-Rest
+    als vermeintlich sehr schneller Kilometer im Diagramm.
+    """
+    laps = (raw or {}).get("lapDTOs") if isinstance(raw, dict) else None
+    if not isinstance(laps, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for i, lap in enumerate(laps, start=1):
+        if not isinstance(lap, dict):
+            continue
+        distance = lap.get("distance")
+        duration = lap.get("duration") or lap.get("movingDuration")
+        if not isinstance(distance, (int, float)) or not isinstance(duration, (int, float)):
+            continue
+        if distance < 50:
+            continue
+        partial = abs(distance - 1000) > 120
+        # Tempo immer auf einen Kilometer hochrechnen, damit die Balken
+        # vergleichbar bleiben
+        per_km = duration * 1000.0 / distance
+        out.append({
+            "index": i,
+            "label": f"{distance/1000:.2f} km".replace(".", ",") if partial else str(i),
+            "distance_m": round(distance),
+            "duration_s": round(duration),
+            "seconds": round(per_km),
+            "partial": partial,
+            "hr": lap.get("averageHR"),
+            "elevation_gain": lap.get("elevationGain"),
+        })
+    return out

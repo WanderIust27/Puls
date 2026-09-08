@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
+from ..services import activity_details as activity_details_svc
+from ..services import gym_analysis
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -721,9 +723,11 @@ def activity_details(activity_id: int) -> dict[str, Any]:
                        "Sie kommen beim nächsten Sync — oder sofort über "
                        "Mehr → Garmin → Verlauf nachladen.")
         return out
-    for field in ("series", "track", "bounds", "splits"):
+    for field in ("series", "track", "bounds"):
         raw = row[f"{field}_json"]
         out[field] = json.loads(raw) if raw else None
+    out["splits"] = activity_details_svc.normalize_splits(
+        json.loads(row["splits_json"]) if row["splits_json"] else None)
     out["fetched_at"] = row["fetched_at"]
     out["point_count"] = row["point_count"]
     return out
@@ -1065,9 +1069,14 @@ def activity_analysis(activity_id: int) -> dict[str, Any]:
     if not row:
         raise HTTPException(404, "Aktivität nicht gefunden.")
     act = dict(row)
-    analysis = run_analysis.get_analysis(activity_id)
-    if not analysis:
-        analysis = run_analysis.analyse_and_store(activity_id)
+    analysis = None
+    gym = None
+    if act.get("sport") == "strength":
+        gym = gym_analysis.analyse(activity_id, (act.get("start_time") or "")[:10])
+    else:
+        analysis = run_analysis.get_analysis(activity_id)
+        if not analysis:
+            analysis = run_analysis.analyse_and_store(activity_id)
     act.pop("raw_json", None)
     act.pop("analysis_json", None)
     if act.get("hr_zones_json"):
@@ -1075,7 +1084,7 @@ def activity_analysis(activity_id: int) -> dict[str, Any]:
             act["hr_zones"] = json.loads(act.pop("hr_zones_json"))
         except (ValueError, TypeError):
             act.pop("hr_zones_json", None)
-    return {"activity": act, "analysis": analysis}
+    return {"activity": act, "analysis": analysis, "gym": gym}
 
 
 @router.get("/running/summary")

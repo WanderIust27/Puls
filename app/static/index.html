@@ -380,8 +380,15 @@
     <div id="garminLinkedBox" hidden>
       <div class="row" style="margin-top:8px">
         <button class="btn teal" id="btnSyncNow">Jetzt synchronisieren</button>
+        <button class="btn ghost" id="btnBackfill">Verlauf nachladen</button>
         <button class="btn ghost" id="btnUnlink">Trennen</button>
       </div>
+      <p class="muted" style="margin-top:8px">Der Sync holt die letzten zwei Wochen.
+        „Verlauf nachladen“ holt einmalig alles, was Garmin hergibt — Aktivitäten,
+        Schlaf, HRV, Stress, Body Battery und Gewicht. Das dauert einige Minuten
+        und läuft im Hintergrund weiter, auch wenn du die Seite schließt. Erst
+        danach kann der Coach über Tendenzen reden.</p>
+      <div id="backfillProgress" hidden></div>
     </div>
   </div>
 
@@ -424,19 +431,43 @@
 
   <div class="card">
     <h3>Körperdaten</h3>
-    <div class="grid3">
-      <div><label class="field">Gewicht (kg)</label><input id="bodyWeight" type="number" step="0.1"></div>
-      <div><label class="field">Körperfett (%)</label><input id="bodyFat" type="number" step="0.1"></div>
-      <div><label class="field">Datum</label><input id="bodyDay" type="date"></div>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn" id="btnSaveBody">Speichern</button>
-      <label class="btn ghost small" style="cursor:pointer">CSV importieren
-        <input type="file" id="bodyCsv" accept=".csv" hidden>
-      </label>
-    </div>
+    <div id="bodyFacts" class="body-facts"></div>
     <div class="chart-wrap" id="bodyChart" style="margin-top:12px"></div>
-    <div id="bodyList" class="muted"></div>
+    <div id="bodyDiscipline" class="muted" style="margin-top:4px"></div>
+
+    <details style="margin-top:14px">
+      <summary class="field" style="cursor:pointer">Messung von Hand eintragen</summary>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="field">Gewicht (kg)</label><input id="bodyWeight" type="number" step="0.1"></div>
+        <div><label class="field">Körperfett (%)</label><input id="bodyFat" type="number" step="0.1"></div>
+        <div><label class="field">Datum</label><input id="bodyDay" type="date"></div>
+        <div><label class="field">Uhrzeit</label><input id="bodyTime" type="time"></div>
+      </div>
+      <p class="muted">Ohne Uhrzeit wird die Messung als „Uhrzeit unbekannt“ geführt:
+        sie erscheint in der Liste, zählt aber nicht zur Trendlinie, weil sich
+        ohne Zeitpunkt nicht sagen lässt, wie sie zum Rest passt.</p>
+      <div class="row" style="margin-top:6px">
+        <button class="btn" id="btnSaveBody">Speichern</button>
+        <label class="btn ghost small" style="cursor:pointer">CSV importieren
+          <input type="file" id="bodyCsv" accept=".csv" hidden>
+        </label>
+      </div>
+    </details>
+
+    <details style="margin-top:10px">
+      <summary class="field" style="cursor:pointer">Referenzfenster</summary>
+      <p class="muted">Zwischen der Messung früh nüchtern und der abends nach dem
+        Essen liegen leicht anderthalb Kilo, ohne dass sich am Körper etwas
+        geändert hätte. Nur Messungen in diesem Fenster bilden die Trendlinie;
+        alle anderen werden gespeichert, markiert und rechnerisch angeglichen.</p>
+      <div class="row">
+        <div><label class="field">von</label><input id="winStart" type="time" value="06:00"></div>
+        <div><label class="field">bis</label><input id="winEnd" type="time" value="09:00"></div>
+        <button class="btn ghost" id="btnSaveWindow" style="align-self:end">Übernehmen</button>
+      </div>
+    </details>
+
+    <div id="bodyList" class="muted" style="margin-top:12px"></div>
   </div>
 
   <div class="card">
