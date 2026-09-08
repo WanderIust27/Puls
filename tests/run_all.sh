@@ -29,6 +29,7 @@ run "Gym-Auswertung"  python3 tests/test_gym_analysis.py
 run "Gemüt & Supplements" python3 tests/test_mood.py
 run "Garmin-Sync"     python3 tests/test_garmin_sync.py
 run "API"             python3 tests/test_api.py
+run "Frontend"        python3 tests/test_frontend.py
 
 echo
 if [ -n "$failed" ]; then

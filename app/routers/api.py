@@ -17,7 +17,7 @@ from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
 from ..services import activity_details as activity_details_svc
-from ..services import gym_analysis, mood, recipes, supplements
+from ..services import gym_analysis, mood, recipes, score, supplements
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -67,6 +67,7 @@ def dashboard() -> dict[str, Any]:
         "goals": json.loads(get_setting("goals", "[]") or "[]"),
         "kcal_target": get_setting("kcal_target", ""),
         "protein_target": get_setting("protein_target", ""),
+        "score": score.overall(),
         "goal_progress": _goal_progress(),
     }
 
@@ -744,10 +745,30 @@ def garmin_backfill_status() -> dict[str, Any]:
     return garmin_sync.backfill_state()
 
 
+@router.get("/garmin/diagnose")
+def garmin_diagnose() -> dict[str, Any]:
+    """Prueft der Reihe nach, woran es liegt, wenn keine Daten ankommen."""
+    return garmin_sync.diagnose()
+
+
+@router.post("/garmin/backfill/reset")
+def garmin_backfill_reset() -> dict[str, Any]:
+    """Festgefahrenen Import freigeben."""
+    return garmin_sync.reset_backfill()
+
+
 @router.post("/garmin/backfill/cancel")
 def garmin_backfill_cancel() -> dict[str, Any]:
     """Laufenden Import abbrechen — das bereits Geholte bleibt."""
     return garmin_sync.cancel_backfill()
+
+
+# ------------------------------------------------------------------ Score
+
+@router.get("/score")
+def coach_score() -> dict[str, Any]:
+    """Wie zufrieden der Coach gerade ist — und wo das meiste Potenzial liegt."""
+    return score.overall()
 
 
 # ---------------------------------------------------------------- Rezepte

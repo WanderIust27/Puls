@@ -233,6 +233,7 @@ function renderGoals(gp) {
 async function loadDashboard() {
   loadSupplements();
   const d = await api("/dashboard");
+  renderScore(d.score);
 
   ringChart($("#weekRing"), d.week.workouts, d.week.target);
   $("#ringCount").textContent = d.week.workouts;
@@ -1494,6 +1495,84 @@ async function loadActivityLog() {
 
 $("#logSport").addEventListener("change", loadActivityLog);
 $("#logDays").addEventListener("change", loadActivityLog);
+
+
+/* -------------------------------------------------------------- Score */
+
+function scoreRing(el, value) {
+  const size = 108, r = 44, c = 2 * Math.PI * r;
+  const pct = value == null ? 0 : Math.max(0, Math.min(100, value)) / 100;
+  /* Farbe folgt dem Wert, nicht der Laune: unter 55 warnend, ab 80 gut */
+  const color = value == null ? "var(--border)"
+    : value >= 80 ? "var(--good)" : value >= 55 ? "var(--accent)" : "var(--warn)";
+  el.innerHTML = `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+    <circle cx="54" cy="54" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="9"></circle>
+    <circle cx="54" cy="54" r="${r}" fill="none" stroke="${color}" stroke-width="9"
+      stroke-linecap="round" stroke-dasharray="${(c * pct).toFixed(1)} ${c.toFixed(1)}"
+      transform="rotate(-90 54 54)"></circle>
+    <text x="54" y="58" text-anchor="middle" font-size="26" font-family="var(--serif)"
+      fill="var(--ink)">${value == null ? "–" : value}</text>
+    <text x="54" y="74" text-anchor="middle" font-size="9" fill="var(--ink-3)">von 100</text>
+  </svg>`;
+}
+
+function renderScore(d) {
+  if (!d) return;
+  scoreRing($("#scoreRing"), d.score);
+  $("#scoreMood").textContent = `Der Coach ist ${d.mood}`;
+  $("#scoreVerdict").textContent = d.verdict;
+
+  $("#scorePillars").innerHTML = d.pillars.map((p) => {
+    /* Achtung: 0 ist ein gültiger Wert — nicht mit || abfangen */
+    const has = p.value != null;
+    const cls = !has ? "none" : p.value >= 80 ? "good" : p.value >= 55 ? "ok" : "low";
+    return `<div class="pillar ${cls}">
+      <div class="pl">${esc(p.label)}</div>
+      <div class="pv">${has ? p.value : "–"}</div>
+      <div class="pbar"><span style="width:${has ? p.value : 0}%"></span></div>
+      <div class="pw">${esc(p.why || "")}</div>
+    </div>`;
+  }).join("");
+
+  $("#scorePotential").innerHTML = d.potential.slice(0, 3).map((p) => `
+    <div class="finding ${p.missing ? "info" : p.gain > 8 ? "warn" : "info"}">
+      <div class="t">${esc(p.title)}${p.gain > 0 ? ` <span class="muted">bis zu +${p.gain} Punkte</span>` : ""}</div>
+      <div class="d">${esc(p.text)}</div>
+      ${p.why ? `<div class="d muted">Aktuell: ${esc(p.why)}</div>` : ""}
+    </div>`).join("");
+}
+
+/* ------------------------------------------------------ Garmin-Diagnose */
+
+$("#btnDiagnose").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const d = await api("/garmin/diagnose");
+  const mark = (ok) => ok === true ? "✓" : ok === false ? "✗" : "·";
+  $("#diagnoseBody").innerHTML = `
+    <div class="diag">${d.steps.map((s) => `
+      <div class="row ${s.ok === false ? "bad" : s.ok === true ? "good" : ""}">
+        <span class="m">${mark(s.ok)}</span>
+        <span class="n">${esc(s.name)}</span>
+        <span class="v">${esc(s.detail || "")}</span>
+      </div>`).join("")}</div>
+    <div class="detail-section"><h4>In der Datenbank</h4>
+      <div class="diag">${Object.entries(d.counts).map(([k, v]) =>
+        `<div class="row"><span class="m"></span><span class="n">${esc(k)}</span>
+         <span class="v">${esc(String(v))}</span></div>`).join("")}</div>
+      ${d.range && d.range.von ? `<p class="muted">Zeitraum: ${esc(d.range.von)} bis ${esc(d.range.bis)}</p>` : ""}
+    </div>
+    <div class="detail-section"><h4>Letzte Läufe</h4>
+      <div class="diag">${(d.log || []).map((l) =>
+        `<div class="row ${l.ok ? "" : "bad"}"><span class="m">${l.ok ? "✓" : "✗"}</span>
+         <span class="n">${esc((l.ts || "").slice(5, 16))}</span>
+         <span class="v">${esc(l.detail || "")}</span></div>`).join("")
+        || '<p class="muted">Noch nichts protokolliert.</p>'}</div></div>`;
+}));
+
+$("#btnBackfillReset").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/garmin/backfill/reset", { method: "POST" });
+  toast("Zurückgesetzt — der Import lässt sich wieder starten.");
+  pollBackfill();
+}));
 
 /* ------------------------------------------------------------------- Coach */
 

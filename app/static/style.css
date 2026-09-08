@@ -553,3 +553,38 @@ select.small, .btn.small {
 .list-item.recipe .title { font-weight: 600; }
 ol.plain { margin: 0 0 10px; padding-left: 20px; }
 ol.plain li, ul.plain li { margin-bottom: 5px; }
+
+/* ------------------------------------------------------------- Score */
+.score-head { display: flex; align-items: center; gap: 18px; }
+.score-ring svg { display: block; }
+.score-mood {
+  font-family: var(--serif); font-size: 1.24em; margin-bottom: 4px;
+}
+.score-verdict { color: var(--ink-2); font-size: 0.92em; }
+.pillars {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px; margin-top: 20px;
+}
+.pillar .pl { font-size: 0.78em; color: var(--ink-3); letter-spacing: 0.04em; }
+.pillar .pv { font-family: var(--serif); font-size: 1.3em; line-height: 1.2; }
+.pillar .pbar {
+  height: 4px; background: var(--surface-2); border-radius: 2px;
+  overflow: hidden; margin: 4px 0 5px;
+}
+.pillar .pbar span { display: block; height: 100%; background: var(--ink-3); }
+.pillar.good .pbar span { background: var(--good); }
+.pillar.ok .pbar span { background: var(--accent); }
+.pillar.low .pbar span { background: var(--warn); }
+.pillar.none .pv { color: var(--ink-3); }
+.pillar .pw { font-size: 0.76em; color: var(--ink-3); line-height: 1.4; }
+
+.diag { font-size: 0.86em; }
+.diag .row {
+  display: grid; grid-template-columns: 18px 1fr auto; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid var(--border-soft); align-items: baseline;
+}
+.diag .row .m { color: var(--ink-3); }
+.diag .row.good .m { color: var(--good); }
+.diag .row.bad .m { color: var(--bad); }
+.diag .row.bad .v { color: var(--bad); }
+.diag .row .v { color: var(--ink-3); text-align: right; }

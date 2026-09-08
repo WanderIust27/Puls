@@ -679,7 +679,7 @@ _backfill: dict[str, Any] = {
     "phase": "", "phase_no": 0, "phase_count": 4,
     "done": 0, "total": 0, "detail": "",
     "counts": {}, "error": None, "started_at": None, "finished_at": None,
-    "summary": "",
+    "beat": None, "summary": "",
 }
 _backfill_lock = threading.Lock()
 
@@ -690,10 +690,50 @@ MAX_DAILY_BACKFILL_DAYS = 900
 ACTIVITY_SLICE_DAYS = 180
 
 
+# Meldet der Import fuenf Minuten lang keinen Fortschritt, gilt er als tot.
+# Ohne das bliebe nach einem gestorbenen Thread "laeuft bereits" fuer immer
+# stehen — der Knopf taete dann nichts mehr, ohne zu sagen warum.
+STALE_AFTER_S = 300
+
+
+def _note(text: str, ok: bool = True) -> None:
+    """Schritt festhalten — in der Datenbank, damit er einen Neustart ueberlebt."""
+    try:
+        with get_db() as db:
+            db.execute("INSERT INTO sync_log(ok, detail) VALUES(?,?)",
+                       (1 if ok else 0, f"Verlauf: {text}"))
+    except Exception as e:
+        log.debug("Protokolleintrag fehlgeschlagen: %s", e)
+    log.info("Verlaufs-Import: %s", text)
+
+
+def _is_stale() -> bool:
+    last = _backfill.get("beat")
+    if not last:
+        return False
+    try:
+        age = (dt.datetime.now() - dt.datetime.fromisoformat(last)).total_seconds()
+    except ValueError:
+        return False
+    return age > STALE_AFTER_S
+
+
 def backfill_state() -> dict[str, Any]:
     st = dict(_backfill)
     st["percent"] = round(st["done"] / st["total"] * 100) if st["total"] else 0
+    st["stale"] = st["running"] and _is_stale()
+    if st["stale"]:
+        st["error"] = (st.get("error") or
+                       "Seit über fünf Minuten kein Fortschritt — der Import "
+                       "scheint zu hängen. Mit „Zurücksetzen“ neu startbar.")
     return st
+
+
+def reset_backfill() -> dict[str, Any]:
+    """Festgefahrenen Import freigeben, damit er neu gestartet werden kann."""
+    _backfill.update(running=False, cancel=False, phase="Zurückgesetzt")
+    _note("zurückgesetzt", ok=False)
+    return backfill_state()
 
 
 def cancel_backfill() -> dict[str, Any]:
@@ -704,12 +744,15 @@ def cancel_backfill() -> dict[str, Any]:
 
 
 def _phase(no: int, name: str, total: int) -> None:
-    _backfill.update(phase_no=no, phase=name, total=max(1, total), done=0, detail="")
+    _backfill.update(phase_no=no, phase=name, total=max(1, total), done=0,
+                     detail="", beat=dt.datetime.now().isoformat(timespec="seconds"))
+    _note(f"Schritt {no}/4 — {name} ({total})")
 
 
 def _tick(done: int, detail: str = "") -> bool:
     """Fortschritt melden. Gibt False zurueck, wenn abgebrochen werden soll."""
     _backfill["done"] = done
+    _backfill["beat"] = dt.datetime.now().isoformat(timespec="seconds")
     if detail:
         _backfill["detail"] = detail
     return not _backfill["cancel"]
@@ -729,9 +772,11 @@ def run_backfill(days: int = 3650) -> None:
     Tage werden nur ergaenzt, nie geleert.
     """
     with _backfill_lock:
-        if _backfill["running"]:
+        if _backfill["running"] and not _is_stale():
             log.info("Verlaufs-Import laeuft bereits.")
             return
+        if _backfill["running"]:
+            _note("vorheriger Lauf hing fest und wird überschrieben", ok=False)
         _backfill.update(running=True, cancel=False, error=None, summary="",
                          counts={}, finished_at=None,
                          started_at=dt.datetime.now().isoformat(timespec="seconds"))
@@ -807,15 +852,17 @@ def run_backfill(days: int = 3650) -> None:
         with get_db() as db:
             db.execute("INSERT INTO sync_log(ok, detail) VALUES(1, ?)",
                        (f"Verlaufs-Import: {summary}",))
-        log.info("Verlaufs-Import fertig: %s", summary)
 
+
+        _note(f"fertig — {summary or 'nichts Neues'}")
     except _Cancelled:
         summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
         _backfill.update(phase="Abgebrochen",
                          summary=f"Abgebrochen — geladen: {summary or 'nichts'}")
-        log.info("Verlaufs-Import abgebrochen.")
+        _note("vom Nutzer abgebrochen", ok=False)
     except Exception as e:
-        _backfill.update(phase="Abgebrochen", error=str(e))
+        _backfill.update(phase="Abgebrochen", error=f"{type(e).__name__}: {e}")
+        _note(f"abgebrochen mit Fehler — {type(e).__name__}: {e}", ok=False)
         log.warning("Verlaufs-Import fehlgeschlagen: %s", e, exc_info=True)
     finally:
         _backfill.update(running=False, cancel=False,
@@ -828,7 +875,96 @@ class _Cancelled(Exception):
 
 def start_backfill(days: int = 3650) -> dict[str, Any]:
     """Import im Hintergrund anstossen, damit die Anfrage nicht wartet."""
-    if _backfill["running"]:
+    if _backfill["running"] and not _is_stale():
         return {"status": "läuft bereits", **backfill_state()}
     threading.Thread(target=run_backfill, args=(days,), daemon=True).start()
     return {"status": "gestartet", "days": days}
+
+
+def diagnose() -> dict[str, Any]:
+    """Sagt, woran es liegt, wenn keine Daten ankommen.
+
+    Prueft der Reihe nach: Verbindung, ob Garmin ueberhaupt antwortet, was
+    davon in der Datenbank gelandet ist, und was die letzten Laeufe gemeldet
+    haben. Damit laesst sich in einem Blick unterscheiden, ob die Verbindung,
+    die Abfrage oder das Speichern klemmt.
+    """
+    out: dict[str, Any] = {"steps": [], "counts": {}, "log": []}
+
+    def step(name: str, ok: bool | None, detail: str = "") -> None:
+        out["steps"].append({"name": name, "ok": ok, "detail": detail})
+
+    # 1. Verknuepfung
+    linked = get_setting("garmin_linked", "0") == "1"
+    step("Garmin verknüpft", linked,
+         get_setting("garmin_email", "") if linked
+         else "Unter Mehr → Garmin Connect verbinden.")
+
+    # 2. Antwortet Garmin?
+    client = None
+    if linked:
+        try:
+            client = get_client()
+            step("Verbindung steht", True)
+        except Exception as e:
+            step("Verbindung steht", False, f"{type(e).__name__}: {e}")
+
+    # 3. Liefert Garmin Aktivitaeten?
+    if client:
+        try:
+            end = dt.date.today()
+            begin = end - dt.timedelta(days=30)
+            acts = client.get_activities_by_date(begin.isoformat(), end.isoformat()) or []
+            step("Aktivitäten der letzten 30 Tage", len(acts) > 0,
+                 f"{len(acts)} von Garmin geliefert")
+            if acts:
+                first = acts[0]
+                out["sample"] = {
+                    "name": first.get("activityName"),
+                    "typ": (first.get("activityType") or {}).get("typeKey"),
+                    "start": first.get("startTimeLocal"),
+                }
+        except Exception as e:
+            step("Aktivitäten der letzten 30 Tage", False, f"{type(e).__name__}: {e}")
+
+        # 4. Liefert Garmin Tagesdaten?
+        try:
+            day = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+            entry = _collect_day(client, day)
+            got = sorted(k for k in entry if k != "day")
+            step("Erholungsdaten von gestern", len(got) > 0,
+                 ", ".join(got[:8]) if got else "Garmin liefert für gestern nichts")
+        except Exception as e:
+            step("Erholungsdaten von gestern", False, f"{type(e).__name__}: {e}")
+
+    # 5. Was liegt in der Datenbank?
+    with get_db() as db:
+        for label, sql in (
+            ("Aktivitäten", "SELECT COUNT(*) AS n FROM activities"),
+            ("davon mit Karte/Kurven", "SELECT COUNT(*) AS n FROM activity_details"),
+            ("Kraftsätze", "SELECT COUNT(*) AS n FROM exercise_sets"),
+            ("Tage mit Erholungsdaten", "SELECT COUNT(*) AS n FROM daily_metrics"),
+            ("Tage mit Stresswerten",
+             "SELECT COUNT(*) AS n FROM daily_metrics WHERE stress_avg IS NOT NULL"),
+            ("Tage mit Body Battery",
+             "SELECT COUNT(*) AS n FROM daily_metrics WHERE body_battery_max IS NOT NULL"),
+            ("Körpermessungen", "SELECT COUNT(*) AS n FROM body_metrics"),
+        ):
+            try:
+                out["counts"][label] = db.execute(sql).fetchone()["n"]
+            except Exception as e:
+                out["counts"][label] = f"Fehler: {e}"
+        span = db.execute(
+            "SELECT MIN(substr(start_time,1,10)) AS von, "
+            "MAX(substr(start_time,1,10)) AS bis FROM activities").fetchone()
+        out["range"] = {"von": span["von"], "bis": span["bis"]} if span else {}
+        out["log"] = rows_to_dicts(db.execute(
+            "SELECT ts, ok, detail FROM sync_log ORDER BY id DESC LIMIT 20").fetchall())
+
+    step("Daten in der Datenbank", out["counts"].get("Aktivitäten", 0) > 0,
+         f"{out['counts'].get('Aktivitäten', 0)} Aktivitäten"
+         + (f", {out['range'].get('von')} bis {out['range'].get('bis')}"
+            if out["range"].get("von") else ""))
+
+    out["backfill"] = backfill_state()
+    return out

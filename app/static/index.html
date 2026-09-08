@@ -47,6 +47,19 @@
     </div>
   </div>
 
+  <div class="card" id="scoreCard">
+    <div class="score-head">
+      <div class="score-ring" id="scoreRing"></div>
+      <div class="score-text">
+        <div class="score-mood" id="scoreMood">–</div>
+        <div class="score-verdict" id="scoreVerdict"></div>
+      </div>
+    </div>
+    <div id="scorePillars" class="pillars"></div>
+    <div class="detail-section"><h4>Wo am meisten Potenzial liegt</h4>
+      <div id="scorePotential"></div></div>
+  </div>
+
   <div class="card" id="suppCard" hidden>
     <h3>Heute einnehmen</h3>
     <div id="suppList"></div>
@@ -523,6 +536,18 @@
         und läuft im Hintergrund weiter, auch wenn du die Seite schließt. Erst
         danach kann der Coach über Tendenzen reden.</p>
       <div id="backfillProgress" hidden></div>
+      <details style="margin-top:10px">
+        <summary class="field" style="cursor:pointer">Es kommen keine Daten an?</summary>
+        <p class="muted">Die Prüfung geht der Reihe nach durch: Verbindung,
+          ob Garmin überhaupt antwortet, und was davon in der Datenbank
+          gelandet ist. Damit lässt sich unterscheiden, ob die Verbindung, die
+          Abfrage oder das Speichern klemmt.</p>
+        <div class="row">
+          <button class="btn ghost small" id="btnDiagnose">Prüfen</button>
+          <button class="btn ghost small" id="btnBackfillReset">Import zurücksetzen</button>
+        </div>
+        <div id="diagnoseBody"></div>
+      </details>
     </div>
   </div>
 

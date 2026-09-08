@@ -192,6 +192,27 @@ with TestClient(app) as client:
     check("Unbekannter Eintrag meldet 404",
           client.delete("/api/mood/999999").status_code, 404)
 
+    # --- Score --------------------------------------------------------------
+    sc = client.get("/api/score").json()
+    check("Score antwortet", "score" in sc, True)
+    check("Fünf Säulen ausgewiesen", len(sc["pillars"]), 5)
+    check("Urteil in Worten", bool(sc["verdict"]), True)
+    check("Potenzial nach Ertrag sortiert",
+          [p["gain"] for p in sc["potential"]] ==
+          sorted([p["gain"] for p in sc["potential"]], reverse=True), True)
+    check("Jede Säule nennt ihren Grund",
+          all("why" in p or "value" in p for p in sc["pillars"]), True)
+    check("Score auch im Dashboard", "score" in client.get("/api/dashboard").json(), True)
+
+    # --- Garmin-Diagnose ----------------------------------------------------
+    dg = client.get("/api/garmin/diagnose").json()
+    check("Diagnose antwortet", len(dg["steps"]) > 0, True)
+    check("Zählt die Datenbank aus", "Aktivitäten" in dg["counts"], True)
+    check("Ohne Verknüpfung sagt der erste Schritt das",
+          dg["steps"][0]["ok"], False)
+    check("Import lässt sich zurücksetzen",
+          client.post("/api/garmin/backfill/reset").json()["running"], False)
+
     # --- Rezepte -----------------------------------------------------------
     r = client.get("/api/recipes/suggest").json()
     check("Rezepte vorgeschlagen", len(r["recipes"]), 3)
