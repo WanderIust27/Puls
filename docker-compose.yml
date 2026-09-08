@@ -1,0 +1,72 @@
+services:
+  puls:
+    build: .
+    container_name: puls-coach
+    restart: unless-stopped
+    ports:
+      # Host-Port über die .env änderbar (PULS_PORT), Standard 1337
+      - "${PULS_PORT:-1337}:8000"
+    environment:
+      - TZ=${TZ:-Europe/Berlin}
+      - OLLAMA_URL=http://ollama:11434
+      # Standardmodell: gutes Deutsch, ~4.7 GB RAM auf CPU. Kleinere Alternative
+      # in der App unter Mehr → KI-Modell wechselbar (auch qwen3:4b, gemma3:4b)
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - SYNC_INTERVAL_HOURS=${SYNC_INTERVAL_HOURS:-3}
+    volumes:
+      - puls-data:/data
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: puls-ollama
+    restart: unless-stopped
+    environment:
+      # RAM-Schutz: nur 1 Modell gleichzeitig, nach 30 min entladen
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=30m
+      - OLLAMA_NUM_PARALLEL=1
+    volumes:
+      - ollama-data:/root/.ollama
+    # Bewusst KEIN GPU-Block: läuft rein auf CPU (GPU bleibt für Hermes frei).
+    # Optional RAM hart begrenzen:
+    # mem_limit: 7g
+
+  # Bluetooth-Brücke zur Mi Scale.
+  # Der Container bringt seinen eigenen Bluetooth-Stack mit (dbus + bluetoothd),
+  # weil Unraid keinen hat — auf dem Server muss also nichts installiert werden.
+  # Deshalb wird /var/run/dbus bewusst NICHT vom Host gemountet.
+  # Wenn du keine Waage anbinden willst: diesen Block einfach löschen.
+  miscale:
+    build: ./miscale
+    container_name: puls-miscale
+    restart: unless-stopped
+    network_mode: host      # BLE braucht den Netzwerk-Stack des Hosts
+    privileged: true        # Zugriff auf den HCI-Socket des Adapters
+    # Alle persönlichen Werte stehen in der Datei .env daneben — die wird bei
+    # einem Update NICHT überschrieben. Einmal anlegen:  cp .env.example .env
+    environment:
+      - TZ=${TZ:-Europe/Berlin}
+      # Muss zum Port oben passen — beides steht in der .env
+      - PULS_URL=${PULS_URL:-http://localhost:1337}
+      - PULS_TOKEN=${PULS_TOKEN:-}
+      - SCALE_MAC=${SCALE_MAC:-}
+      - HEIGHT_CM=${HEIGHT_CM:-180}
+      - AGE=${AGE:-25}
+      - SEX=${SEX:-male}
+      - MIN_WEIGHT_KG=${MIN_WEIGHT_KG:-40}
+      - COOLDOWN_S=${COOLDOWN_S:-300}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+# Die Volumes werden bewusst als "external" geführt: Dann heißen sie exakt
+# puls-data und ollama-data — egal, wie der Stack heißt. Ohne dieses Flag würde
+# Compose den Stacknamen davorhängen und deine vorhandenen Daten ignorieren.
+# Einmalig vorher anlegen (schadet nicht, wenn sie schon existieren):
+#     docker volume create puls-data
+#     docker volume create ollama-data
+volumes:
+  puls-data:
+    external: true
+  ollama-data:
+    external: true
