@@ -111,6 +111,23 @@ echo
 c_info "Ollama starten …"
 docker rm -f puls-ollama >/dev/null 2>&1 || true
 docker pull ollama/ollama:latest >/dev/null 2>&1 || c_warn "Konnte Ollama-Image nicht aktualisieren, nutze vorhandenes."
+# Grafikkarte: standardmäßig aus, damit sie für andere Dienste frei bleibt.
+# OLLAMA_GPU in der .env schaltet sie zu — "all" für jede Karte, oder die
+# GPU-UUID aus `nvidia-smi -L`, wenn nur eine von mehreren gemeint ist.
+GPU_ARGS=""
+GPU_NOTE="nur CPU, GPU bleibt frei"
+if [ -n "${OLLAMA_GPU:-}" ]; then
+    if docker info 2>/dev/null | grep -qi "Runtimes:.*nvidia"; then
+        GPU_ARGS="--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=${OLLAMA_GPU} -e NVIDIA_DRIVER_CAPABILITIES=compute,utility"
+        GPU_NOTE="mit Grafikkarte (${OLLAMA_GPU})"
+    else
+        c_warn "OLLAMA_GPU ist gesetzt, aber Docker kennt keine nvidia-Runtime."
+        c_warn "Auf Unraid: Plugin 'Nvidia Driver' über die Community Apps installieren"
+        c_warn "und den Server einmal neu starten. Bis dahin läuft Ollama auf der CPU."
+    fi
+fi
+
+# shellcheck disable=SC2086  # GPU_ARGS muss in einzelne Argumente zerfallen
 docker run -d \
     --name puls-ollama \
     --network "$NET" \
@@ -118,9 +135,10 @@ docker run -d \
     -e OLLAMA_MAX_LOADED_MODELS=1 \
     -e OLLAMA_KEEP_ALIVE=30m \
     -e OLLAMA_NUM_PARALLEL=1 \
+    $GPU_ARGS \
     -v ollama-data:/root/.ollama \
     ollama/ollama:latest >/dev/null
-c_ok "puls-ollama läuft (nur CPU, GPU bleibt frei)"
+c_ok "puls-ollama läuft ($GPU_NOTE)"
 
 # ----------------------------------------------------------------------- App
 echo

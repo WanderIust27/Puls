@@ -1,0 +1,1224 @@
+/* PULS Frontend — Vanilla JS, keine Abhängigkeiten. */
+"use strict";
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => [...document.querySelectorAll(sel)];
+
+const SPORT_KIND = { running: "Lauf", strength: "Gym", cardio: "Cardio",
+  mobility: "Yoga", other: "Sonst", hiit: "HIIT" };
+const SPORT_CLASS = { running: "run", strength: "gym", cardio: "run",
+  mobility: "yoga", other: "", hiit: "gym" };
+function kindTag(sport) {
+  return `<div class="kind ${SPORT_CLASS[sport] || ""}">${SPORT_KIND[sport] || "–"}</div>`;
+}
+const STEP_LABEL = { warmup: "Aufwärmen", cooldown: "Auslaufen", work: "Belastung", recovery: "Erholung", rest: "Pause" };
+const SPORT_LABEL = { running: "Laufen", strength: "Kraft", cardio: "Cardio", mobility: "Mobilität", other: "Sonstiges", hiit: "HIIT" };
+const GOALS = [
+  ["muscle", "Muskelaufbau"], ["endurance", "Ausdauer"],
+  ["general", "Fitness & Routine"], ["weight_gain", "Gewicht zunehmen"],
+  ["weight_loss", "Gewicht abnehmen"],
+];
+
+/* ------------------------------------------------------------------ Utils */
+
+async function api(path, opts = {}) {
+  const res = await fetch("/api" + path, {
+    headers: opts.body instanceof FormData ? {} : { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).detail || msg; } catch (e) { /* egal */ }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function toast(msg, err = false) {
+  const el = document.createElement("div");
+  el.className = "toast" + (err ? " err" : "");
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), err ? 5200 : 2800);
+}
+
+async function withSpinner(btn, fn) {
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Moment …';
+  try { return await fn(); }
+  catch (e) { toast(e.message || String(e), true); }
+  finally { btn.disabled = false; btn.innerHTML = old; }
+}
+
+function fmtDur(s) {
+  if (!s) return "–";
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return h ? `${h}:${String(m).padStart(2, "0")} h` : `${m} min`;
+}
+function fmtDate(iso) {
+  if (!iso) return "–";
+  const d = new Date(iso);
+  return d.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "short" });
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+/* ------------------------------------------------------------------ Charts
+   Handgebaute SVG-Charts: eine Serie pro Chart, Tooltip beim Hover,
+   dezente Achsen, Tabellenansicht für Screenreader/Nachlesen. */
+
+const tooltip = $("#tooltip");
+function showTip(x, y, html) {
+  tooltip.innerHTML = html;
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+  tooltip.style.display = "block";
+}
+function hideTip() { tooltip.style.display = "none"; }
+
+function barChart(container, points, { color = "var(--accent)", unit = "" } = {}) {
+  const W = 720, H = 170, padL = 34, padB = 22, padT = 8;
+  const max = Math.max(1, ...points.map((p) => p.value));
+  const iw = (W - padL - 8) / points.length;
+  const bw = Math.max(2, Math.min(9, iw - 3));
+  let bars = "", labels = "";
+  points.forEach((p, i) => {
+    const h = Math.round(((H - padB - padT) * p.value) / max);
+    const x = padL + i * iw + (iw - bw) / 2;
+    const y = H - padB - h;
+    bars += `<rect data-i="${i}" x="${x.toFixed(1)}" y="${h ? y : H - padB - 1}" width="${bw.toFixed(1)}"
+      height="${Math.max(h, p.value ? 2 : 1)}" rx="1" fill="${p.value ? color : "var(--border)"}"></rect>`;
+    if (p.label) labels += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" font-size="10"
+      fill="var(--ink-3)" text-anchor="middle">${p.label}</text>`;
+  });
+  const grid = [0.5, 1].map((f) => {
+    const y = H - padB - (H - padB - padT) * f;
+    return `<line x1="${padL}" y1="${y}" x2="${W - 4}" y2="${y}" stroke="var(--border)" stroke-width="1"></line>
+      <text x="2" y="${y + 3}" font-size="10" fill="var(--ink-3)">${Math.round(max * f)}</text>`;
+  }).join("");
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img">${grid}${bars}${labels}</svg>`;
+  container.querySelectorAll("rect").forEach((r) => {
+    r.addEventListener("pointerenter", (ev) => {
+      const p = points[+r.dataset.i];
+      const rect = r.getBoundingClientRect();
+      showTip(rect.left + rect.width / 2, rect.top,
+        `<span class="t-label">${esc(p.tip || p.label || "")}</span><br><b>${p.value}${unit}</b>`);
+    });
+    r.addEventListener("pointerleave", hideTip);
+  });
+}
+
+function lineChart(container, points, { color = "var(--teal)", unit = "" } = {}) {
+  if (!points.length) { container.innerHTML = '<p class="muted">Noch keine Daten.</p>'; return; }
+  const W = 720, H = 170, padL = 40, padB = 20, padT = 10, padR = 10;
+  const vals = points.map((p) => p.value);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if (max - min < 1) { min -= 0.5; max += 0.5; }
+  const span = max - min;
+  min -= span * 0.1; max += span * 0.1;
+  const X = (i) => padL + (i * (W - padL - padR)) / Math.max(1, points.length - 1);
+  const Y = (v) => H - padB - ((v - min) * (H - padB - padT)) / (max - min);
+  const path = points.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(p.value).toFixed(1)}`).join(" ");
+  const area = `${path} L${X(points.length - 1).toFixed(1)},${H - padB} L${padL},${H - padB} Z`;
+  const grid = [min + (max - min) * 0.15, (min + max) / 2, max - (max - min) * 0.15].map((v) =>
+    `<line x1="${padL}" y1="${Y(v)}" x2="${W - padR}" y2="${Y(v)}" stroke="var(--border)"></line>
+     <text x="2" y="${Y(v) + 3}" font-size="10" fill="var(--ink-3)">${v.toFixed(1)}</text>`).join("");
+  const first = points[0], last = points[points.length - 1];
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img">
+    ${grid}
+    <path d="${area}" fill="${color}" opacity="0.07"></path>
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"></path>
+    <circle cx="${X(points.length - 1)}" cy="${Y(last.value)}" r="3" fill="${color}"></circle>
+    <text x="${W - padR}" y="${Math.max(12, Y(last.value) - 8)}" font-size="11" font-weight="700"
+      fill="var(--ink)" text-anchor="end">${last.value}${unit}</text>
+    <text x="${padL}" y="${H - 4}" font-size="10" fill="var(--ink-3)">${esc(first.label || "")}</text>
+    <text x="${W - padR}" y="${H - 4}" font-size="10" fill="var(--ink-3)" text-anchor="end">${esc(last.label || "")}</text>
+    <rect id="hover" x="${padL}" y="0" width="${W - padL - padR}" height="${H}" fill="transparent"></rect>
+  </svg>`;
+  const svg = container.querySelector("svg");
+  const hover = svg.querySelector("#hover");
+  hover.addEventListener("pointermove", (ev) => {
+    const box = svg.getBoundingClientRect();
+    const relX = ((ev.clientX - box.left) / box.width) * W;
+    const i = Math.round(((relX - padL) / (W - padL - padR)) * (points.length - 1));
+    const p = points[Math.max(0, Math.min(points.length - 1, i))];
+    if (!p) return;
+    showTip(ev.clientX, box.top + (Y(p.value) / H) * box.height,
+      `<span class="t-label">${esc(p.tip || p.label || "")}</span><br><b>${p.value}${unit}</b>`);
+  });
+  hover.addEventListener("pointerleave", hideTip);
+}
+
+function ringChart(svg, count, target) {
+  const r = 42, c = 2 * Math.PI * r;
+  const frac = Math.min(1, target ? count / target : 0);
+  svg.innerHTML = `
+    <circle cx="48" cy="48" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="3"></circle>
+    <circle cx="48" cy="48" r="${r}" fill="none" stroke="var(--accent)" stroke-width="3"
+      stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - frac)}"
+      style="transition: stroke-dashoffset .6s ease"></circle>`;
+}
+
+/* --------------------------------------------------------------- Dashboard */
+
+
+function renderComposition(c) {
+  const box = $("#compRow");
+  if (!box) return;
+  if (!c || !c.latest) {
+    box.innerHTML = '<div class="muted" style="grid-column:1/-1">Noch keine Messung.</div>';
+    return;
+  }
+  const l = c.latest, d = c.delta || {};
+  const cell = (value, unit, label, delta, betterUp) => {
+    if (value === null || value === undefined) return "";
+    let dTxt = "", cls = "";
+    if (delta !== null && delta !== undefined && Math.abs(delta) >= 0.05) {
+      const up = delta > 0;
+      cls = (up === betterUp) ? "up" : "down";
+      dTxt = `${up ? "+" : ""}${delta.toFixed(1)} ${unit} in 30 Tagen`;
+    }
+    return `<div class="comp">
+      <div class="v">${value}<small> ${unit}</small></div>
+      <div class="l">${label}</div>
+      ${dTxt ? `<div class="d ${cls}">${dTxt}</div>` : ""}
+    </div>`;
+  };
+  const cells = [
+    cell(l.weight_kg, "kg", "Gewicht", d.weight_kg, true),
+    cell(l.body_fat_pct, "%", "Körperfett", d.body_fat_pct, false),
+    cell(l.muscle_kg, "kg", "Muskelmasse", d.muscle_kg, true),
+    cell(l.water_pct, "%", "Wasser", d.water_pct, true),
+  ].filter(Boolean);
+  box.innerHTML = cells.join("");
+  if (!l.body_fat_pct) {
+    box.innerHTML += `<div class="muted" style="grid-column:1/-1;margin-top:4px">
+      Nur das Gewicht angekommen. Körperfett misst die Waage lediglich bei
+      barfüßigem Kontakt — Socken aus und ein paar Sekunden ruhig stehen bleiben.</div>`;
+  }
+}
+
+function renderGoals(gp) {
+  if (!gp) return;
+  const run = gp.run || {};
+  if (run.predicted_text) {
+    $("#goalRunNow").textContent = run.predicted_text;
+    const pct = Math.max(0, Math.min(100, run.progress_pct || 0));
+    const bar = $("#goalRunBar");
+    bar.style.width = pct + "%";
+    bar.classList.toggle("done", !!run.reached);
+    $("#goalRunHint").textContent = run.verdict || "";
+  } else {
+    $("#goalRunNow").textContent = "\u2013";
+    $("#goalRunHint").innerHTML = 'Noch nicht kalibriert — <a href="#" data-goto="plan" style="color:var(--accent)">Benchmark-Lauf machen</a>.';
+  }
+  const pu = gp.pullup || {};
+  if (pu.best) {
+    $("#goalPullNow").textContent = `${pu.best} / ${pu.goal}`;
+    const pct = Math.max(0, Math.min(100, (pu.best / pu.goal) * 100));
+    const bar = $("#goalPullBar");
+    bar.style.width = pct + "%";
+    bar.classList.toggle("done", pu.best >= pu.goal);
+    $("#goalPullHint").textContent = pu.hint || "";
+  } else {
+    $("#goalPullNow").textContent = `? / ${pu.goal || 10}`;
+    $("#goalPullHint").innerHTML = 'Trag dein Maximum ein \u2014 <a href="#" data-goto="plan" style="color:var(--accent)">unter Kalibrierung</a>.';
+  }
+}
+
+
+
+async function loadDashboard() {
+  const d = await api("/dashboard");
+
+  ringChart($("#weekRing"), d.week.workouts, d.week.target);
+  $("#ringCount").textContent = d.week.workouts;
+  $("#ringTarget").textContent = d.week.target;
+  $("#statStreak").textContent = d.streak_weeks;
+  $("#statDuration").innerHTML = fmtDur(d.week.duration_s);
+  $("#statAcwr").textContent = d.acwr ?? "–";
+  $("#statAcwr").style.color = d.acwr > 1.5 ? "var(--bad)" : d.acwr >= 0.8 ? "var(--good)" : "var(--ink)";
+  $("#statReadiness").textContent = d.latest_daily?.training_readiness ?? "–";
+
+  if (d.coach_message) {
+    $("#coachMessage").innerHTML = esc(d.coach_message.content) +
+      `<div class="when">${fmtDate(d.coach_message.created_at)}</div>`;
+  }
+  if (d.research_tip) {
+    $("#researchTip").innerHTML = `<b>${esc(d.research_tip.topic || "")}</b><br>${esc(d.research_tip.content)}`;
+  }
+
+  barChart($("#loadChart"), d.load_series.map((p, i) => ({
+    value: Math.round(p.load), tip: `${p.day} · ${p.count} Training(s)`,
+    label: i % 7 === 0 ? p.day.slice(8) + "." + p.day.slice(5, 7) : "",
+  })));
+
+  renderComposition(d.body_composition);
+
+  const ws = d.weight_series.map((p) => ({ value: p.weight_kg, label: p.day.slice(5), tip: p.day }));
+  lineChart($("#weightChart"), ws, { unit: " kg" });
+  if (ws.length >= 2) {
+    const diff = (ws[ws.length - 1].value - ws[0].value).toFixed(1);
+    $("#weightDelta").textContent =
+      `${diff > 0 ? "+" : ""}${diff} kg seit ${fmtDate(d.weight_series[0].day)}` +
+      (d.goals.includes("weight_gain") && diff > 0 ? " — geht in die richtige Richtung" : "");
+  }
+
+  // Heute anstehende Einheiten
+  const today = new Date().toISOString().slice(0, 10);
+  const todays = d.upcoming_workouts.filter((w) => w.planned_date === today);
+  $("#todayList").innerHTML = todays.length ? todays.map((w) => `
+    <div class="list-item">
+      ${kindTag(w.sport)}
+      <div class="grow"><div class="title">${esc(w.name)}</div>
+        <div class="meta">${esc(w.time_of_day || "")}${w.status === "pushed" ? " · auf der Uhr" : ""}</div></div>
+      <button class="btn small ghost" data-done-today="${w.id}">Erledigt</button>
+    </div>`).join("")
+    : 'Nichts geplant \u2014 <a href="#" data-goto="plan" style="color:var(--accent)">Woche planen</a>.';
+  $$("[data-done-today]").forEach((b) => b.addEventListener("click", async () => {
+    await api(`/workouts/${b.dataset.doneToday}`, { method: "PATCH",
+      body: JSON.stringify({ status: "done" }) });
+    toast("Erledigt"); loadDashboard();
+  }));
+
+  renderGoals(d.goal_progress);
+
+  $("#upcomingList").innerHTML = d.upcoming_workouts.length
+    ? d.upcoming_workouts.map((w) => `
+      <div class="list-item">
+        ${kindTag(w.sport)}
+        <div class="grow"><div class="title">${esc(w.name)}</div>
+          <div class="meta">${w.planned_date ? fmtDate(w.planned_date) : "kein Datum"} · ${SPORT_LABEL[w.sport] || w.sport}</div></div>
+        <span class="badge ${w.status}">${w.status === "pushed" ? "auf der Uhr" : "geplant"}</span>
+      </div>`).join("")
+    : 'Keine geplant — lass dir eins <a href="#" data-goto="training" style="color:var(--accent)">vom Coach bauen</a>.';
+
+  const badge = $("#syncBadge");
+  if (!d.garmin_linked) { badge.textContent = "Garmin nicht verbunden"; badge.className = ""; }
+  else if (d.last_sync?.ok) { badge.textContent = "Sync " + new Date(d.last_sync.ts.replace(" ", "T") + "Z").toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); badge.className = "ok"; }
+  else { badge.textContent = "Sync-Fehler"; badge.className = "err"; }
+}
+
+$("#btnDaily").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/coach/daily", { method: "POST" });
+  $("#coachMessage").textContent = r.message;
+}));
+$("#btnRest").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/coach/rest", { method: "POST" });
+  $("#coachMessage").textContent = r.message;
+}));
+$("#btnResearch").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/coach/research", { method: "POST", body: "{}" });
+  $("#researchTip").textContent = r.tip;
+}));
+$("#syncBadge").addEventListener("click", async () => {
+  try { toast("Sync läuft …"); const r = await api("/garmin/sync", { method: "POST" }); toast(r.ok ? "Sync fertig: " + r.detail : r.detail, !r.ok); loadDashboard(); }
+  catch (e) { toast(e.message, true); }
+});
+
+/* ------------------------------------------------------------------- Plan */
+
+const TOD_ORDER = { "morgens": 0, "abends": 1, "vor dem Schlafen": 2 };
+
+function stepsToHtml(steps, depth = 0) {
+  return (steps || []).map((s) => {
+    if (s.type === "repeat") {
+      return `<li>${s.count}× :<ul class="steps">${stepsToHtml(s.steps, depth + 1)}</ul></li>`;
+    }
+    const bits = [];
+    if (s.reps) bits.push(s.reps + " Wdh.");
+    if (s.duration_s) bits.push(Math.round(s.duration_s / 60 * 10) / 10 + " min");
+    if (s.distance_m) bits.push((s.distance_m / 1000).toFixed(1) + " km");
+    if (s.weight_kg) bits.push(s.weight_kg + " kg");
+    if (s.pace_min_km) bits.push("Pace " + s.pace_min_km.join("–"));
+    if (s.hr_zone) bits.push("HF-Zone " + s.hr_zone);
+    return `<li>${esc(s.name || STEP_LABEL[s.type] || s.type)} — ${bits.join(", ") || "frei"}` +
+      `${s.notes ? ` <span class="muted">(${esc(s.notes)})</span>` : ""}</li>`;
+  }).join("");
+}
+
+function renderWeekGrid(workouts) {
+  const today = new Date().toISOString().slice(0, 10);
+  const byDay = {};
+  workouts.forEach((w) => {
+    const d = w.planned_date || "ohne Datum";
+    (byDay[d] = byDay[d] || []).push(w);
+  });
+  const days = Object.keys(byDay).sort();
+  if (!days.length) return '<p class="muted">Noch nichts geplant — tipp auf „Woche planen".</p>';
+  return '<div class="week-grid">' + days.map((d) => {
+    const items = byDay[d].sort((a, b) =>
+      (TOD_ORDER[a.time_of_day] ?? 9) - (TOD_ORDER[b.time_of_day] ?? 9));
+    const date = d === "ohne Datum" ? null : new Date(d);
+    const wd = date ? date.toLocaleDateString("de-DE", { weekday: "short" }) : "–";
+    const dm = date ? date.toLocaleDateString("de-DE", { day: "numeric", month: "numeric" }) : "";
+    return `<div class="week-day ${d === today ? "today" : ""}">
+      <div class="wd">${wd}<small>${dm}</small></div>
+      <div class="week-items">${items.map((w) => `
+        <div class="week-item">
+          <span class="pill">${SPORT_KIND[w.sport] || ""}</span>
+          <span class="tod">${esc(w.time_of_day || "")}</span>
+          <span class="grow">${esc(w.name)}</span>
+          ${w.status === "pushed" ? '<span class="pill">Uhr</span>' : ""}
+        </div>`).join("")}</div>
+    </div>`;
+  }).join("") + "</div>";
+}
+
+async function loadPoses() {
+  let d;
+  try { d = await api("/yoga/poses"); } catch (e) { return; }
+  $("#poseList").innerHTML = d.poses.map((p) => `
+    <details class="pose">
+      <summary><b style="color:var(--ink)">${esc(p.name)}</b>
+        ${p.sanskrit ? `<span class="muted"> · ${esc(p.sanskrit)}</span>` : ""}
+        <span class="muted"> · ${Math.round(p.duration_s / 60 * 10) / 10} min</span></summary>
+      <div class="pose-body">
+        ${p.focus ? `<div class="pose-focus">Wirkt auf: ${esc(p.focus)}</div>` : ""}
+        <ol class="pose-steps">${(p.how || []).map((h) => `<li>${esc(h)}</li>`).join("")}</ol>
+        ${p.cue ? `<div class="pose-cue">Auf der Uhr: „${esc(p.cue)}"</div>` : ""}
+      </div>
+    </details>`).join("");
+}
+
+async function loadPlan() {
+  const [overview, workouts, bench] = await Promise.all([
+    api("/plan/overview"), api("/workouts?limit=80"), api("/benchmark/status"),
+  ]);
+
+  const open = workouts.filter((w) => ["planned", "pushed"].includes(w.status));
+  const wd = (arr) => (arr && arr.length ? arr.join(", ") : "keine");
+  $("#weekStructure").innerHTML = `
+    <div><b>Laufen</b> ${wd(overview.run_days)} · ${overview.run_minutes} min morgens</div>
+    <div><b>Gym</b> ${wd(overview.gym_days)} · ${overview.gym_minutes} min abends</div>
+    ${overview.evening_mobility ? "<div><b>Yoga</b> jeden Abend vor dem Schlafen</div>" : ""}
+    <div style="margin-top:12px">Ziel: ${esc(overview.run_goal)}
+      ${overview.calibrated ? `· locker ${overview.paces.easy}/km · Tempo ${overview.paces.tempo}/km` : "· noch nicht kalibriert"}</div>
+    <div>Klimmzüge: ${overview.pullup_best ? `${overview.pullup_best} → Ziel ${overview.pullup_goal}` : `Ziel ${overview.pullup_goal}, Ausgangswert fehlt`}</div>
+    <div style="margin-top:12px">${renderWeekGrid(open)}</div>`;
+
+  const b = bench;
+  const fmtLast = (x) => x.last ? `zuletzt vor ${x.days_ago} Tagen` : "noch nie";
+  $("#benchmarkStatus").innerHTML = `
+    <div>Lauf-Benchmark: ${fmtLast(b.run)}${b.run.due ? ' <span style="color:var(--warn)">— fällig</span>' : ""}
+      ${b.run.cooper_distance_m ? `<br><span class="muted">${b.run.cooper_distance_m} m im Cooper-Test · locker ${b.run.paces.easy}/km</span>` : ""}</div>
+    <div style="margin-top:6px">Kraft-Benchmark: ${fmtLast(b.strength)}${b.strength.due ? ' <span style="color:var(--warn)">— fällig</span>' : ""}</div>
+    ${b.pullup_best ? `<div style="margin-top:6px">Klimmzug-Maximum: ${b.pullup_best}</div>` : ""}`;
+
+  renderPlanned(open);
+  loadPoses();
+}
+
+function renderPlanned(open) {
+  $("#plannedList").innerHTML = open.length ? open.map((w) => `
+    <div class="list-item" style="align-items:flex-start">
+      ${kindTag(w.sport)}
+      <div class="grow">
+        <div class="title">${esc(w.name)}
+          ${w.status === "pushed" ? '<span class="badge pushed">auf der Uhr</span>' : ""}</div>
+        <div class="meta">${w.planned_date ? fmtDate(w.planned_date) : "kein Datum"}
+          ${w.time_of_day ? " · " + esc(w.time_of_day) : ""} · ${SPORT_LABEL[w.sport] || w.sport}</div>
+        ${w.description ? `<div class="muted">${esc(w.description)}</div>` : ""}
+        <details><summary class="muted" style="cursor:pointer;font-size:12px;margin-top:4px">Ablauf anzeigen</summary>
+          <ul class="steps">${stepsToHtml(w.steps)}</ul></details>
+        <div class="ex-actions">
+          ${w.status !== "pushed" ? `<button class="btn small teal" data-push="${w.id}">An Garmin</button>` : ""}
+          <a class="btn small ghost" href="/api/workouts/${w.id}/fit" download>FIT</a>
+          <button class="btn small ghost" data-done="${w.id}">Erledigt</button>
+          <button class="btn small ghost" data-del="${w.id}">🗑</button>
+        </div>
+      </div>
+    </div>`).join("") : "Nichts geplant.";
+
+  $$("#plannedList [data-push]").forEach((b) => b.addEventListener("click", (e) =>
+    withSpinner(e.currentTarget, async () => {
+      await api(`/workouts/${b.dataset.push}/push`, {
+        method: "POST", body: JSON.stringify({}) });
+      toast("Ist auf dem Weg zu deiner Fenix");
+      loadPlan();
+    })));
+  $$("#plannedList [data-done]").forEach((b) => b.addEventListener("click", async () => {
+    await api(`/workouts/${b.dataset.done}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) });
+    toast("Erledigt"); loadPlan();
+  }));
+  $$("#plannedList [data-del]").forEach((b) => b.addEventListener("click", async () => {
+    await api(`/workouts/${b.dataset.del}`, { method: "DELETE" }); loadPlan();
+  }));
+}
+
+$("#btnPlanWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/plan/week", { method: "POST", body: JSON.stringify({ replace: true }) });
+  toast(`${r.count} Einheiten geplant`); loadPlan();
+}));
+
+$("#btnPushAll").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const workouts = await api("/workouts?limit=80");
+  const todo = workouts.filter((w) => w.status === "planned");
+  if (!todo.length) return toast("Nichts zu senden.");
+  let ok = 0, failed = 0;
+  for (const w of todo) {
+    try { await api(`/workouts/${w.id}/push`, { method: "POST", body: JSON.stringify({}) }); ok++; }
+    catch (err) { failed++; }
+  }
+  toast(`${ok} an Garmin gesendet${failed ? `, ${failed} fehlgeschlagen` : ""}`, failed > 0);
+  loadPlan();
+}));
+
+$$("[data-run]").forEach((b) => b.addEventListener("click", (e) =>
+  withSpinner(e.currentTarget, async () => {
+    const r = await api("/plan/run", { method: "POST",
+      body: JSON.stringify({ kind: b.dataset.run }) });
+    toast(`„${r.name}" erstellt`); loadPlan();
+  })));
+
+$("#btnGymSession").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/plan/gym-session", { method: "POST" });
+  toast(`„${r.name}" erstellt`); loadPlan();
+}));
+
+$("#btnYoga").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/plan/evening-yoga", { method: "POST" });
+  toast(`„${r.name}" erstellt`); loadPlan();
+}));
+
+/* -------------------------------------------------------------- Benchmark */
+
+$("#btnBenchRun").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/benchmark/run/create", { method: "POST" });
+  toast("Benchmark-Lauf erstellt — schick ihn an die Uhr");
+  loadPlan();
+}));
+
+$("#btnBenchStrength").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/benchmark/strength/create", { method: "POST" });
+  toast("Kraft-Test erstellt — schick ihn an die Uhr");
+  loadPlan();
+}));
+
+$("#btnCooperSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const m = +$("#cooperInput").value;
+  if (!m || m < 500) return toast("Bitte die Distanz in Metern eintragen.", true);
+  const r = await api("/benchmark/cooper", { method: "POST", body: JSON.stringify({ distance_m: m }) });
+  const g = r.goal;
+  const box = $("#benchResult");
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="big-num">VO₂max ≈ ${r.vo2max}</div>
+    <div>Prognose ${g.distance_km} km: <b>${r.predicted_10k_text}</b>
+      (Ziel ${g.time_min} min, ${g.required_pace}/km)</div>
+    <div class="muted" style="margin-top:6px">${esc(g.verdict)}</div>
+    <table>
+      <tr><td>Locker / Grundlage</td><td>${r.paces.easy.text} /km</td></tr>
+      <tr><td>Langer Lauf</td><td>${r.paces.long.text} /km</td></tr>
+      <tr><td>Tempolauf (Schwelle)</td><td>${r.paces.tempo.text} /km</td></tr>
+      <tr><td>Intervalle</td><td>${r.paces.interval.text} /km</td></tr>
+    </table>
+    <div class="muted" style="margin-top:8px">Alle künftigen Laufeinheiten bekommen diese Tempi als Vorgabe auf die Uhr.</div>`;
+  toast("Laufprofil kalibriert");
+  loadPlan();
+}));
+
+$("#btnPullupSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const reps = +$("#pullupInput").value;
+  if (reps < 0 || $("#pullupInput").value === "") return toast("Bitte Anzahl eintragen.", true);
+  const r = await api("/benchmark/pullup", { method: "POST", body: JSON.stringify({ reps }) });
+  const box = $("#benchResult");
+  box.hidden = false;
+  box.innerHTML = `<div class="big-num">${r.max_reps} Klimmzüge</div>
+    <div>${esc(r.focus)}</div>`;
+  toast("Klimmzug-Plan angepasst");
+  loadPlan();
+}));
+
+/* --------------------------------------------------------------- Übungen */
+
+let exerciseData = { exercises: [], slot_labels: {}, muscle_labels: {}, equipment_labels: {} };
+let editingId = null;
+let setExerciseId = null;
+let setFeeling = null;
+
+function exTargetText(e) {
+  if (e.mode === "time") return `${e.target_duration_s || 30}<small> s</small>`;
+  const w = e.weight_kg ? `${e.weight_kg}<small> kg</small> × ` : "";
+  return `${w}${e.target_reps}<small> Wdh.</small>`;
+}
+
+async function loadExercises() {
+  exerciseData = await api("/exercises");
+  renderExercises();
+  const acts = await api("/activities?limit=15");
+  $("#activityList").innerHTML = acts.length ? acts.map((a) => `
+    <div class="list-item" ${a.sport === "running" ? `data-run-id="${a.id}" style="cursor:pointer"` : ""}>
+      ${kindTag(a.sport)}
+      <div class="grow">
+        <div class="title">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
+        <div class="meta">${fmtDate(a.start_time)} · ${fmtDur(a.duration_s)}
+          ${a.distance_m ? " · " + (a.distance_m / 1000).toFixed(1) + " km" : ""}
+          ${a.avg_hr ? " · Ø " + Math.round(a.avg_hr) + " bpm" : ""}
+          · <span class="badge">${a.source === "garmin" ? "Garmin" : a.source === "fit" ? "FIT" : "manuell"}</span></div>
+      </div>
+      ${a.sport === "running" ? '<span class="muted">Analyse ›</span>' : ""}
+    </div>`).join("") : "Noch keine.";
+
+  $$("[data-run-id]").forEach((el) => el.addEventListener("click", () =>
+    openRunAnalysis(+el.dataset.runId)));
+}
+
+function renderExercises() {
+  const filter = $("#slotFilter").value;
+  const slots = ["cardio", "kettlebell", "pullup", "main", "stretch"];
+  const list = exerciseData.exercises;
+  let html = "";
+  for (const slot of slots) {
+    if (filter && filter !== slot) continue;
+    const items = list.filter((e) => (e.slot || "main") === slot);
+    if (!items.length) continue;
+    html += `<div class="slot-head">${esc(exerciseData.slot_labels[slot] || slot)}</div>`;
+    html += items.map((e) => `
+      <div class="ex-card ${e.active ? "" : "inactive"}">
+        <div class="ex-top">
+          <div class="grow">
+            <div class="name">${esc(e.name)}${e.active ? "" : " <span class='badge'>aus</span>"}</div>
+            <div class="ex-meta">
+              <span>${esc(exerciseData.muscle_labels[e.muscle_group] || e.muscle_group)}</span>
+              <span>${esc(exerciseData.equipment_labels[e.equipment] || e.equipment)}</span>
+              <span>${e.sets}×</span>
+              ${e.mode === "reps" ? `<span>Spanne ${e.rep_min}–${e.rep_max}</span>` : ""}
+              ${e.machine_setting ? `<span>${esc(e.machine_setting)}</span>` : ""}
+              ${e.days_since !== null && e.days_since !== undefined
+                ? `<span>vor ${e.days_since} T.</span>` : "<span>noch nie</span>"}
+            </div>
+          </div>
+          <div class="ex-target">${exTargetText(e)}</div>
+        </div>
+        <div class="ex-actions">
+          <button class="btn small ghost" data-ex-edit="${e.id}">Bearbeiten</button>
+          <button class="btn small ghost" data-ex-set="${e.id}">Satz eintragen</button>
+          <button class="btn small ghost" data-ex-hist="${e.id}">Verlauf</button>
+        </div>
+        <div class="ex-prog" id="exProg${e.id}"></div>
+      </div>`).join("");
+  }
+  $("#exerciseList").innerHTML = html || '<p class="muted">Keine Übungen in diesem Block.</p>';
+
+  $$("[data-ex-edit]").forEach((b) => b.addEventListener("click", () =>
+    openExerciseDialog(+b.dataset.exEdit)));
+  $$("[data-ex-set]").forEach((b) => b.addEventListener("click", () =>
+    openSetDialog(+b.dataset.exSet)));
+  $$("[data-ex-hist]").forEach((b) => b.addEventListener("click", async () => {
+    const id = +b.dataset.exHist;
+    const target = $("#exProg" + id);
+    if (target.dataset.open === "1") { target.innerHTML = ""; target.dataset.open = "0"; return; }
+    const h = await api(`/exercises/${id}/history`);
+    const prog = h.progression.slice(0, 4).map((p) =>
+      `<div>${fmtDate(p.ts)}: ${esc(p.reason || p.action)}</div>`).join("");
+    const sets = h.sets.slice(0, 8).map((s) =>
+      `<div>${fmtDate(s.day)} — Satz ${s.set_index}: ${s.reps ? s.reps + " Wdh." : ""}` +
+      `${s.weight_kg ? " @ " + s.weight_kg + " kg" : ""}${s.duration_s ? Math.round(s.duration_s) + " s" : ""}` +
+      ` <span class="muted">(${s.source})</span></div>`).join("");
+    target.innerHTML = (prog || sets)
+      ? `${prog}<div class="muted" style="margin-top:6px">${sets || "Noch keine Sätze."}</div>`
+      : '<span class="muted">Noch nichts aufgezeichnet.</span>';
+    target.dataset.open = "1";
+  }));
+}
+
+$("#slotFilter").addEventListener("change", renderExercises);
+
+function openExerciseDialog(id) {
+  editingId = id;
+  const e = id ? exerciseData.exercises.find((x) => x.id === id) : null;
+  $("#exDialogTitle").textContent = e ? e.name : "Neue Übung";
+  $("#exName").value = e?.name || "";
+  $("#exMuscle").value = e?.muscle_group || "legs";
+  $("#exEquipment").value = e?.equipment || "machine";
+  $("#exSlot").value = e?.slot || "main";
+  $("#exMode").value = e?.mode || "reps";
+  $("#exWeight").value = e?.weight_kg ?? "";
+  $("#exIncrement").value = e?.weight_increment ?? "";
+  $("#exSets").value = e?.sets ?? 3;
+  $("#exRepMin").value = e?.rep_min ?? 12;
+  $("#exRepMax").value = e?.rep_max ?? 15;
+  $("#exRest").value = e?.rest_s ?? 90;
+  $("#exDuration").value = e?.target_duration_s ?? 30;
+  $("#exSetting").value = e?.machine_setting || "";
+  $("#exNotes").value = e?.notes || "";
+  $("#exDelete").hidden = !id;
+  $("#exTimeRow").hidden = $("#exMode").value !== "time";
+  $("#exDialog").hidden = false;
+}
+
+$("#exMode").addEventListener("change", () => {
+  $("#exTimeRow").hidden = $("#exMode").value !== "time";
+});
+$("#exCancel").addEventListener("click", () => { $("#exDialog").hidden = true; });
+$("#exDialog").addEventListener("click", (e) => {
+  if (e.target.id === "exDialog") $("#exDialog").hidden = true;
+});
+
+$("#exSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const body = {
+    name: $("#exName").value.trim(),
+    muscle_group: $("#exMuscle").value,
+    equipment: $("#exEquipment").value,
+    slot: $("#exSlot").value,
+    mode: $("#exMode").value,
+    weight_kg: $("#exWeight").value === "" ? null : +$("#exWeight").value,
+    weight_increment: $("#exIncrement").value === "" ? null : +$("#exIncrement").value,
+    sets: +$("#exSets").value || 3,
+    rep_min: +$("#exRepMin").value || 12,
+    rep_max: +$("#exRepMax").value || 15,
+    rest_s: +$("#exRest").value || 90,
+    target_duration_s: +$("#exDuration").value || null,
+    machine_setting: $("#exSetting").value || null,
+    notes: $("#exNotes").value || null,
+  };
+  if (!body.name) return toast("Name fehlt.", true);
+  Object.keys(body).forEach((k) => body[k] === null && delete body[k]);
+  if (editingId) await api(`/exercises/${editingId}`, { method: "PATCH", body: JSON.stringify(body) });
+  else await api("/exercises", { method: "POST", body: JSON.stringify(body) });
+  $("#exDialog").hidden = true;
+  toast("Gespeichert");
+  loadExercises();
+}));
+
+$("#exDelete").addEventListener("click", async () => {
+  if (!editingId || !confirm("Übung wirklich löschen? Die aufgezeichneten Sätze gehen mit.")) return;
+  await api(`/exercises/${editingId}`, { method: "DELETE" });
+  $("#exDialog").hidden = true;
+  toast("Gelöscht"); loadExercises();
+});
+
+$("#btnNewExercise").addEventListener("click", () => openExerciseDialog(null));
+
+function openSetDialog(id) {
+  setExerciseId = id;
+  setFeeling = null;
+  const e = exerciseData.exercises.find((x) => x.id === id);
+  $("#setDialogTitle").textContent = e ? e.name : "Satz eintragen";
+  $("#setReps").value = e?.target_reps ?? "";
+  $("#setWeight").value = e?.weight_kg ?? "";
+  $("#setIndex").value = 1;
+  $$("#feelingRow [data-feeling]").forEach((b) => b.classList.remove("on"));
+  $("#setDialog").hidden = false;
+}
+
+$$("#feelingRow [data-feeling]").forEach((b) => b.addEventListener("click", () => {
+  setFeeling = b.dataset.feeling;
+  $$("#feelingRow [data-feeling]").forEach((x) => x.classList.toggle("on", x === b));
+}));
+
+$("#setCancel").addEventListener("click", () => { $("#setDialog").hidden = true; });
+$("#setDialog").addEventListener("click", (e) => {
+  if (e.target.id === "setDialog") $("#setDialog").hidden = true;
+});
+
+$("#setSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/sets", { method: "POST", body: JSON.stringify({
+    exercise_id: setExerciseId,
+    reps: +$("#setReps").value || null,
+    weight_kg: +$("#setWeight").value || null,
+    set_index: +$("#setIndex").value || 1,
+    feeling: setFeeling,
+  }) });
+  const next = (+$("#setIndex").value || 1) + 1;
+  $("#setIndex").value = next;
+  toast(`Satz ${next - 1} gespeichert`);
+  loadExercises();
+}));
+
+$("#btnAddActivity").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/activities", { method: "POST", body: JSON.stringify({
+    name: $("#actName").value || null, sport: $("#actSport").value,
+    duration_min: +$("#actDur").value || null, distance_km: +$("#actDist").value || null,
+    notes: $("#actNotes").value || null }) });
+  $("#actName").value = $("#actDur").value = $("#actDist").value = $("#actNotes").value = "";
+  toast("Training gespeichert"); loadExercises(); loadDashboard();
+}));
+
+$("#fitFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  try { const r = await api("/activities/fit", { method: "POST", body: fd });
+    toast(`Importiert: ${r.name} (${fmtDur(r.duration_s)})`); loadExercises(); loadDashboard(); }
+  catch (err) { toast(err.message, true); }
+  e.target.value = "";
+});
+
+
+
+/* --------------------------------------------------------- Laufanalyse */
+
+const LEVEL_WORD = { good: "Gut", ok: "Okay", warn: "Achtung" };
+
+async function openRunAnalysis(activityId) {
+  $("#runContent").innerHTML = '<p class="muted"><span class="spin"></span> Wird ausgewertet …</p>';
+  $("#runDialog").hidden = false;
+  let d;
+  try { d = await api(`/activities/${activityId}/analysis`); }
+  catch (e) { $("#runContent").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+
+  const a = d.activity, an = d.analysis;
+  $("#runDialogTitle").textContent = a.name || "Laufanalyse";
+
+  const km = a.distance_m ? (a.distance_m / 1000).toFixed(2) : null;
+  const facts = [
+    km ? { v: km, l: "Kilometer" } : null,
+    a.duration_s ? { v: fmtDur(a.duration_s), l: "Dauer" } : null,
+    an?.pace_text ? { v: an.pace_text, l: "Tempo /km" } : null,
+    a.avg_hr ? { v: Math.round(a.avg_hr), l: "Ø Puls" } : null,
+    a.avg_cadence ? { v: Math.round(a.avg_cadence), l: "Schritte/min" } : null,
+    a.avg_stride_m ? { v: a.avg_stride_m.toFixed(2), l: "Schrittlänge m" } : null,
+    a.elevation_gain ? { v: Math.round(a.elevation_gain), l: "Höhenmeter" } : null,
+    a.aerobic_te ? { v: a.aerobic_te.toFixed(1), l: "Trainingseffekt" } : null,
+  ].filter(Boolean);
+
+  let html = "";
+  if (an) {
+    html += `<div class="run-verdict">
+      <span class="badge ${an.level === "good" ? "done" : ""}">${LEVEL_WORD[an.level] || ""}</span>
+      <span class="txt">${esc(an.verdict)}</span></div>`;
+  }
+  html += `<div class="run-facts">${facts.map((f) =>
+    `<div class="f"><div class="v">${esc(String(f.v))}</div><div class="l">${f.l}</div></div>`
+  ).join("")}</div>`;
+
+  if (a.hr_zones) {
+    const z = a.hr_zones;
+    const total = Object.values(z).reduce((s, x) => s + Number(x), 0);
+    if (total > 0) {
+      html += '<div class="zone-bar">' + [1, 2, 3, 4, 5].map((i) => {
+        const pct = (Number(z[i] || 0) / total) * 100;
+        return pct > 0 ? `<span class="z${i}" style="width:${pct}%"></span>` : "";
+      }).join("") + "</div>";
+      html += '<div class="zone-legend">' + [1, 2, 3, 4, 5].map((i) => {
+        const pct = Math.round((Number(z[i] || 0) / total) * 100);
+        return pct > 0 ? `<span>Zone ${i}: ${pct} %</span>` : "";
+      }).join("") + "</div>";
+    }
+  }
+
+  if (an?.findings?.length) {
+    html += an.findings.map((f) => `
+      <div class="finding ${f.level}">
+        <div class="t">${esc(f.title)}${f.value ? ` — ${esc(f.value)}` : ""}</div>
+        <div class="d">${esc(f.detail)}</div>
+      </div>`).join("");
+  } else {
+    html += '<p class="muted">Für eine Bewertung fehlen noch Daten. Nach dem nächsten Garmin-Sync klappt es.</p>';
+  }
+  $("#runContent").innerHTML = html;
+}
+
+$("#runClose").addEventListener("click", () => { $("#runDialog").hidden = true; });
+$("#runDialog").addEventListener("click", (e) => {
+  if (e.target.id === "runDialog") $("#runDialog").hidden = true;
+});
+
+/* --------------------------------------------------------------- Ernährung */
+
+async function loadNutrition() {
+  const [list, s] = await Promise.all([api("/nutrition?days=14"), api("/settings")]);
+  const kcalT = s.kcal_target, protT = s.protein_target;
+  $("#nutTargetInfo").textContent = kcalT || protT
+    ? `Ziel: ${kcalT ? kcalT + " kcal" : ""}${kcalT && protT ? " \u00b7 " : ""}${protT ? protT + " g Protein" : ""}`
+    : "";
+  $("#nutritionList").innerHTML = list.length ? `
+    <table class="datatable"><tr><th>Tag</th><th>kcal</th><th>Protein</th><th></th></tr>
+    ${list.map((n) => {
+      const okK = kcalT && n.kcal ? (n.kcal >= kcalT * 0.95 ? "erreicht" : "") : "";
+      return `<tr><td>${fmtDate(n.day)}</td><td>${n.kcal ?? "\u2013"}</td>
+        <td>${n.protein_g ?? "\u2013"} g</td><td>${okK}</td></tr>`;
+    }).join("")}</table>` : "Noch keine Eintr\u00e4ge.";
+}
+
+$("#btnSaveNutrition").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/nutrition", { method: "POST", body: JSON.stringify({
+    day: $("#nutDay").value || null, kcal: +$("#nutKcal").value || null,
+    protein_g: +$("#nutProt").value || null, notes: $("#nutNotes").value || null }) });
+  toast("Gespeichert"); loadNutrition();
+}));
+
+$("#btnNutritionAdvice").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/coach/nutrition", { method: "POST" });
+  $("#nutritionAdvice").textContent = r.message;
+}));
+
+/* ------------------------------------------------------------------ K\u00f6rper */
+
+async function loadBody() {
+  const list = await api("/body?days=365");
+  const byDay = {};
+  [...list].reverse().forEach((b) => { if (b.weight_kg) byDay[b.day] = b; });
+  const points = Object.values(byDay).map((b) => ({
+    value: b.weight_kg, label: b.day.slice(5), tip: b.day + " (" + b.source + ")" }));
+  lineChart($("#bodyChart"), points, { unit: " kg" });
+  $("#bodyList").innerHTML = list.length ? `
+    <table class="datatable"><tr><th>Tag</th><th>Gewicht</th><th>Fett %</th><th>Quelle</th></tr>
+    ${list.slice(0, 10).map((b) => `<tr><td>${fmtDate(b.day)}</td><td>${b.weight_kg ?? "\u2013"} kg</td>
+      <td>${b.body_fat_pct ?? "\u2013"}</td><td>${b.source === "miscale" ? "Waage" : b.source}</td></tr>`).join("")}</table>` : "";
+  return list;
+}
+
+$("#btnSaveBody").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/body", { method: "POST", body: JSON.stringify({
+    day: $("#bodyDay").value || null, weight_kg: +$("#bodyWeight").value || null,
+    body_fat_pct: +$("#bodyFat").value || null }) });
+  toast("Gespeichert"); loadBody(); loadDashboard();
+}));
+
+$("#bodyCsv").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  try { const r = await api("/body/import", { method: "POST", body: fd });
+    toast(`${r.imported} Eintr\u00e4ge importiert`); loadBody(); }
+  catch (err) { toast(err.message, true); }
+  e.target.value = "";
+});
+
+/* ------------------------------------------------------------------- Coach */
+
+function addBubble(kind, text, label) {
+  const el = document.createElement("div");
+  el.className = "bubble " + kind;
+  el.innerHTML = (label ? `<div class="k">${label}</div>` : "") + esc(text);
+  $("#chatLog").appendChild(el);
+  el.scrollIntoView({ behavior: "smooth", block: "end" });
+  return el;
+}
+
+async function ask(question) {
+  addBubble("user", question);
+  const pending = addBubble("coach", "Denke nach … (lokale KI, kann dauern)", "PULS");
+  try {
+    const r = await api("/coach/ask", { method: "POST", body: JSON.stringify({ question }) });
+    pending.innerHTML = '<div class="k">PULS</div>' + esc(r.answer);
+  } catch (e) {
+    pending.innerHTML = '<div class="k">PULS</div>⚠️ ' + esc(e.message);
+  }
+}
+
+$("#btnAsk").addEventListener("click", () => {
+  const q = $("#chatInput").value.trim();
+  if (!q) return;
+  $("#chatInput").value = "";
+  ask(q);
+});
+$("#chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#btnAsk").click(); });
+$$("[data-quick]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.quick)));
+
+async function loadCoach() {
+  const tips = await api("/coach/research-tips?limit=10");
+  $("#tipArchive").innerHTML = tips.length ? tips.map((t) =>
+    `<div class="list-item"><div class="grow"><div class="title">${esc(t.topic || "Tipp")}</div>
+     <div class="tip">${esc(t.content)}</div>
+     <div class="meta">${fmtDate(t.created_at)}</div></div></div>`).join("") : "Noch keine Häppchen.";
+}
+
+/* ------------------------------------------------------------ Einstellungen */
+
+let selectedGoals = [];
+
+function renderGoalChips() {
+  $("#goalChips").innerHTML = GOALS.map(([key, label]) =>
+    `<button class="btn small ghost ${selectedGoals.includes(key) ? "on" : ""}" data-goal="${key}">${label}</button>`).join("");
+  $$("#goalChips [data-goal]").forEach((b) => b.addEventListener("click", () => {
+    const g = b.dataset.goal;
+    selectedGoals = selectedGoals.includes(g) ? selectedGoals.filter((x) => x !== g) : [...selectedGoals, g];
+    renderGoalChips();
+  }));
+}
+
+
+/* ------------------------------------------------- Schriftgröße & Modell */
+
+const FONT_SIZES = [
+  { pct: 90, label: "Klein" }, { pct: 100, label: "Normal" },
+  { pct: 112, label: "Groß" }, { pct: 125, label: "Größer" },
+  { pct: 140, label: "Sehr groß" },
+];
+
+function applyFontScale(pct) {
+  document.documentElement.style.setProperty("--fs", (16 * pct / 100).toFixed(1) + "px");
+}
+
+function renderFontChips(current) {
+  $("#fontChips").innerHTML = FONT_SIZES.map((f) =>
+    `<button class="btn small ghost ${f.pct === current ? "on" : ""}" data-font="${f.pct}">${f.label}</button>`).join("");
+  $$("#fontChips [data-font]").forEach((b) => b.addEventListener("click", async () => {
+    const pct = +b.dataset.font;
+    applyFontScale(pct);
+    renderFontChips(pct);
+    try { await api("/settings", { method: "POST", body: JSON.stringify({ font_scale: pct }) }); }
+    catch (e) { toast(e.message, true); }
+  }));
+}
+
+let modelPoller = null;
+
+async function loadModels() {
+  let d;
+  try { d = await api("/system/models"); }
+  catch (e) { $("#modelList").textContent = "Modelle nicht abrufbar."; return; }
+
+  if (!d.ollama_reachable) {
+    $("#modelList").innerHTML = '<p class="muted">Ollama ist nicht erreichbar — läuft der Container puls-ollama?</p>';
+    return;
+  }
+
+  $("#modelList").innerHTML = d.presets.map((m) => `
+    <div class="model-item">
+      <div class="info">
+        <div class="name">${esc(m.label)}${m.active ? '<span class="cur">aktiv</span>' : ""}</div>
+        <div class="meta">${m.size_gb} GB · ${esc(m.speed)}${m.installed ? " · geladen" : ""}</div>
+        <div class="note">${esc(m.note)}</div>
+      </div>
+      ${m.active ? "" : `<button class="btn small ghost" data-model="${esc(m.name)}">
+        ${m.installed ? "Verwenden" : "Laden"}</button>`}
+    </div>`).join("");
+
+  $$("[data-model]").forEach((b) => b.addEventListener("click", (e) =>
+    withSpinner(e.currentTarget, async () => {
+      const r = await api("/system/model", { method: "POST",
+        body: JSON.stringify({ name: b.dataset.model }) });
+      toast(r.status === "laedt"
+        ? "Modell wird geladen — das dauert ein paar Minuten."
+        : "Modell gewechselt.");
+      loadModels();
+      if (r.status === "laedt") startModelPolling();
+    })));
+
+  updatePullBar(d.pull);
+}
+
+function updatePullBar(p) {
+  const bar = $("#pullBar");
+  if (!p || p.status === "idle") { bar.hidden = true; $("#pullStatus").textContent = ""; return; }
+  if (p.status === "laden") {
+    bar.hidden = false;
+    bar.firstElementChild.style.width = (p.percent || 0) + "%";
+    $("#pullStatus").textContent =
+      `${p.model} wird geladen — ${p.percent || 0} %${p.detail ? " (" + p.detail + ")" : ""}`;
+  } else if (p.status === "fertig") {
+    bar.hidden = true;
+    $("#pullStatus").textContent = `${p.model} ist bereit.`;
+  } else if (p.status === "fehler") {
+    bar.hidden = true;
+    $("#pullStatus").textContent = `Download fehlgeschlagen: ${p.error || ""}`;
+  }
+}
+
+function startModelPolling() {
+  if (modelPoller) clearInterval(modelPoller);
+  modelPoller = setInterval(async () => {
+    if (!$("#view-settings").classList.contains("active")) {
+      clearInterval(modelPoller); modelPoller = null; return;
+    }
+    try {
+      const p = await api("/system/model/progress");
+      updatePullBar(p);
+      if (p.status === "fertig" || p.status === "fehler") {
+        clearInterval(modelPoller); modelPoller = null; loadModels();
+      }
+    } catch (e) { /* still */ }
+  }, 2000);
+}
+
+const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+let runDays = [], gymDays = [];
+
+function renderDayChips() {
+  const build = (selected, attr) => DAYS.map((d) =>
+    `<button class="btn small ghost ${selected.includes(d) ? "on" : ""}" data-${attr}="${d}">${d}</button>`).join("");
+  $("#runDayChips").innerHTML = build(runDays, "runday");
+  $("#gymDayChips").innerHTML = build(gymDays, "gymday");
+  $$("#runDayChips [data-runday]").forEach((b) => b.addEventListener("click", () => {
+    const d = b.dataset.runday;
+    runDays = runDays.includes(d) ? runDays.filter((x) => x !== d) : [...runDays, d];
+    runDays.sort((a, z) => DAYS.indexOf(a) - DAYS.indexOf(z));
+    renderDayChips();
+  }));
+  $$("#gymDayChips [data-gymday]").forEach((b) => b.addEventListener("click", () => {
+    const d = b.dataset.gymday;
+    gymDays = gymDays.includes(d) ? gymDays.filter((x) => x !== d) : [...gymDays, d];
+    gymDays.sort((a, z) => DAYS.indexOf(a) - DAYS.indexOf(z));
+    renderDayChips();
+  }));
+}
+
+async function loadSettings() {
+  const [s, g, h] = await Promise.all([api("/settings"), api("/garmin/status"), api("/health")]);
+  selectedGoals = s.goals; renderGoalChips();
+  runDays = s.run_days || []; gymDays = s.gym_days || []; renderDayChips();
+  $("#setWeeklyTarget").value = s.weekly_workout_target;
+  $("#setKcal").value = s.kcal_target;
+  $("#setProtein").value = s.protein_target;
+  $("#setProfile").value = s.profile.text || "";
+  $("#setRunMin").value = s.run_minutes;
+  $("#setGymMin").value = s.gym_minutes;
+  $("#setPullupGoal").value = s.pullup_goal;
+  $("#setRunGoalKm").value = s.run_goal_distance_km;
+  $("#setRunGoalMin").value = s.run_goal_time_min;
+  $("#setEveningMobility").checked = !!s.evening_mobility;
+  $("#setPreferMachines").checked = !!s.prefer_machines;
+  $("#apiToken").value = s.api_token || "";
+  applyFontScale(s.font_scale || 100);
+  renderFontChips(s.font_scale || 100);
+  loadModels();
+
+  $("#garminStatus").textContent = g.linked
+    ? `Verbunden als ${g.email}. ${g.last_sync ? "Letzter Sync: " + new Date(g.last_sync.ts.replace(" ", "T") + "Z").toLocaleString("de-DE") + (g.last_sync.ok ? " – ok" : " – Fehler: " + g.last_sync.detail) : ""}`
+    : "Nicht verbunden.";
+  $("#garminLoginForm").hidden = g.linked;
+  $("#garminLinkedBox").hidden = !g.linked;
+  $("#systemStatus").innerHTML =
+    `Lokale KI (Ollama): ${h.ollama ? "erreichbar" : "nicht erreichbar"}<br>` +
+    `Aktives Modell: ${esc(h.model || "–")}${h.model_present ? " (geladen)" : h.ollama ? " (wird noch geladen)" : ""}<br>` +
+    `Garmin: ${h.garmin_linked ? "verknüpft" : "–"}`;
+
+  await loadBody();
+  startScalePolling();
+}
+
+$("#btnCopyToken").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("#apiToken").value); toast("Token kopiert"); }
+  catch (e) { $("#apiToken").select(); toast("Bitte manuell kopieren", true); }
+});
+
+$("#btnSaveWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/settings", { method: "POST", body: JSON.stringify({
+    run_days: runDays, gym_days: gymDays,
+    run_minutes: +$("#setRunMin").value || 25,
+    gym_minutes: +$("#setGymMin").value || 75,
+    pullup_goal: +$("#setPullupGoal").value || 10,
+    run_goal_distance_km: +$("#setRunGoalKm").value || 10,
+    run_goal_time_min: +$("#setRunGoalMin").value || 60,
+    evening_mobility: $("#setEveningMobility").checked,
+    prefer_machines: $("#setPreferMachines").checked,
+  }) });
+  toast("Wochenstruktur gespeichert"); loadDashboard();
+}));
+
+$("#btnSaveSettings").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/settings", { method: "POST", body: JSON.stringify({
+    goals: selectedGoals,
+    weekly_workout_target: +$("#setWeeklyTarget").value || 4,
+    kcal_target: $("#setKcal").value, protein_target: $("#setProtein").value,
+    profile: { text: $("#setProfile").value } }) });
+  toast("Gespeichert"); loadDashboard();
+}));
+
+$("#btnGarminLogin").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/garmin/login", { method: "POST", body: JSON.stringify({
+    email: $("#garminEmail").value, password: $("#garminPassword").value }) });
+  if (r.status === "needs_mfa") { $("#garminMfaForm").hidden = false; toast("MFA-Code nötig — schau in Mails oder App"); }
+  else { toast("Garmin verbunden"); $("#garminPassword").value = ""; loadSettings(); }
+}));
+$("#btnGarminMfa").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/garmin/mfa", { method: "POST", body: JSON.stringify({ code: $("#garminMfa").value }) });
+  $("#garminMfaForm").hidden = true; $("#garminPassword").value = "";
+  toast("Garmin verbunden"); loadSettings();
+}));
+$("#btnSyncNow").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/garmin/sync", { method: "POST" });
+  toast(r.ok ? "Sync fertig: " + r.detail : "Sync-Problem: " + r.detail, !r.ok);
+  loadSettings(); loadDashboard();
+}));
+$("#btnUnlink").addEventListener("click", async () => {
+  if (!confirm("Garmin-Verbindung wirklich trennen?")) return;
+  await api("/garmin/unlink", { method: "POST" }); loadSettings();
+});
+
+
+/* ------------------------------------------------- Live-Status der Waage */
+
+let scalePoller = null;
+
+const SCALE_STATES = {
+  offline:      { dot: "err",  title: "Dienst nicht erreichbar" },
+  no_adapter:   { dot: "err",  title: "Kein Bluetooth-Adapter" },
+  not_scanning: { dot: "warn", title: "Scan steht" },
+  searching:    { dot: "warn pulse", title: "Scan läuft — warte auf die Waage" },
+  scale_found:  { dot: "ok pulse", title: "Waage wird empfangen" },
+  ok:           { dot: "ok",   title: "Alles verbunden" },
+};
+
+async function refreshScale() {
+  let d;
+  try { d = await api("/scale/status"); }
+  catch (e) { return; }
+  const meta = SCALE_STATES[d.state] || SCALE_STATES.offline;
+  $("#scaleDot").className = "live-dot " + meta.dot;
+  $("#scaleTitle").textContent = meta.title;
+  $("#scaleHint").textContent = d.hint || "";
+
+  const rep = d.report || {};
+  const hasReport = d.age_s !== null && d.age_s < 60;
+  $("#scaleMetrics").hidden = !hasReport;
+  if (hasReport) {
+    $("#scaleAdv").textContent = rep.advertisements ?? 0;
+    $("#scaleFrames").textContent = rep.scale_frames ?? 0;
+    $("#scaleMeas").textContent = rep.measurements ?? 0;
+  }
+
+  const last = d.last_measurement;
+  $("#scaleLast").innerHTML = last
+    ? `Letzte Messung: <b style="color:var(--ink)">${last.weight_kg} kg</b>` +
+      `${last.body_fat_pct ? ` · ${last.body_fat_pct} % Körperfett` : ""}` +
+      ` · ${fmtDate(last.day)}`
+    : "Noch keine Messung eingegangen.";
+
+  const devs = rep.devices || [];
+  $("#scaleDeviceList").innerHTML = devs.length ? devs.map((x) => `
+    <div class="dev-row ${x.is_scale ? "is-scale" : ""}">
+      <span class="mac">${esc(x.mac)}</span>
+      <span>${esc(x.name || "")}</span>
+      ${x.is_scale ? '<span class="tag">Waage</span>' : ""}
+      ${x.last_weight ? `<span>${x.last_weight} kg</span>` : ""}
+      <span class="rssi">${x.rssi ?? "–"} dBm · vor ${x.seconds_ago}s</span>
+    </div>`).join("")
+    : "Noch keine Geräte empfangen.";
+
+  if (rep.adapter && rep.adapter.address) {
+    $("#scaleDeviceList").insertAdjacentHTML("beforebegin", "");
+  }
+}
+
+function startScalePolling() {
+  refreshScale();
+  if (scalePoller) clearInterval(scalePoller);
+  scalePoller = setInterval(() => {
+    if ($("#view-settings").classList.contains("active")) refreshScale();
+    else { clearInterval(scalePoller); scalePoller = null; }
+  }, 3000);
+}
+
+/* -------------------------------------------------------------- Navigation */
+
+const LOADERS = {
+  dashboard: loadDashboard, plan: loadPlan, exercises: loadExercises,
+  nutrition: loadNutrition, coach: loadCoach, settings: loadSettings,
+};
+
+function goto(view) {
+  $$(".view").forEach((v) => v.classList.remove("active"));
+  $("#view-" + view).classList.add("active");
+  $$("nav.bottom button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  Promise.resolve((LOADERS[view] || (() => {}))()).catch((e) => toast(e.message, true));
+  window.scrollTo({ top: 0 });
+}
+
+$$("nav.bottom button").forEach((b) => b.addEventListener("click", () => goto(b.dataset.view)));
+document.addEventListener("click", (e) => {
+  const g = e.target.closest("[data-goto]");
+  if (g) { e.preventDefault(); goto(g.dataset.goto); }
+});
+
+/* -------------------------------------------------------------------- Init */
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+$("#nutDay").value = $("#bodyDay").value = new Date().toISOString().slice(0, 10);
+api("/settings").then((s) => applyFontScale(s.font_scale || 100)).catch(() => {});
+loadDashboard().catch((e) => toast(e.message, true));

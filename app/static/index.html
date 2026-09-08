@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#131417">
+<title>PULS — Trainingscoach</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">PU<span class="pulse">L</span>S</div>
+  <div id="syncBadge" title="Garmin-Sync">–</div>
+</header>
+
+<nav class="bottom">
+  <button data-view="dashboard" class="active">Start</button>
+  <button data-view="plan">Plan</button>
+  <button data-view="exercises">Übungen</button>
+  <button data-view="nutrition">Essen</button>
+  <button data-view="coach">Coach</button>
+  <button data-view="settings">Mehr</button>
+</nav>
+
+<main>
+
+<!-- ============================== DASHBOARD ============================== -->
+<section id="view-dashboard" class="view active">
+  <div class="card hero">
+    <div class="ring-wrap">
+      <svg id="weekRing" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="Wochenziel"></svg>
+      <div class="ring-center">
+        <div class="big" id="ringCount">–</div>
+        <div class="small">von <span id="ringTarget">–</span> diese Woche</div>
+      </div>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><div class="value accent" id="statStreak">–</div><div class="label">Wochen&nbsp;in&nbsp;Folge</div></div>
+      <div class="stat"><div class="value" id="statDuration">–</div><div class="label">Trainingszeit</div></div>
+      <div class="stat"><div class="value" id="statAcwr">–</div><div class="label">Belastung</div></div>
+      <div class="stat"><div class="value" id="statReadiness">–</div><div class="label">Erholung</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Dein Coach sagt</h3>
+    <div class="coach-msg" id="coachMessage">Noch keine Nachricht — hol dir unten eine.</div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn small" id="btnDaily">Tages-Check</button>
+      <button class="btn small ghost" id="btnRest">Pause oder Training?</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Trainingslast — letzte 6 Wochen</h3>
+    <div class="chart-wrap" id="loadChart"></div>
+  </div>
+
+  <div class="card">
+    <h3>Körper</h3>
+    <div class="comp-row" id="compRow"></div>
+    <div class="chart-wrap" id="weightChart"></div>
+    <p class="muted" id="weightDelta"></p>
+  </div>
+
+  <div class="card">
+    <h3>Heute dran</h3>
+    <div id="todayList" class="muted">Nichts geplant.</div>
+  </div>
+
+  <div class="card">
+    <h3>Ziele im Blick</h3>
+    <div class="goal-grid">
+      <div class="goal">
+        <div class="goal-head"><span>10 km unter 60 Minuten</span><b id="goalRunNow">–</b></div>
+        <div class="goal-bar"><span id="goalRunBar"></span></div>
+        <div class="muted" id="goalRunHint">Noch nicht kalibriert — mach den Benchmark-Lauf.</div>
+      </div>
+      <div class="goal">
+        <div class="goal-head"><span>Klimmzüge</span><b id="goalPullNow">–</b></div>
+        <div class="goal-bar"><span id="goalPullBar"></span></div>
+        <div class="muted" id="goalPullHint">Trag dein Maximum ein, dann baut PULS darauf auf.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Nächste Workouts</h3>
+    <div id="upcomingList" class="muted">Keine geplant.</div>
+  </div>
+
+  <div class="card">
+    <h3>Aus der Forschung</h3>
+    <div class="tip" id="researchTip">Noch keins — der Coach liefert jede Woche eins.</div>
+    <button class="btn small ghost" id="btnResearch" style="margin-top:10px">Neues Häppchen</button>
+  </div>
+</section>
+
+<!-- ================================ PLAN ================================= -->
+<section id="view-plan" class="view">
+  <div class="card">
+    <h3>Deine Woche</h3>
+    <div id="weekStructure" class="muted">…</div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="btnPlanWeek">Woche planen</button>
+      <button class="btn ghost" id="btnPushAll">Alles an Garmin</button>
+    </div>
+    <p class="muted">Erzeugt Läufe, Gym-Einheiten und Abend-Yoga für die nächsten 7 Tage. Gewichte und Tempi kommen aus deiner Progression.</p>
+  </div>
+
+  <div class="card">
+    <h3>Kalibrierung</h3>
+    <div id="benchmarkStatus" class="muted">…</div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn small teal" id="btnBenchRun">Benchmark-Lauf erstellen</button>
+      <button class="btn small teal" id="btnBenchStrength">Kraft-Test erstellen</button>
+    </div>
+    <div class="bench-inputs">
+      <div class="row" style="margin-top:14px">
+        <div class="grow"><label class="field">Cooper-Test: geschaffte Distanz in 12 min (m)</label>
+          <input id="cooperInput" type="number" placeholder="z. B. 2400"></div>
+        <button class="btn small" id="btnCooperSave" style="align-self:flex-end">Auswerten</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="grow"><label class="field">Klimmzüge am Stück (sauber)</label>
+          <input id="pullupInput" type="number" placeholder="z. B. 4"></div>
+        <button class="btn small" id="btnPullupSave" style="align-self:flex-end">Speichern</button>
+      </div>
+    </div>
+    <div id="benchResult" class="calib-result" hidden></div>
+  </div>
+
+  <div class="card">
+    <h3>Einzelne Einheit erstellen</h3>
+    <div class="quick-grid">
+      <button class="btn ghost" data-run="easy">Lockerer Lauf</button>
+      <button class="btn ghost" data-run="tempo">Tempolauf</button>
+      <button class="btn ghost" data-run="interval">Intervalle</button>
+      <button class="btn ghost" data-run="long">Langer Lauf</button>
+      <button class="btn ghost" id="btnGymSession">Gym-Einheit</button>
+      <button class="btn ghost" id="btnYoga">Abend-Yoga</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Geplante Einheiten</h3>
+    <div id="plannedList" class="muted">Nichts geplant.</div>
+  </div>
+
+  <div class="card">
+    <h3>Yoga-Stellungen — so gehen sie</h3>
+    <p class="muted">Die Uhr zeigt dir Namen und Abbildung jeder Stellung. Wie du
+      hineinkommst, steht hier — einmal in Ruhe durchgehen, dann brauchst du es
+      abends nicht mehr.</p>
+    <div id="poseList"></div>
+  </div>
+</section>
+
+<!-- ============================== ÜBUNGEN ================================ -->
+<section id="view-exercises" class="view">
+  <div class="card">
+    <h3>Deine Übungen &amp; Maschinen</h3>
+    <p class="muted">Was du hier einträgst, benutzt der Coach — und passt Gewicht und Wiederholungen selbst an. Nach jedem Gym-Training holt PULS die Sätze von der Uhr und rechnet weiter.</p>
+    <div class="row" style="margin-top:10px">
+      <select id="slotFilter" class="grow">
+        <option value="">Alle Blöcke</option>
+        <option value="kettlebell">Kettlebell-Auftakt</option>
+        <option value="pullup">Klimmzug-Arbeit</option>
+        <option value="main">Hauptteil</option>
+        <option value="stretch">Dehnen</option>
+        <option value="cardio">Aufwärmen</option>
+      </select>
+      <button class="btn small" id="btnNewExercise">+ Neu</button>
+    </div>
+  </div>
+
+  <div id="exerciseList"></div>
+
+  <div class="card">
+    <h3>Training manuell eintragen</h3>
+    <div class="grid2">
+      <div><label class="field">Was?</label>
+        <select id="actSport">
+          <option value="strength">Krafttraining</option>
+          <option value="running">Laufen</option>
+          <option value="cardio">Cardio</option>
+          <option value="mobility">Mobilität / Yoga</option>
+          <option value="other">Sonstiges</option>
+        </select></div>
+      <div><label class="field">Name</label><input id="actName" placeholder="z. B. Gym Ganzkörper"></div>
+      <div><label class="field">Dauer (min)</label><input id="actDur" type="number" min="1"></div>
+      <div><label class="field">Distanz (km, optional)</label><input id="actDist" type="number" step="0.1"></div>
+    </div>
+    <label class="field">Notizen</label>
+    <input id="actNotes" placeholder="Wie lief's?">
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnAddActivity">Speichern</button>
+      <label class="btn ghost small" style="cursor:pointer">FIT-Datei importieren
+        <input type="file" id="fitFile" accept=".fit" hidden>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Letzte Aktivitäten</h3>
+    <div id="activityList" class="muted">Noch keine.</div>
+  </div>
+</section>
+
+<!-- Bearbeiten-Dialog für Übungen -->
+<div id="exDialog" class="modal" hidden>
+  <div class="modal-box">
+    <h3 id="exDialogTitle">Übung bearbeiten</h3>
+    <label class="field">Name</label>
+    <input id="exName" placeholder="z. B. Beinpresse">
+    <div class="grid2">
+      <div><label class="field">Muskelgruppe</label>
+        <select id="exMuscle">
+          <option value="legs">Beine</option><option value="chest">Brust</option>
+          <option value="back">Rücken</option><option value="shoulders">Schultern</option>
+          <option value="arms">Arme</option><option value="core">Rumpf</option>
+          <option value="cardio">Cardio</option>
+        </select></div>
+      <div><label class="field">Gerät</label>
+        <select id="exEquipment">
+          <option value="machine">Maschine</option><option value="cable">Kabelzug</option>
+          <option value="band">Band</option><option value="dumbbell">Kurzhantel</option>
+          <option value="barbell">Langhantel</option><option value="kettlebell">Kettlebell</option>
+          <option value="suspension">Schlingentrainer</option>
+          <option value="bodyweight">Körpergewicht</option>
+          <option value="cardio_machine">Cardiogerät</option>
+        </select></div>
+      <div><label class="field">Block</label>
+        <select id="exSlot">
+          <option value="main">Hauptteil</option>
+          <option value="kettlebell">Kettlebell-Auftakt</option>
+          <option value="pullup">Klimmzug-Arbeit</option>
+          <option value="stretch">Dehnen</option>
+          <option value="cardio">Aufwärmen</option>
+        </select></div>
+      <div><label class="field">Art</label>
+        <select id="exMode">
+          <option value="reps">Wiederholungen</option>
+          <option value="time">Zeit halten</option>
+        </select></div>
+    </div>
+    <div class="grid3">
+      <div><label class="field">Gewicht (kg)</label><input id="exWeight" type="number" step="0.5"></div>
+      <div><label class="field">Steigerung (kg)</label><input id="exIncrement" type="number" step="0.5"></div>
+      <div><label class="field">Sätze</label><input id="exSets" type="number" min="1" max="10"></div>
+      <div><label class="field">Wdh. min</label><input id="exRepMin" type="number"></div>
+      <div><label class="field">Wdh. max</label><input id="exRepMax" type="number"></div>
+      <div><label class="field">Pause (s)</label><input id="exRest" type="number"></div>
+    </div>
+    <div id="exTimeRow" hidden>
+      <label class="field">Zielzeit pro Satz (s)</label><input id="exDuration" type="number">
+    </div>
+    <label class="field">Geräte-Einstellung (erscheint auf der Uhr)</label>
+    <input id="exSetting" placeholder="z. B. Stufe 7 bei Füße">
+    <label class="field">Notiz</label>
+    <input id="exNotes" placeholder="optional">
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="exSave">Speichern</button>
+      <button class="btn ghost" id="exCancel">Abbrechen</button>
+      <button class="btn ghost" id="exDelete" style="margin-left:auto;color:var(--bad)">Löschen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Laufanalyse -->
+<div id="runDialog" class="modal" hidden>
+  <div class="modal-box">
+    <h3 id="runDialogTitle">Laufanalyse</h3>
+    <div id="runContent"><p class="muted">Wird geladen …</p></div>
+    <div class="row" style="margin-top:18px">
+      <button class="btn ghost" id="runClose">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Satz-Eintrag -->
+<div id="setDialog" class="modal" hidden>
+  <div class="modal-box">
+    <h3 id="setDialogTitle">Satz eintragen</h3>
+    <div class="grid3">
+      <div><label class="field">Wiederholungen</label><input id="setReps" type="number" inputmode="numeric"></div>
+      <div><label class="field">Gewicht (kg)</label><input id="setWeight" type="number" step="0.5"></div>
+      <div><label class="field">Satz-Nr.</label><input id="setIndex" type="number" value="1" min="1"></div>
+    </div>
+    <label class="field">Wie war's?</label>
+    <div class="row" id="feelingRow">
+      <button class="btn ghost small" data-feeling="easy">Leicht</button>
+      <button class="btn ghost small" data-feeling="ok">Passt</button>
+      <button class="btn ghost small" data-feeling="hard">Schwer</button>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="setSave">Speichern</button>
+      <button class="btn ghost" id="setCancel">Abbrechen</button>
+    </div>
+    <p class="muted">Wenn du die Fenix beim Training trägst, brauchst du das hier nicht — PULS holt die Sätze beim Sync von selbst.</p>
+  </div>
+</div>
+
+<!-- ============================== ERNÄHRUNG ============================== -->
+<section id="view-nutrition" class="view">
+  <div class="card">
+    <h3>Heute eintragen</h3>
+    <div class="grid3">
+      <div><label class="field">kcal</label><input id="nutKcal" type="number" inputmode="numeric"></div>
+      <div><label class="field">Protein (g)</label><input id="nutProt" type="number" inputmode="numeric"></div>
+      <div><label class="field">Datum</label><input id="nutDay" type="date"></div>
+    </div>
+    <label class="field">Notiz</label>
+    <input id="nutNotes" placeholder="optional">
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnSaveNutrition">Speichern</button>
+      <span class="muted" id="nutTargetInfo"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Coach-Empfehlung</h3>
+    <div class="coach-msg" id="nutritionAdvice">Frag den Coach, was gerade sinnvoll ist.</div>
+    <button class="btn small" id="btnNutritionAdvice" style="margin-top:10px">Empfehlung holen</button>
+  </div>
+
+  <div class="card">
+    <h3>Letzte 14 Tage</h3>
+    <div id="nutritionList" class="muted">Noch keine Einträge.</div>
+  </div>
+</section>
+
+<!-- ============================== COACH ================================== -->
+<section id="view-coach" class="view">
+  <div class="card">
+    <h3>Frag deinen Coach</h3>
+    <div class="chat" id="chatLog"></div>
+    <div class="row" style="margin-top:10px">
+      <input id="chatInput" class="grow" placeholder="z. B. Wie steigere ich meine Kniebeuge?">
+      <button class="btn" id="btnAsk">Senden</button>
+    </div>
+    <p class="muted">Antworten kommen von deiner lokalen KI — auf CPU dauert das einen Moment.</p>
+  </div>
+
+  <div class="card">
+    <h3>Schnellfragen</h3>
+    <div class="quick-grid">
+      <button class="btn ghost" data-quick="Wie sollte mein Training diese Woche aussehen?">Wochenausblick</button>
+      <button class="btn ghost" data-quick="Wie lange sollte ich zwischen harten Einheiten pausieren?">Pausenzeiten</button>
+      <button class="btn ghost" data-quick="Was sollte ich heute nach dem Training essen?">Nach dem Training</button>
+      <button class="btn ghost" data-quick="Bin ich auf Kurs zu meinen Zielen?">Ziel-Check</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Wissens-Archiv</h3>
+    <div id="tipArchive" class="muted">Noch keine Häppchen.</div>
+  </div>
+</section>
+
+<!-- ============================== EINSTELLUNGEN ========================== -->
+<section id="view-settings" class="view">
+  <div class="card">
+    <h3>Garmin Connect</h3>
+    <div id="garminStatus" class="muted">Status wird geladen …</div>
+    <div id="garminLoginForm">
+      <label class="field">E-Mail</label><input id="garminEmail" type="email" autocomplete="username">
+      <label class="field">Passwort</label><input id="garminPassword" type="password" autocomplete="current-password">
+      <p class="muted">Dein Passwort wird nur für den Login benutzt — gespeichert werden nur Zugriffs-Tokens.</p>
+      <button class="btn" id="btnGarminLogin" style="margin-top:6px">Verbinden</button>
+    </div>
+    <div id="garminMfaForm" hidden>
+      <label class="field">MFA-Code (aus Mail/App)</label><input id="garminMfa" inputmode="numeric">
+      <button class="btn" id="btnGarminMfa" style="margin-top:6px">Code bestätigen</button>
+    </div>
+    <div id="garminLinkedBox" hidden>
+      <div class="row" style="margin-top:8px">
+        <button class="btn teal" id="btnSyncNow">Jetzt synchronisieren</button>
+        <button class="btn ghost" id="btnUnlink">Trennen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Wochenstruktur</h3>
+    <label class="field">Lauftage (morgens)</label>
+    <div class="row" id="runDayChips"></div>
+    <label class="field">Gym-Tage (abends)</label>
+    <div class="row" id="gymDayChips"></div>
+    <div class="grid3" style="margin-top:10px">
+      <div><label class="field">Lauf (min)</label><input id="setRunMin" type="number" min="10" max="180"></div>
+      <div><label class="field">Gym (min)</label><input id="setGymMin" type="number" min="30" max="150"></div>
+      <div><label class="field">Klimmzug-Ziel</label><input id="setPullupGoal" type="number" min="1"></div>
+    </div>
+    <div class="grid3" style="margin-top:10px">
+      <div><label class="field">Laufziel: km</label><input id="setRunGoalKm" type="number" step="0.5"></div>
+      <div><label class="field">in Minuten</label><input id="setRunGoalMin" type="number"></div>
+    </div>
+    <label class="row toggle" style="margin-top:12px">
+      <input type="checkbox" id="setEveningMobility"> Jeden Abend eine Yoga-/Dehneinheit
+    </label>
+    <label class="row toggle">
+      <input type="checkbox" id="setPreferMachines"> Maschinen gegenüber freien Gewichten bevorzugen
+    </label>
+    <button class="btn" id="btnSaveWeek" style="margin-top:12px">Wochenstruktur speichern</button>
+  </div>
+
+  <div class="card">
+    <h3>Ziele &amp; Ernährung</h3>
+    <div class="row" id="goalChips"></div>
+    <div class="grid3" style="margin-top:10px">
+      <div><label class="field">Workouts/Woche</label><input id="setWeeklyTarget" type="number" min="1" max="21"></div>
+      <div><label class="field">Kalorienziel</label><input id="setKcal" type="number" placeholder="z. B. 3000"></div>
+      <div><label class="field">Proteinziel (g)</label><input id="setProtein" type="number" placeholder="z. B. 150"></div>
+    </div>
+    <label class="field">Über dich (hilft dem Coach): Alter, Größe, Trainingserfahrung …</label>
+    <textarea id="setProfile" rows="3" placeholder="z. B. 24, 1.84 m, 3 Jahre Krafttraining, laufe seit 1 Jahr"></textarea>
+    <button class="btn" id="btnSaveSettings" style="margin-top:10px">Speichern</button>
+  </div>
+
+  <div class="card">
+    <h3>Körperdaten</h3>
+    <div class="grid3">
+      <div><label class="field">Gewicht (kg)</label><input id="bodyWeight" type="number" step="0.1"></div>
+      <div><label class="field">Körperfett (%)</label><input id="bodyFat" type="number" step="0.1"></div>
+      <div><label class="field">Datum</label><input id="bodyDay" type="date"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnSaveBody">Speichern</button>
+      <label class="btn ghost small" style="cursor:pointer">CSV importieren
+        <input type="file" id="bodyCsv" accept=".csv" hidden>
+      </label>
+    </div>
+    <div class="chart-wrap" id="bodyChart" style="margin-top:12px"></div>
+    <div id="bodyList" class="muted"></div>
+  </div>
+
+  <div class="card">
+    <h3>Waage</h3>
+    <div class="live-state">
+      <span class="live-dot" id="scaleDot"></span>
+      <div class="grow">
+        <div class="live-title" id="scaleTitle">Status wird geladen …</div>
+        <div class="muted" id="scaleHint"></div>
+      </div>
+    </div>
+
+    <div class="live-metrics" id="scaleMetrics" hidden>
+      <div class="m"><div class="v" id="scaleAdv">–</div><div class="l">Signale</div></div>
+      <div class="m"><div class="v" id="scaleFrames">–</div><div class="l">von der Waage</div></div>
+      <div class="m"><div class="v" id="scaleMeas">–</div><div class="l">Messungen</div></div>
+    </div>
+
+    <div id="scaleLast" class="muted"></div>
+
+    <details id="scaleDevices">
+      <summary>Gefundene Bluetooth-Geräte anzeigen</summary>
+      <div id="scaleDeviceList" class="muted" style="margin-top:10px">–</div>
+      <p class="muted">Deine Waage funkt nur, wenn jemand draufsteht. Tritt kurz drauf,
+        dann taucht sie hier hervorgehoben auf — die Adresse kannst du als
+        <code>SCALE_MAC</code> eintragen, damit nur sie ausgewertet wird.</p>
+    </details>
+
+    <hr class="sep">
+
+    <label class="field">Token für den Waagen-Dienst</label>
+    <div class="row">
+      <input id="apiToken" readonly class="grow">
+      <button class="btn small ghost" id="btnCopyToken">Kopieren</button>
+    </div>
+    <p class="muted">Gehört in die Variable <code>PULS_TOKEN</code> des Containers
+      <code>puls-miscale</code>.</p>
+  </div>
+
+  <div class="card">
+    <h3>Darstellung</h3>
+    <label class="field">Schriftgröße</label>
+    <div class="row" id="fontChips"></div>
+    <div class="font-preview">So sieht ein normaler Text in dieser Größe aus —
+      die ganze Oberfläche wächst mit.</div>
+  </div>
+
+  <div class="card">
+    <h3>KI-Modell</h3>
+    <div id="modelList" class="muted">Wird geladen …</div>
+    <div class="pull-bar" id="pullBar" hidden><span></span></div>
+    <p class="muted" id="pullStatus"></p>
+    <p class="muted">Der Wechsel lädt das Modell im Hintergrund herunter —
+      je nach Größe dauert das einige Minuten. Solange antwortet der Coach
+      noch mit dem alten Modell.</p>
+  </div>
+
+  <div class="card">
+    <h3>System</h3>
+    <div id="systemStatus" class="muted">…</div>
+  </div>
+</section>
+
+</main>
+
+<div class="tooltip" id="tooltip"></div>
+<script src="/static/charts.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

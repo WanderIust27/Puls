@@ -27,9 +27,17 @@ services:
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_KEEP_ALIVE=30m
       - OLLAMA_NUM_PARALLEL=1
+      # Grafikkarte: leer = CPU. In der .env OLLAMA_GPU=all setzen (oder die
+      # UUID aus `nvidia-smi -L`), dann rechnet Ollama auf der Karte. Dafür
+      # muss die nvidia-Runtime da sein — auf Unraid das Plugin
+      # "Nvidia Driver" aus den Community Apps, danach einmal neu starten.
+      - NVIDIA_VISIBLE_DEVICES=${OLLAMA_GPU:-}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    # runc = CPU (Standard). Mit OLLAMA_RUNTIME=nvidia in der .env wird die
+    # Karte benutzt; beide Zeilen gehören zusammen.
+    runtime: ${OLLAMA_RUNTIME:-runc}
     volumes:
       - ollama-data:/root/.ollama
-    # Bewusst KEIN GPU-Block: läuft rein auf CPU (GPU bleibt für Hermes frei).
     # Optional RAM hart begrenzen:
     # mem_limit: 7g
 
