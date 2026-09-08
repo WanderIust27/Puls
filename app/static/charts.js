@@ -177,7 +177,7 @@ function routeMap(container, track, bounds, opts = {}) {
     container.innerHTML = '<p class="muted">Für diese Einheit gibt es keine GPS-Spur.</p>';
     return;
   }
-  const W = 720, H = opts.height || 300, pad = 16;
+  const W = 720, H = opts.height || 420, pad = 16;
   const z = fitZoom(bounds, W - pad * 2, H - pad * 2);
   const scale = Math.pow(2, z) * TILE;
 
@@ -343,3 +343,28 @@ function dayCurve(container, pairs, opts = {}) {
       ${ticks}
     </svg>`;
 }
+
+
+/* --------------------------------------------------------- Sparkline */
+
+/* Der knappe Verlauf neben einer Kachel: keine Achsen, keine Beschriftung,
+   nur die Richtung. Wer den genauen Wert braucht, öffnet das große Diagramm. */
+function sparkline(values, opts = {}) {
+  const points = (values || []).filter((v) => v != null);
+  if (points.length < 2) return "";
+  const W = 120, H = 26, pad = 2;
+  let min = Math.min(...points), max = Math.max(...points);
+  if (max - min < 1e-9) { min -= 1; max += 1; }
+  const X = (i) => (i * W) / (points.length - 1);
+  const Y = (v) => H - pad - ((v - min) / (max - min)) * (H - pad * 2);
+  const d = points.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+  const color = opts.color || "var(--ink-3)";
+  const last = points[points.length - 1];
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="1.4"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
+    <circle cx="${X(points.length - 1).toFixed(1)}" cy="${Y(last).toFixed(1)}" r="2"
+      fill="${color}"></circle>
+  </svg>`;
+}
+

@@ -234,6 +234,8 @@ async function loadDashboard() {
   loadSupplements();
   const d = await api("/dashboard");
   renderScore(d.score);
+  renderRecentActivities(d.recent_activities);
+  renderSleepAndHeart(d.recovery);
 
   ringChart($("#weekRing"), d.week.workouts, d.week.target);
   $("#ringCount").textContent = d.week.workouts;
@@ -288,14 +290,14 @@ async function loadDashboard() {
   renderGoals(d.goal_progress);
 
   $("#upcomingList").innerHTML = d.upcoming_workouts.length
-    ? d.upcoming_workouts.map((w) => `
-      <div class="list-item">
+    ? '<div class="mini-list">' + d.upcoming_workouts.slice(0, 6).map((w) => `
+      <div class="mini${w.planned_date && w.planned_date <= today ? " due" : ""}">
         ${kindTag(w.sport)}
-        <div class="grow"><div class="title">${esc(w.name)}</div>
-          <div class="meta">${w.planned_date ? fmtDate(w.planned_date) : "kein Datum"} · ${SPORT_LABEL[w.sport] || w.sport}</div></div>
-        <span class="badge ${w.status}">${w.status === "pushed" ? "auf der Uhr" : "geplant"}</span>
-      </div>`).join("")
-    : 'Keine geplant — lass dir eins <a href="#" data-goto="training" style="color:var(--accent)">vom Coach bauen</a>.';
+        <div class="mt">${esc(w.name)}</div>
+        <div class="mm">${w.status === "pushed" ? "auf der Uhr" : "geplant"}</div>
+        <div class="mr">${w.planned_date ? esc(relDay(w.planned_date)) : "ohne Datum"}</div>
+      </div>`).join("") + "</div>"
+    : 'Keine geplant — lass dir eine <a href="#" data-goto="plan" style="color:var(--accent)">vom Coach bauen</a>.';
 
   const badge = $("#syncBadge");
   if (!d.garmin_linked) { badge.textContent = "Garmin nicht verbunden"; badge.className = ""; }
@@ -864,6 +866,9 @@ async function openRunAnalysis(activityId) {
     const paint = (tiles) => {
       moveDot = routeMap($("#runMap"), det.track, det.bounds, {
         tiles, values: det.series?.hr,
+        /* Im breiten Fenster darf die Karte mehr Höhe bekommen — auf dem
+           Handy bliebe sie sonst ein Briefschlitz. */
+        height: window.innerWidth >= 900 ? 460 : 340,
       });
     };
     paint(localStorage.getItem("mapTiles") === "1");
@@ -1558,6 +1563,109 @@ async function loadActivityLog() {
 $("#logSport").addEventListener("change", loadActivityLog);
 $("#logDays").addEventListener("change", loadActivityLog);
 
+
+
+/* ------------------------------------------------- Dashboard-Karten */
+
+function relDay(iso) {
+  if (!iso) return "";
+  const d = new Date(iso.slice(0, 10) + "T12:00:00");
+  const diff = Math.round((d - new Date(new Date().toDateString())) / 86400000);
+  if (diff === 0) return "heute";
+  if (diff === 1) return "morgen";
+  if (diff === -1) return "gestern";
+  if (diff > 1 && diff < 7) return d.toLocaleDateString("de-DE", { weekday: "long" });
+  if (diff < 0 && diff > -7) return `vor ${-diff} Tagen`;
+  return fmtDate(iso);
+}
+
+function renderRecentActivities(list) {
+  const box = $("#recentActivities");
+  if (!list || !list.length) {
+    box.innerHTML = '<p class="muted">Noch nichts aufgezeichnet.</p>';
+    return;
+  }
+  box.innerHTML = list.slice(0, 6).map((a) => `
+    <div class="mini" data-run-id="${a.id}">
+      ${kindTag(a.sport)}
+      <div class="mt">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
+      <div class="mm">${fmtDur(a.duration_s)}${a.distance_m
+        ? " · " + (a.distance_m / 1000).toFixed(1) + " km" : ""}${a.avg_hr
+        ? " · Ø " + Math.round(a.avg_hr) + " bpm" : ""}</div>
+      <div class="mr">${esc(relDay(a.start_time))}</div>
+    </div>`).join("");
+  $$("#recentActivities [data-run-id]").forEach((el) =>
+    el.addEventListener("click", () => openRunAnalysis(+el.dataset.runId)));
+}
+
+/* Eine Kachel: Wert, Einheit, Veränderung gegenüber der Basislinie, Verlauf.
+   Für einen einzelnen Wert ist das ehrlicher als ein Diagramm mit einem Balken. */
+function tile(value, unit, label, opts = {}) {
+  if (value == null) {
+    return `<div class="tile"><div class="tv">–</div><div class="tl">${esc(label)}</div></div>`;
+  }
+  let delta = "";
+  if (opts.delta != null && Math.abs(opts.delta) >= (opts.threshold || 0.5)) {
+    /* Bei Ruhepuls und Stress ist weniger besser — deshalb umkehrbar */
+    const better = opts.lowerIsBetter ? opts.delta < 0 : opts.delta > 0;
+    delta = `<div class="td ${better ? "good" : "bad"}">${opts.delta > 0 ? "+" : ""}${opts.delta}${opts.deltaUnit || ""} ggü. Schnitt</div>`;
+  }
+  return `<div class="tile">
+    <div class="tv">${esc(String(value))}${unit ? `<span class="u">${unit}</span>` : ""}</div>
+    <div class="tl">${esc(label)}</div>
+    ${delta}
+    ${opts.series ? `<div class="spark">${sparkline(opts.series, { color: opts.color })}</div>` : ""}
+  </div>`;
+}
+
+function renderSleepAndHeart(rec) {
+  if (!rec) return;
+  const series = rec.series || [];
+  const l = rec.latest || {};
+  const b = rec.baselines || {};
+  const col = (key) => series.map((r) => r[key]);
+
+  const hours = l.sleep_seconds ? +(l.sleep_seconds / 3600).toFixed(1) : null;
+  $("#sleepTiles").innerHTML =
+    tile(hours, " h", "letzte Nacht", {
+      series: series.map((r) => r.sleep_seconds ? r.sleep_seconds / 3600 : null),
+      color: "var(--teal)",
+      delta: b.sleep_seconds?.delta != null
+        ? +(b.sleep_seconds.delta / 3600).toFixed(1) : null,
+      deltaUnit: " h", threshold: 0.2 }) +
+    tile(l.sleep_score != null ? Math.round(l.sleep_score) : null, "", "Schlafscore",
+      { series: col("sleep_score"), color: "var(--teal)" });
+
+  /* Schlafphasen als Anteilsbalken — Teil vom Ganzen, keine Torte */
+  const stages = [["sleep_deep_s", "Tief", "z4"], ["sleep_rem_s", "REM", "z3"],
+                  ["sleep_light_s", "Leicht", "z2"], ["sleep_awake_s", "Wach", "z1"]];
+  const total = stages.reduce((sum, [k]) => sum + (l[k] || 0), 0);
+  $("#sleepStagesMini").innerHTML = total > 0 ? `
+    <div class="zone-bar">${stages.map(([k, , cls]) => {
+      const pct = ((l[k] || 0) / total) * 100;
+      return pct > 0.5 ? `<span class="${cls}" style="width:${pct}%"></span>` : "";
+    }).join("")}</div>
+    <div class="zone-legend">${stages.map(([k, label]) => l[k]
+      ? `<span>${label} ${Math.round(l[k] / 60)} min</span>` : "").join("")}</div>` : "";
+
+  $("#heartTiles").innerHTML =
+    tile(l.resting_hr != null ? Math.round(l.resting_hr) : null, " bpm", "Ruhepuls", {
+      series: col("resting_hr"), color: "var(--bad)",
+      delta: b.resting_hr?.delta, lowerIsBetter: true, threshold: 1 }) +
+    tile(l.hrv_avg != null ? Math.round(l.hrv_avg) : null, " ms", "HRV", {
+      series: col("hrv_avg"), color: "var(--good)",
+      delta: b.hrv_avg?.delta, threshold: 1 }) +
+    tile(l.body_battery_max != null ? Math.round(l.body_battery_max) : null, "",
+      "Body Battery", { series: col("body_battery_max"), color: "var(--good)" }) +
+    tile(l.stress_avg != null ? Math.round(l.stress_avg) : null, "", "Stress Ø", {
+      series: col("stress_avg"), color: "var(--warn)", lowerIsBetter: true });
+}
+
+/* Die Verweise am Kartenfuß sollen wirklich zur Ansicht springen */
+$$("[data-goto]").forEach((b) => b.addEventListener("click", () => {
+  const target = $(`nav.bottom [data-view="${b.dataset.goto}"]`);
+  if (target) target.click();
+}));
 
 /* -------------------------------------------------------------- Score */
 

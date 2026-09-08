@@ -56,7 +56,7 @@ mapped = set(re.findall(r"(\w+):\s*load", loaders.group(0))) if loaders else set
 check("Jede Ansicht hat eine Ladefunktion", sorted(views - mapped), [])
 
 # --- Diagramm-Funktionen sind definiert, bevor app.js sie ruft -----------
-for fn in ("runProfile", "routeMap", "splitChart", "dayCurve"):
+for fn in ("runProfile", "routeMap", "splitChart", "dayCurve", "sparkline"):
     check(f"{fn} ist in charts.js definiert", f"function {fn}(" in charts, True)
 check("charts.js wird vor app.js geladen",
       html.index("charts.js") < html.index("app.js"), True)
@@ -64,13 +64,29 @@ check("charts.js wird vor app.js geladen",
 # --- Verwendete CSS-Klassen existieren -----------------------------------
 # Nur die tragenden Klassen; Vollstaendigkeit waere hier eher hinderlich.
 for cls in ("score-ring", "pillar", "diag", "supp-row", "mood-row", "body-facts",
-            "bf-bar", "gym-ex", "chip", "profile", "routemap"):
+            "bf-bar", "gym-ex", "chip", "profile", "routemap", "grid-cards",
+            "tile", "mini", "card-link", "bests"):
     check(f"CSS-Klasse .{cls} definiert", f".{cls}" in css, True)
 
 # --- 0 darf nicht als "kein Wert" behandelt werden -----------------------
 # Ein Score von 0 ist gueltig; p.value || "–" wuerde ihn verschlucken.
 check("Score prüft auf null statt auf Wahrheitswert",
       "p.value != null" in js, True)
+
+# --- Das Dashboard soll das führen, was täglich gebraucht wird -----------
+dash = html[html.index('id="view-dashboard"'):html.index('id="view-plan"')]
+import re as _re
+titles = _re.findall(r"<h3>([^<]+)</h3>", dash)
+for wanted in ("Heute dran", "Nächste Workouts", "Zuletzt trainiert",
+               "Schlaf", "Herz"):
+    check(f"Dashboard zeigt „{wanted}“", wanted in titles, True)
+check("Score steht auf dem Dashboard", 'id="scoreRing"' in dash, True)
+check("Dashboard nutzt das Raster", 'class="grid-cards"' in dash, True)
+
+# --- Die Verweise am Kartenfuß müssen auf echte Ansichten zeigen --------
+gotos = set(_re.findall(r'data-goto="([a-z-]+)"', html)) | \
+    set(_re.findall(r'data-goto="([a-z-]+)"', js))
+check("Kartenverweise zeigen auf vorhandene Ansichten", sorted(gotos - views), [])
 
 if failures:
     print(f"\n{len(failures)} Test(s) fehlgeschlagen:")

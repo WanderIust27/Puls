@@ -31,7 +31,7 @@
 
 <!-- ============================== DASHBOARD ============================== -->
 <section id="view-dashboard" class="view active">
-  <div class="card hero">
+<div class="card hero">
     <div class="ring-wrap">
       <svg id="weekRing" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="Wochenziel"></svg>
       <div class="ring-center">
@@ -47,79 +47,99 @@
     </div>
   </div>
 
-  <div class="card" id="scoreCard">
-    <div class="score-head">
-      <div class="score-ring" id="scoreRing"></div>
-      <div class="score-text">
-        <div class="score-mood" id="scoreMood">–</div>
-        <div class="score-verdict" id="scoreVerdict"></div>
+  <div class="grid-cards">
+    <div class="card wide" id="scoreCard">
+        <div class="score-head">
+          <div class="score-ring" id="scoreRing"></div>
+          <div class="score-text">
+            <div class="score-mood" id="scoreMood">–</div>
+            <div class="score-verdict" id="scoreVerdict"></div>
+          </div>
+        </div>
+        <div id="scorePillars" class="pillars"></div>
+        <div class="detail-section"><h4>Wo am meisten Potenzial liegt</h4>
+          <div id="scorePotential"></div></div>
       </div>
-    </div>
-    <div id="scorePillars" class="pillars"></div>
-    <div class="detail-section"><h4>Wo am meisten Potenzial liegt</h4>
-      <div id="scorePotential"></div></div>
-  </div>
 
-  <div class="card" id="suppCard" hidden>
-    <h3>Heute einnehmen</h3>
-    <div id="suppList"></div>
-  </div>
-
-<div class="card">
-    <h3>Dein Coach sagt</h3>
-    <div class="coach-msg" id="coachMessage">Noch keine Nachricht — hol dir unten eine.</div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn small" id="btnDaily">Tages-Check</button>
-      <button class="btn small ghost" id="btnRest">Pause oder Training?</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Trainingslast — letzte 6 Wochen</h3>
-    <div class="chart-wrap" id="loadChart"></div>
-  </div>
-
-  <div class="card">
-    <h3>Körper</h3>
-    <div class="comp-row" id="compRow"></div>
-    <div class="chart-wrap" id="weightChart"></div>
-    <p class="muted" id="weightDelta"></p>
-  </div>
-
-  <div class="card">
-    <h3>Heute dran</h3>
-    <div id="todayList" class="muted">Nichts geplant.</div>
-  </div>
-
-  <div class="card">
-    <h3>Ziele im Blick</h3>
-    <div class="goal-grid">
-      <div class="goal">
-        <div class="goal-head"><span>10 km unter 60 Minuten</span><b id="goalRunNow">–</b></div>
-        <div class="goal-bar"><span id="goalRunBar"></span></div>
-        <div class="muted" id="goalRunHint">Noch nicht kalibriert — mach den Benchmark-Lauf.</div>
+    <div class="card">
+        <h3>Heute dran</h3>
+        <div id="todayList" class="muted">Nichts geplant.</div>
       </div>
-      <div class="goal">
-        <div class="goal-head"><span>Klimmzüge</span><b id="goalPullNow">–</b></div>
-        <div class="goal-bar"><span id="goalPullBar"></span></div>
-        <div class="muted" id="goalPullHint">Trag dein Maximum ein, dann baut PULS darauf auf.</div>
+
+    <div class="card">
+        <h3>Nächste Workouts</h3>
+        <div id="upcomingList" class="muted">Keine geplant.</div>
       </div>
+
+    <div class="card">
+      <h3>Zuletzt trainiert</h3>
+      <div id="recentActivities" class="mini-list"></div>
+      <button class="card-link" data-goto="exercises">Ganzes Protokoll ›</button>
     </div>
-  </div>
 
-  <div class="card">
-    <h3>Nächste Workouts</h3>
-    <div id="upcomingList" class="muted">Keine geplant.</div>
-  </div>
+    <div class="card">
+      <h3>Schlaf</h3>
+      <div class="tiles" id="sleepTiles"></div>
+      <div id="sleepStagesMini" style="margin-top:12px"></div>
+      <button class="card-link" data-goto="mood">Erholung im Detail ›</button>
+    </div>
 
-  <div class="card">
-    <h3>Aus der Forschung</h3>
-    <div class="tip" id="researchTip">Noch keins — der Coach liefert jede Woche eins.</div>
-    <button class="btn small ghost" id="btnResearch" style="margin-top:10px">Neues Häppchen</button>
+    <div class="card">
+      <h3>Herz</h3>
+      <div class="tiles" id="heartTiles"></div>
+      <button class="card-link" data-goto="mood">Alle Werte ›</button>
+    </div>
+
+    <div class="card" id="suppCard" hidden>
+        <h3>Heute einnehmen</h3>
+        <div id="suppList"></div>
+      </div>
+
+    <div class="card">
+        <h3>Ziele im Blick</h3>
+        <div class="goal-grid">
+          <div class="goal">
+            <div class="goal-head"><span>10 km unter 60 Minuten</span><b id="goalRunNow">–</b></div>
+            <div class="goal-bar"><span id="goalRunBar"></span></div>
+            <div class="muted" id="goalRunHint">Noch nicht kalibriert — mach den Benchmark-Lauf.</div>
+          </div>
+          <div class="goal">
+            <div class="goal-head"><span>Klimmzüge</span><b id="goalPullNow">–</b></div>
+            <div class="goal-bar"><span id="goalPullBar"></span></div>
+            <div class="muted" id="goalPullHint">Trag dein Maximum ein, dann baut PULS darauf auf.</div>
+          </div>
+        </div>
+      </div>
+
+    <div class="card">
+        <h3>Körper</h3>
+        <div class="comp-row" id="compRow"></div>
+        <div class="chart-wrap" id="weightChart"></div>
+        <p class="muted" id="weightDelta"></p>
+      </div>
+
+    <div class="card span2">
+        <h3>Trainingslast — letzte 6 Wochen</h3>
+        <div class="chart-wrap" id="loadChart"></div>
+      </div>
+
+    <div class="card span2">
+        <h3>Dein Coach sagt</h3>
+        <div class="coach-msg" id="coachMessage">Noch keine Nachricht — hol dir unten eine.</div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn small" id="btnDaily">Tages-Check</button>
+          <button class="btn small ghost" id="btnRest">Pause oder Training?</button>
+        </div>
+      </div>
+
+    <div class="card">
+        <h3>Aus der Forschung</h3>
+        <div class="tip" id="researchTip">Noch keins — der Coach liefert jede Woche eins.</div>
+        <button class="btn small ghost" id="btnResearch" style="margin-top:10px">Neues Häppchen</button>
+      </div>
   </div>
 </section>
 
-<!-- ================================ PLAN ================================= -->
 <section id="view-plan" class="view">
   <div class="card">
     <h3>Deine Woche</h3>

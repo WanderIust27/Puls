@@ -42,7 +42,7 @@ body {
 header.topbar {
   display: flex; align-items: center; gap: 14px;
   padding: 20px 20px 14px;
-  max-width: 880px; margin: 0 auto;
+  max-width: 1180px; margin: 0 auto;
 }
 .logo {
   font-weight: 600; font-size: 0.95em; letter-spacing: 3.5px;
@@ -59,7 +59,7 @@ header.topbar {
 #syncBadge.ok { color: var(--ink-2); }
 #syncBadge.err { color: var(--bad); border-color: rgba(200,95,82,.4); }
 
-main { max-width: 880px; margin: 0 auto; padding: 0 20px; }
+main { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
 
 /* ----------------------------------------------------------- Navigation */
 nav.bottom {
@@ -295,7 +295,7 @@ table.datatable th:not(:first-child) { text-align: right; }
 .modal-box { background: var(--surface); border: 1px solid var(--border);
   border-radius: 12px 12px 0 0;
   padding: 24px 22px calc(28px + env(safe-area-inset-bottom));
-  width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; }
+  width: 100%; max-width: 980px; max-height: 92vh; overflow-y: auto; }
 .modal-box h3 { margin: 0 0 18px; font-size: 1em; font-weight: 500;
   letter-spacing: 0; text-transform: none; color: var(--ink); }
 @media (min-width: 700px) {
@@ -359,7 +359,7 @@ hr.sep { border: none; border-top: 1px solid var(--border-soft); margin: 20px 0;
   nav.bottom {
     position: sticky; top: 0; bottom: auto; border-top: none;
     border-bottom: 1px solid var(--border-soft); justify-content: flex-start;
-    max-width: 880px; margin: 0 auto; padding: 0 20px;
+    max-width: 1180px; margin: 0 auto; padding: 0 20px;
   }
   nav.bottom button { flex: 0 0 auto; max-width: none; padding: 14px 18px 13px;
     border-top: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
@@ -600,3 +600,63 @@ ol.plain li, ul.plain li { margin-bottom: 5px; }
 .best .bv { font-family: var(--serif); font-size: 1.32em; line-height: 1.2; }
 .best .bv .u { font-size: 0.5em; color: var(--ink-3); margin-left: 2px; }
 .best .bd { font-size: 0.74em; color: var(--ink-3); }
+
+
+/* ------------------------------------------------------ Dashboard-Raster
+   Eine Spalte auf dem Handy, zwei ab Tablet, drei auf dem Schreibtisch.
+   Karten, die Breite brauchen (Score, Verläufe), überspannen alle Spalten. */
+.grid-cards {
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .grid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-cards .wide { grid-column: 1 / -1; }
+}
+@media (min-width: 1080px) {
+  .grid-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .grid-cards .span2 { grid-column: span 2; }
+}
+.grid-cards > .card { margin: 0; }
+
+/* Kacheln: eine Zahl, ihre Veränderung, ein knapper Verlauf.
+   Für einen einzelnen Wert ist das ehrlicher als ein Diagramm mit einem Balken. */
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.tile { min-width: 0; }
+.tile .tv {
+  font-family: var(--serif); font-size: 1.55em; line-height: 1.15;
+  display: flex; align-items: baseline; gap: 4px;
+}
+.tile .tv .u { font-size: 0.44em; color: var(--ink-3); }
+.tile .tl { font-size: 0.74em; color: var(--ink-3); letter-spacing: 0.04em; }
+.tile .td { font-size: 0.74em; color: var(--ink-3); }
+.tile .td.good { color: var(--good); }
+.tile .td.bad { color: var(--warn); }
+.tile .spark { margin-top: 5px; height: 26px; }
+.tile .spark svg { display: block; width: 100%; height: 26px; }
+
+/* Kompakte Listen für Dashboard-Karten */
+.mini-list { display: flex; flex-direction: column; }
+.mini {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--border-soft);
+  align-items: center; cursor: pointer;
+}
+.mini:last-child { border-bottom: 0; }
+.mini .mt { font-size: 0.94em; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.mini .mm { grid-column: 2; font-size: 0.78em; color: var(--ink-3); }
+.mini .mr { font-size: 0.8em; color: var(--ink-3); text-align: right; white-space: nowrap; }
+.mini .kind { grid-row: 1 / span 2; }
+.mini.due .mr { color: var(--accent); }
+
+.card-link {
+  display: block; margin-top: 10px; font-size: 0.82em; color: var(--ink-3);
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+}
+.card-link:hover { color: var(--accent); }
+
+/* Die Laufkarte darf im breiten Fenster deutlich mehr Platz bekommen */
+@media (min-width: 900px) {
+  .routemap { max-height: 460px; }
+}

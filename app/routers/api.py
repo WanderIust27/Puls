@@ -68,6 +68,9 @@ def dashboard() -> dict[str, Any]:
         "kcal_target": get_setting("kcal_target", ""),
         "protein_target": get_setting("protein_target", ""),
         "score": score.overall(),
+        # Kurze Reihen fuer die Sparklines der Kacheln — der letzte Wert allein
+        # sagt nichts darueber, wohin es geht.
+        "recovery": metrics.recovery_series(21),
         "goal_progress": _goal_progress(),
     }
 
