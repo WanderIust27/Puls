@@ -13,6 +13,7 @@ Einrichtung live auf der Website verfolgen lässt.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 import os
 import time
@@ -114,6 +115,9 @@ async def send_to_puls(reading: dict[str, Any]) -> None:
     payload["source"] = "miscale"
     if reading.get("impedance"):
         payload["impedance"] = reading["impedance"]
+    # Der Messzeitpunkt entscheidet, ob die Messung ins Referenzfenster faellt —
+    # ohne ihn kann PULS Morgen- und Abendwerte nicht auseinanderhalten.
+    payload["measured_at"] = dt.datetime.now().isoformat(timespec="seconds")
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(f"{PULS_URL}/api/body/webhook", json=payload,

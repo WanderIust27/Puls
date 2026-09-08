@@ -100,13 +100,63 @@ def parse_service_data(service_data: dict[str, bytes]) -> ScaleReading | None:
 
 # ------------------------------------------------- Körperzusammensetzung
 
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def lean_body_mass(weight_kg: float, impedance: int, height_cm: float,
+                   age: int) -> float:
+    """Magermasse — die Zwischengroesse, auf der alle weiteren Werte aufbauen."""
+    lbm = (height_cm * 9.058 / 100.0) * (height_cm / 100.0)
+    lbm += weight_kg * 0.32 + 12.226
+    lbm -= impedance * 0.0068
+    lbm -= age * 0.0542
+    return lbm
+
+
+def _bone_mass(lbm: float, sex_male: bool) -> float:
+    """Knochenmasse in kg.
+
+    Achtung: Die Waage misst keine Knochen. Sie misst Gewicht und elektrischen
+    Widerstand — alles andere ist gerechnet. Der Wert taugt fuer den Verlauf,
+    nicht als medizinische Aussage.
+    """
+    base = 0.18016894 if sex_male else 0.245691014
+    bone = (base - (lbm * 0.05158)) * -1
+    bone = bone + 0.1 if bone > 2.2 else bone - 0.1
+    return _clamp(bone, 0.5, 8.0)
+
+
+def _visceral_fat(weight_kg: float, height_cm: float, age: int,
+                  sex_male: bool) -> float:
+    """Viszeralfett als dimensionslose Kennzahl (unter 10 gilt als unauffaellig)."""
+    if sex_male:
+        if height_cm < weight_kg * 1.6:
+            sub = ((height_cm * 0.4) - (height_cm * (height_cm * 0.0826))) * -1
+            vf = ((weight_kg * 305) / (sub + 48)) - 2.9 + (age * 0.15)
+        else:
+            sub = 0.765 + height_cm * -0.0015
+            vf = (((height_cm * 0.143) - (weight_kg * sub)) * -1) + (age * 0.15) - 5.0
+    else:
+        if weight_kg > (13 - (height_cm * 0.5)) * -1:
+            sub = ((height_cm * 1.45) + (height_cm * 0.1158) * height_cm) - 120
+            vf = (weight_kg * 500 / sub - 6) + (age * 0.07)
+        else:
+            sub = 0.691 + (height_cm * -0.0024) + (height_cm * -0.0024)
+            vf = (((height_cm * 0.027) - (sub * weight_kg)) * -1) + (age * 0.07) - age
+    return _clamp(vf, 1.0, 50.0)
+
+
 def body_composition(weight_kg: float, impedance: int | None, height_cm: float,
                      age: int, sex: str = "male") -> dict[str, Any]:
-    """Körperfett & Co. aus Gewicht und Impedanz.
+    """Koerperwerte aus Gewicht und Impedanz.
 
-    Die Formeln entsprechen denen, die in der Open-Source-Welt für die Mi Scale
-    benutzt werden (abgeleitet aus dem Verhalten der Hersteller-App). Sie sind
-    Schätzungen — gut für den Trend, nicht für absolute Wahrheiten.
+    Die Waage funkt nur zwei Dinge: Gewicht und elektrischen Widerstand. Fett,
+    Muskeln, Wasser und Knochen sind daraus geschaetzt — die Formeln entsprechen
+    denen, die in der Open-Source-Welt fuer die Mi Scale benutzt werden
+    (abgeleitet aus dem Verhalten der Hersteller-App). Gut fuer den Trend, nicht
+    als absolute Wahrheit. Ohne Impedanz gibt es nur Gewicht und BMI: die
+    Impedanz misst die Waage nur bei barfuessigem Kontakt.
     """
     out: dict[str, Any] = {"weight_kg": weight_kg}
     height_m = height_cm / 100.0
@@ -115,12 +165,10 @@ def body_composition(weight_kg: float, impedance: int | None, height_cm: float,
     if not impedance or impedance <= 0 or impedance >= 3000:
         return out
 
+    out["impedance"] = impedance
     male = sex.lower().startswith("m")
-    # Magermasse (LBM) als Zwischengröße
-    lbm = (height_cm * 9.058 / 100.0) * (height_cm / 100.0)
-    lbm += weight_kg * 0.32 + 12.226
-    lbm -= impedance * 0.0068
-    lbm -= age * 0.0542
+    lbm = lean_body_mass(weight_kg, impedance, height_cm, age)
+    out["lbm_kg"] = round(lbm, 1)
 
     if male:
         coefficient = 0.8 if weight_kg < 61 else 1.0
@@ -129,9 +177,19 @@ def body_composition(weight_kg: float, impedance: int | None, height_cm: float,
         coefficient = 0.96 if weight_kg < 50 else 1.0
         fat = weight_kg - lbm
 
-    fat_pct = max(5.0, min(60.0, fat / weight_kg * 100 * coefficient))
+    fat_pct = _clamp(fat / weight_kg * 100 * coefficient, 5.0, 60.0)
     out["body_fat_pct"] = round(fat_pct, 1)
-    out["muscle_kg"] = round(max(0.0, weight_kg - (weight_kg * fat_pct / 100) -
-                                 (weight_kg * 0.05)), 1)
-    out["water_pct"] = round(max(35.0, min(75.0, (100 - fat_pct) * 0.7)), 1)
+
+    bone = _bone_mass(lbm, male)
+    out["bone_kg"] = round(bone, 2)
+
+    # Muskelmasse jetzt mit echter Knochenschaetzung statt pauschaler 5 %
+    muscle = weight_kg - (weight_kg * fat_pct / 100) - bone
+    out["muscle_kg"] = round(_clamp(muscle, 10.0, 120.0), 1)
+
+    water = (100 - fat_pct) * 0.7
+    water *= 1.02 if water < 50 else 0.98
+    out["water_pct"] = round(_clamp(water, 35.0, 75.0), 1)
+
+    out["visceral_fat"] = round(_visceral_fat(weight_kg, height_cm, age, male), 1)
     return out

@@ -40,6 +40,18 @@ CREATE TABLE IF NOT EXISTS activities (
     hr_zones_json TEXT,            -- Sekunden je Herzfrequenzzone
     analysis_json TEXT             -- Ergebnis der Laufbewertung
 );
+CREATE TABLE IF NOT EXISTS activity_details (
+    activity_id INTEGER PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+    fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+    -- Ausgeduennt gespeichert: rund 300-500 Messpunkte statt sekundengenauer Rohdaten.
+    -- In Karte und Diagrammen nicht von der vollen Aufloesung zu unterscheiden,
+    -- kostet aber Kilobyte statt Megabyte.
+    series_json TEXT,                             -- Puls, Tempo, Hoehe, Kadenz ueber die Zeit
+    track_json TEXT,                              -- vereinfachte GPS-Spur
+    splits_json TEXT,                             -- Runden/Kilometer
+    bounds_json TEXT,                             -- Eckpunkte der Spur fuer den Kartenausschnitt
+    point_count INTEGER
+);
 CREATE TABLE IF NOT EXISTS planned_workouts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -64,14 +76,26 @@ CREATE TABLE IF NOT EXISTS nutrition_log (
 );
 CREATE TABLE IF NOT EXISTS body_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    day TEXT NOT NULL,
+    day TEXT NOT NULL,                            -- YYYY-MM-DD, aus measured_at abgeleitet
+    measured_at TEXT NOT NULL,                    -- ISO-Zeitstempel der Messung (lokale Zeit)
+    time_known INTEGER NOT NULL DEFAULT 1,        -- 0 = Uhrzeit unbekannt (Altbestand, CSV)
+    in_window INTEGER,                            -- 1 = im Referenzfenster gemessen
     weight_kg REAL,
+    weight_adj_kg REAL,                           -- auf das Referenzfenster umgerechnet
     body_fat_pct REAL,
     muscle_kg REAL,
     water_pct REAL,
-    source TEXT NOT NULL DEFAULT 'manual',        -- manual | garmin | import
-    UNIQUE(day, source)
+    bone_kg REAL,                                 -- Schaetzung aus der Impedanz
+    lbm_kg REAL,                                  -- Magermasse (Zwischengroesse der Schaetzung)
+    bmi REAL,
+    visceral_fat REAL,                            -- Schaetzung, dimensionslose Kennzahl
+    impedance INTEGER,                            -- Rohwert der Waage, fuer Nachrechnen
+    note TEXT,
+    source TEXT NOT NULL DEFAULT 'manual',        -- manual | miscale | garmin | import
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(source, measured_at)
 );
+CREATE INDEX IF NOT EXISTS idx_body_day ON body_metrics(day);
 CREATE TABLE IF NOT EXISTS daily_metrics (
     day TEXT PRIMARY KEY,
     sleep_seconds INTEGER,
@@ -82,7 +106,38 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
     body_battery_max REAL,
     training_readiness REAL,
     steps INTEGER,
-    raw_json TEXT
+    raw_json TEXT,
+    -- Schlafphasen (Sekunden) und Zeitpunkte
+    sleep_deep_s INTEGER,
+    sleep_light_s INTEGER,
+    sleep_rem_s INTEGER,
+    sleep_awake_s INTEGER,
+    sleep_start TEXT,
+    sleep_end TEXT,
+    respiration_avg REAL,                         -- Atemzuege pro Minute
+    spo2_avg REAL,
+    -- HRV im Verhaeltnis zur persoenlichen Basislinie
+    hrv_weekly_avg REAL,
+    hrv_baseline_low REAL,
+    hrv_baseline_high REAL,
+    -- Stress: Tagesmittel und Minuten je Stufe
+    stress_avg REAL,
+    stress_max REAL,
+    stress_rest_min INTEGER,
+    stress_low_min INTEGER,
+    stress_medium_min INTEGER,
+    stress_high_min INTEGER,
+    stress_series_json TEXT,                      -- ausgeduennter Tagesverlauf
+    -- Body Battery
+    body_battery_min REAL,
+    body_battery_wake REAL,                       -- Stand beim Aufwachen
+    body_battery_charged REAL,
+    body_battery_drained REAL,
+    body_battery_series_json TEXT,
+    -- Puls ueber den Tag
+    hr_min REAL,
+    hr_max REAL,
+    hr_avg REAL
 );
 CREATE TABLE IF NOT EXISTS coach_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,6 +243,15 @@ DEFAULT_SETTINGS = {
     "pullup_goal": "10",
     "pullup_best": "",
     # Laufleistung aus dem Benchmark (m in 12 min, Cooper)
+    # Waage: Referenzfenster fuer vergleichbare Messungen
+    "weigh_window_start": "06:00",
+    "weigh_window_end": "09:00",
+    "weigh_adjust_offwindow": "1",   # Messungen ausserhalb rechnerisch angleichen
+    "body_height_cm": "184",
+    "body_age": "24",
+    "body_sex": "male",
+    # Karte in der Laufansicht: 0 = nur GPS-Spur, 1 = OpenStreetMap-Hintergrund
+    "map_tiles": "0",
     "cooper_distance_m": "",
     "easy_pace_s_per_km": "",
     "tempo_pace_s_per_km": "",
@@ -217,7 +281,73 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("exercises", "est_1rm", "REAL"),
     ("exercises", "fail_streak", "INTEGER NOT NULL DEFAULT 0"),
     ("body_metrics", "water_pct", "REAL"),
+    ("body_metrics", "bone_kg", "REAL"),
+    ("body_metrics", "lbm_kg", "REAL"),
+    ("body_metrics", "bmi", "REAL"),
+    ("body_metrics", "visceral_fat", "REAL"),
+    ("body_metrics", "impedance", "INTEGER"),
+    ("body_metrics", "note", "TEXT"),
+    ("body_metrics", "in_window", "INTEGER"),
+    ("body_metrics", "weight_adj_kg", "REAL"),
+    ("daily_metrics", "sleep_deep_s", "INTEGER"),
+    ("daily_metrics", "sleep_light_s", "INTEGER"),
+    ("daily_metrics", "sleep_rem_s", "INTEGER"),
+    ("daily_metrics", "sleep_awake_s", "INTEGER"),
+    ("daily_metrics", "sleep_start", "TEXT"),
+    ("daily_metrics", "sleep_end", "TEXT"),
+    ("daily_metrics", "respiration_avg", "REAL"),
+    ("daily_metrics", "spo2_avg", "REAL"),
+    ("daily_metrics", "hrv_weekly_avg", "REAL"),
+    ("daily_metrics", "hrv_baseline_low", "REAL"),
+    ("daily_metrics", "hrv_baseline_high", "REAL"),
+    ("daily_metrics", "stress_avg", "REAL"),
+    ("daily_metrics", "stress_max", "REAL"),
+    ("daily_metrics", "stress_rest_min", "INTEGER"),
+    ("daily_metrics", "stress_low_min", "INTEGER"),
+    ("daily_metrics", "stress_medium_min", "INTEGER"),
+    ("daily_metrics", "stress_high_min", "INTEGER"),
+    ("daily_metrics", "stress_series_json", "TEXT"),
+    ("daily_metrics", "body_battery_min", "REAL"),
+    ("daily_metrics", "body_battery_wake", "REAL"),
+    ("daily_metrics", "body_battery_charged", "REAL"),
+    ("daily_metrics", "body_battery_drained", "REAL"),
+    ("daily_metrics", "body_battery_series_json", "TEXT"),
+    ("daily_metrics", "hr_min", "REAL"),
+    ("daily_metrics", "hr_max", "REAL"),
+    ("daily_metrics", "hr_avg", "REAL"),
 ]
+
+
+def _rebuild_body_metrics(db: sqlite3.Connection) -> None:
+    """Aeltere Datenbanken erlauben nur eine Messung pro Tag und Quelle.
+
+    Der Constraint UNIQUE(day, source) laesst sich in SQLite nicht per
+    ALTER TABLE entfernen — die Tabelle muss neu aufgebaut werden. Erkannt wird
+    der Altbestand daran, dass die Spalte measured_at fehlt.
+
+    Bestandsmessungen bekommen keine erfundene Uhrzeit: sie werden mit
+    time_known=0 gefuehrt, auf 12:00 datiert (Tagesmitte, damit die Sortierung
+    stimmt) und spaeter weder korrigiert noch dem Referenzfenster zugerechnet.
+    """
+    cols = {r["name"] for r in db.execute("PRAGMA table_info(body_metrics)").fetchall()}
+    if not cols or "measured_at" in cols:
+        return
+
+    import logging
+    log = logging.getLogger("puls.db")
+    keep = [c for c in ("day", "weight_kg", "body_fat_pct", "muscle_kg",
+                        "water_pct", "source") if c in cols]
+
+    db.execute("ALTER TABLE body_metrics RENAME TO body_metrics_old")
+    db.executescript(SCHEMA)          # legt body_metrics in neuer Form an
+    fields = ", ".join(keep)
+    db.execute(
+        f"""INSERT INTO body_metrics(measured_at, time_known, {fields})
+            SELECT day || 'T12:00:00', 0, {fields} FROM body_metrics_old""")
+    moved = db.execute("SELECT COUNT(*) AS n FROM body_metrics").fetchone()["n"]
+    db.execute("DROP TABLE body_metrics_old")
+    log.info("body_metrics umgebaut: %d Messung(en) uebernommen, "
+             "Uhrzeit als unbekannt markiert.", moved)
 
 
 def _migrate(db: sqlite3.Connection) -> None:
@@ -241,6 +371,7 @@ def _migrate(db: sqlite3.Connection) -> None:
 def init_db() -> None:
     ensure_dirs()
     with get_db() as db:
+        _rebuild_body_metrics(db)
         db.executescript(SCHEMA)
         _migrate(db)
         for k, v in DEFAULT_SETTINGS.items():
@@ -258,6 +389,13 @@ def init_db() -> None:
 
 @contextmanager
 def get_db() -> Iterator[sqlite3.Connection]:
+    """Datenbankverbindung mit Sperre.
+
+    Achtung: Die Sperre ist nicht reentrant. Innerhalb eines offenen get_db()
+    darf nichts aufgerufen werden, das seinerseits die Datenbank oeffnet —
+    auch nicht get_setting(). Das blockiert dauerhaft, ohne Fehlermeldung.
+    Werte, die in einer Schleife gebraucht werden, vorher bestimmen.
+    """
     with _lock:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row

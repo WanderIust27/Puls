@@ -75,4 +75,39 @@ print()
 if failures:
     print(f"{len(failures)} Test(s) fehlgeschlagen: {failures}")
     sys.exit(1)
-print("Alle Parser-Tests bestanden.")
+
+# --- Neue Schaetzwerte: Knochen, Viszeralfett, Magermasse ------------------
+comp = body_composition(78.0, 500, 184, 24, "male")
+check("Knochenmasse vorhanden", "bone_kg" in comp, True)
+check("Knochenmasse plausibel (2-5 kg)", 2.0 < comp["bone_kg"] < 5.0, True)
+check("Magermasse plausibel", 40 < comp["lbm_kg"] < 80, True)
+check("Viszeralfett plausibel", 1 <= comp["visceral_fat"] <= 20, True)
+print(f"   Knochen: {comp['bone_kg']} kg | Magermasse: {comp['lbm_kg']} kg | "
+      f"Viszeral: {comp['visceral_fat']}")
+
+# Muskelmasse muss zur Bilanz passen: Fett + Muskeln + Knochen <= Gewicht
+fat_kg = comp["weight_kg"] * comp["body_fat_pct"] / 100
+check("Koerperbilanz geht auf",
+      abs((fat_kg + comp["muscle_kg"] + comp["bone_kg"]) - comp["weight_kg"]) < 0.2, True)
+
+# Ohne Impedanz darf nichts geschaetzt werden
+bare = body_composition(78.0, None, 184, 24, "male")
+check("ohne Impedanz keine Knochenmasse", "bone_kg" in bare, False)
+
+# Werte muessen in sinnvollen Grenzen bleiben, auch bei Unsinn als Eingabe
+extreme = body_composition(45.0, 2900, 150, 80, "female")
+check("Extremfall bleibt in Grenzen",
+      0.5 <= extreme["bone_kg"] <= 8.0 and 5 <= extreme["body_fat_pct"] <= 60, True)
+
+# Schwerer bei gleicher Impedanz -> mehr Fettanteil
+leicht = body_composition(70.0, 500, 184, 24, "male")["body_fat_pct"]
+schwer = body_composition(90.0, 500, 184, 24, "male")["body_fat_pct"]
+check("mehr Gewicht -> hoeherer Fettanteil", schwer > leicht, True)
+
+if failures:
+    print(f"\n{len(failures)} Test(s) fehlgeschlagen:")
+    for name in failures:
+        print(f"  - {name}")
+    sys.exit(1)
+
+print("\nAlle Parser-Tests bestanden.")
