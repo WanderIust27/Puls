@@ -36,6 +36,7 @@ run "Garmin-Sync"     python3 tests/test_garmin_sync.py
 run "API"             python3 tests/test_api.py
 run "Frontend"        python3 tests/test_frontend.py
 run "Invarianten"     python3 tests/test_invariants.py
+run "Browser"         python3 tests/test_browser.py
 run "Deploy-Skript"   sh tests/test_deploy.sh
 
 echo

@@ -459,18 +459,33 @@ def stats_readout(days: int = 365, limit: int = 6) -> str:
     listing = "\n".join(
         f"- {p['a_label']} und {p['b_label']}: r={p['r']}, {p['direction']}, "
         f"{p['n']} gemeinsame Tage" for p in robust)
+
+    # Die abgeleiteten Schwellen sind im Code gerechnet. Sie gehoeren in den
+    # Prompt, damit das Modell konkret werden kann, ohne Zahlen zu erfinden.
+    try:
+        advice = stats.recommendations(days, limit=5)["recommendations"]
+    except Exception as e:                                  # noqa: BLE001
+        log.debug("Empfehlungen nicht verfuegbar: %s", e)
+        advice = []
+    derived = "\n".join(f"- {r['text']}" for r in advice)
+
     prompt = (
         f"Aus den Daten eines Sportlers wurden {data['tested']} Paare von "
         f"Messwerten geprüft. Diese halten der Korrektur für Mehrfachprüfung "
         f"stand:\n{listing}\n\n"
-        "Schreibe vier bis sechs Sätze: Was sagen diese Zusammenhänge, und was "
-        "folgt praktisch daraus? Weise ausdrücklich darauf hin, wo die Richtung "
-        "unklar ist — ob also A auf B wirkt oder umgekehrt. Erfinde keine "
-        "Zusammenhänge, die nicht in der Liste stehen. Keine Aufzählung.")
+        + (f"Daraus wurden bereits konkrete Schwellen gerechnet — der "
+           f"Vergleich seiner besten mit seinen schlechtesten Tagen:\n"
+           f"{derived}\n\n" if derived else "")
+        + "Schreibe vier bis sechs Sätze: Was sagen diese Zusammenhänge, und was "
+        "folgt praktisch daraus? Nenne dabei die Schwellen und Zahlen aus der "
+        "Liste wörtlich — rechne nichts nach und erfinde keine. Weise "
+        "ausdrücklich darauf hin, wo die Richtung unklar ist — ob also A auf B "
+        "wirkt oder umgekehrt. Keine Aufzählung.")
     try:
         msg = generate(prompt, system=SYSTEM)
         _store("stats", msg)
         return msg
     except OllamaUnavailable:
-        return ("Ohne laufendes Modell nur die Liste:\n" + listing)
+        return ("Ohne laufendes Modell nur das Gerechnete:\n"
+                + (derived or listing))
 

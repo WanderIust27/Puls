@@ -1408,8 +1408,7 @@ async function loadSupplementManager() {
   $$("[data-del-supp]").forEach((b) => b.addEventListener("click", async () => {
     if (!confirm("Dieses Supplement entfernen?")) return;
     try { await api(`/supplements/${b.dataset.delSupp}`, { method: "DELETE" });
-      loadSupplementManager();
-  loadAutopilot(); loadSupplements(); }
+      loadSupplementManager(); loadSupplements(); }
     catch (e) { toast(e.message, true); }
   }));
 }
@@ -2152,6 +2151,37 @@ async function loadStats() {
   const weak = d.pairs.filter((p) => !p.robust);
   correlationBars($("#statsWeakBars"), weak, { limit: statsWeakLimit });
   $("#btnStatsMore").hidden = weak.length <= statsWeakLimit;
+
+  loadStatsRecommendations(days);
+}
+
+async function loadStatsRecommendations(days) {
+  let d;
+  try { d = await api(`/stats/recommendations?days=${days}`); }
+  catch (e) { $("#statsRecs").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+
+  if (!d.recommendations.length) {
+    $("#statsRecs").innerHTML = `<p class="muted">${esc(d.hint || "Noch nichts abzuleiten.")}</p>`;
+    return;
+  }
+  $("#statsRecs").innerHTML = d.recommendations.map((r) => `
+    <div class="rec">
+      <div class="rh">${esc(r.lever_label)} ${esc(r.direction)}
+        <b>${esc(r.threshold_text)}</b></div>
+      <div class="rb">
+        <span class="rl">${esc(r.outcome_label)}</span>
+        <span class="rv good">${esc(r.good_text)}</span>
+        <span class="muted">statt</span>
+        <span class="rv bad">${esc(r.bad_text)}</span>
+        ${r.gain_pct ? `<span class="rd">+${r.gain_pct} %</span>` : ""}
+      </div>
+      <div class="rm">${r.days_good} gegen ${r.days_bad} Tage · r=${r.r}
+        · korrigiertes p=${String(r.p_adjusted).replace(".", ",")}</div>
+    </div>`).join("") + `
+    <p class="muted" style="margin-top:10px">Die Richtung bleibt offen: Dass an
+      Tagen mit dem einen Wert der andere besser liegt, heißt nicht, dass das
+      eine das andere bewirkt. Als Ansatzpunkt taugt es trotzdem — probier eine
+      Änderung zwei Wochen aus und sieh hier nach.</p>`;
 }
 
 $("#statsDays").addEventListener("change", loadStats);
@@ -2245,9 +2275,13 @@ const AUTO_WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 let autoDays = [];
 
 async function loadAutopilot() {
+  // Nicht stillschweigend aussteigen: Ein leeres Autopilot-Feld sieht aus wie
+  // eine kaputte Seite, und ohne Meldung sucht man an der falschen Stelle.
   let cfg;
-  try { cfg = await api("/autopilot"); } catch (e) { return; }
-  autoDays = cfg.available_days || AUTO_WEEKDAYS;
+  try { cfg = await api("/autopilot"); }
+  catch (e) { toast("Autopilot nicht erreichbar: " + e.message, true); return; }
+  autoDays = (cfg.available_days && cfg.available_days.length)
+    ? cfg.available_days : AUTO_WEEKDAYS.slice();
 
   $("#autoFocus").innerHTML = Object.entries(cfg.presets).map(([k, v]) =>
     `<option value="${k}"${k === cfg.focus ? " selected" : ""}>${esc(v.label)}</option>`
@@ -2269,7 +2303,7 @@ function renderAutoDays() {
   $("#autoDays").innerHTML = AUTO_WEEKDAYS.map((d) =>
     `<button class="chip${autoDays.includes(d) ? " on" : ""}" data-autoday="${d}">${d}</button>`
   ).join("");
-  $$("[data-autoday]").forEach((b) => b.addEventListener("click", () => {
+  $$("#autoDays [data-autoday]").forEach((b) => b.addEventListener("click", () => {
     const d = b.dataset.autoday;
     autoDays = autoDays.includes(d) ? autoDays.filter((x) => x !== d) : [...autoDays, d];
     renderAutoDays();
@@ -2617,6 +2651,7 @@ async function loadSettings() {
     : "Diese Version meldet noch keine Kennung — das Update ist nicht angekommen.";
   pollBackfill();
   loadSupplementManager();      // zeigt einen laufenden Verlaufs-Import auch nach Neuladen
+  loadAutopilot();
   selectedGoals = s.goals; renderGoalChips();
   runDays = s.run_days || []; gymDays = s.gym_days || []; renderDayChips();
   $("#setWeeklyTarget").value = s.weekly_workout_target;

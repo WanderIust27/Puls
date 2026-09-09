@@ -41,6 +41,11 @@ METRICS: list[tuple[str, str, str, str, bool | None]] = [
     ("sleep_efficiency", "Schlafeffizienz", "Schlaf", " %", True),
     ("respiration_avg", "Atemfrequenz", "Schlaf", "/min", None),
     ("spo2_avg", "Sauerstoffsättigung", "Schlaf", " %", True),
+    ("bedtime", "Zubettgehzeit", "Schlaf", " Uhr", None),
+    ("waketime", "Aufstehzeit", "Schlaf", " Uhr", None),
+    ("sleep_midpoint", "Schlafmitte", "Schlaf", " Uhr", None),
+    ("bedtime_shift", "Abweichung Zubettgehzeit", "Schlaf", " h", False),
+    ("wake_shift", "Abweichung Aufstehzeit", "Schlaf", " h", False),
 
     ("resting_hr", "Ruhepuls", "Herz", " bpm", False),
     ("hrv_avg", "HRV", "Herz", " ms", True),
@@ -62,15 +67,21 @@ METRICS: list[tuple[str, str, str, str, bool | None]] = [
     ("run_km", "Laufkilometer", "Bewegung", " km", None),
     ("calories_burned", "Verbrannte Kalorien", "Bewegung", "", None),
     ("training_readiness", "Trainingsbereitschaft", "Bewegung", "", True),
+    ("train_hour", "Trainingsuhrzeit", "Bewegung", " Uhr", None),
 
     ("weight_kg", "Gewicht", "Körper", " kg", None),
     ("body_fat_pct", "Körperfett", "Körper", " %", False),
     ("muscle_kg", "Muskelmasse", "Körper", " kg", True),
     ("water_pct", "Wasseranteil", "Körper", " %", True),
 
-    ("mood", "Stimmung", "Befinden", "", True),
-    ("energy", "Energie", "Befinden", "", True),
+    ("mood", "Stimmung Ø", "Befinden", "", True),
+    ("energy", "Energie Ø", "Befinden", "", True),
     ("stress_felt", "Stress (gefühlt)", "Befinden", "", False),
+    ("mood_morning", "Stimmung morgens", "Befinden", "", True),
+    ("mood_evening", "Stimmung abends", "Befinden", "", True),
+    ("energy_morning", "Energie morgens", "Befinden", "", True),
+    ("energy_evening", "Energie abends", "Befinden", "", True),
+    ("mood_change", "Stimmungsverlauf über den Tag", "Befinden", "", True),
 
     ("kcal", "Kalorien gegessen", "Ernährung", "", None),
     ("protein_g", "Eiweiß", "Ernährung", " g", True),
@@ -115,6 +126,56 @@ def _benjamini_hochberg(items: list[dict[str, Any]], level: float = FDR_LEVEL) -
         item["p_adjusted"] = round(min(1.0, item["p"] * m / rank), 4)
 
 
+# Kennzahlen, die eine Uhrzeit sind. Sie werden als Dezimalstunde gerechnet
+# und ohne Umbruch bei Mitternacht: 23:30 ist 23.5, 00:30 ist 24.5. Sonst
+# laegen zwei Abende, die eine Stunde auseinanderliegen, rechnerisch 23 Stunden
+# auseinander und jeder Zusammenhang waere zerstoert.
+CLOCK_METRICS = {"bedtime", "waketime", "sleep_midpoint", "train_hour"}
+
+# Groessen, an denen du direkt drehen kannst. Nur aus diesen werden
+# Empfehlungen abgeleitet — "schlafe besser, dann ist dein Ruhepuls tiefer"
+# waere keine Empfehlung, sondern eine Umformulierung des Befunds.
+LEVERS = {
+    "bedtime", "waketime", "sleep_midpoint", "bedtime_shift", "wake_shift",
+    "sleep_hours", "steps", "training_minutes", "training_load", "run_km",
+    "train_hour", "kcal", "protein_g", "carbs_g",
+}
+
+
+def _clock(stamp: Any, night: bool = False) -> float | None:
+    """Zeitstempel in Dezimalstunden. Garmin liefert Millisekunden seit 1970,
+    aeltere Eintraege eine ISO-Zeichenkette — beides muss hier ankommen.
+
+    night=True heisst: Zeiten am fruehen Morgen gehoeren zum Abend davor und
+    werden als 24 bis 30 Uhr gefuehrt, damit 23:30 und 00:30 benachbart sind.
+    """
+    if stamp is None or stamp == "":
+        return None
+    when: dt.datetime | None = None
+    try:
+        value = float(stamp)
+        # Millisekunden von Sekunden unterscheiden
+        when = dt.datetime.fromtimestamp(value / 1000 if value > 1e11 else value)
+    except (TypeError, ValueError):
+        try:
+            when = dt.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    hours = when.hour + when.minute / 60 + when.second / 3600
+    if night and hours < 12:
+        hours += 24
+    return round(hours, 3)
+
+
+def fmt_clock(hours: float) -> str:
+    """22.75 wird zu 22:45, 25.25 zu 01:15."""
+    hours = hours % 24
+    h, m = int(hours), int(round((hours - int(hours)) * 60))
+    if m == 60:
+        h, m = h + 1, 0
+    return f"{h % 24:02d}:{m:02d}"
+
+
 def collect(days: int = 365) -> list[dict[str, Any]]:
     """Ein Datensatz je Tag, aus allen Quellen zusammengefuehrt."""
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
@@ -122,14 +183,15 @@ def collect(days: int = 365) -> list[dict[str, Any]]:
         daily = {r["day"]: dict(r) for r in db.execute(
             "SELECT * FROM daily_metrics WHERE day >= ?", (since,)).fetchall()}
         moods = rows_to_dicts(db.execute(
-            "SELECT day, mood, energy, stress FROM mood_entries WHERE day >= ?",
-            (since,)).fetchall())
+            "SELECT day, recorded_at, mood, energy, stress FROM mood_entries "
+            "WHERE day >= ? ORDER BY recorded_at", (since,)).fetchall())
         acts = rows_to_dicts(db.execute(
             """SELECT substr(start_time,1,10) AS day, sport,
                       SUM(COALESCE(training_load, 0)) AS load,
                       SUM(COALESCE(duration_s,0)) AS seconds,
                       SUM(COALESCE(distance_m,0)) AS metres,
-                      SUM(COALESCE(calories,0)) AS kcal
+                      SUM(COALESCE(calories,0)) AS kcal,
+                      MIN(start_time) AS first_start
                FROM activities WHERE substr(start_time,1,10) >= ?
                GROUP BY day, sport""", (since,)).fetchall())
         body = rows_to_dicts(db.execute(
@@ -139,17 +201,31 @@ def collect(days: int = 365) -> list[dict[str, Any]]:
             "SELECT day, kcal, protein_g, carbs_g, fat_g FROM nutrition_log "
             "WHERE day >= ?", (since,)).fetchall()}
 
+    # Stimmung nicht nur als Tagesmittel: Morgens sagt sie etwas ueber die
+    # Nacht, abends ueber den Tag. Wer beides in einen Mittelwert wirft,
+    # verliert genau den Unterschied, auf den es ankommt.
     mood_by_day: dict[str, dict[str, list[float]]] = {}
+    mood_parts: dict[str, dict[str, list[float]]] = {}
     for m in moods:
         b = mood_by_day.setdefault(m["day"], {"mood": [], "energy": [], "stress": []})
         for key in b:
             if m.get(key) is not None:
                 b[key].append(m[key])
+        hour = _clock(m.get("recorded_at"))
+        part = "morning" if hour is not None and hour < 12 else "evening"
+        p = mood_parts.setdefault(m["day"], {})
+        for key in ("mood", "energy"):
+            if m.get(key) is not None:
+                p.setdefault(f"{key}_{part}", []).append(m[key])
 
-    act_by_day: dict[str, dict[str, float]] = {}
+    act_by_day: dict[str, dict[str, Any]] = {}
     for a in acts:
         b = act_by_day.setdefault(a["day"], {"load": 0.0, "seconds": 0.0,
-                                             "run_m": 0.0, "kcal": 0.0})
+                                             "run_m": 0.0, "kcal": 0.0,
+                                             "start": None})
+        hour = _clock(a.get("first_start"))
+        if hour is not None and (b["start"] is None or hour < b["start"]):
+            b["start"] = hour
         b["load"] += a["load"] or 0
         b["seconds"] += a["seconds"] or 0
         b["kcal"] += a["kcal"] or 0
@@ -170,8 +246,14 @@ def collect(days: int = 365) -> list[dict[str, Any]]:
         b = body_by_day.get(day) or {}
         f = food.get(day) or {}
 
+        mp = mood_parts.get(day) or {}
+
         def avg(key: str) -> float | None:
             v = m.get(key) or []
+            return sum(v) / len(v) if v else None
+
+        def part(key: str) -> float | None:
+            v = mp.get(key) or []
             return sum(v) / len(v) if v else None
 
         def hours(key: str) -> float | None:
@@ -217,12 +299,43 @@ def collect(days: int = 365) -> list[dict[str, Any]]:
             "mood": avg("mood"),
             "energy": avg("energy"),
             "stress_felt": avg("stress"),
+            "mood_morning": part("mood_morning"),
+            "mood_evening": part("mood_evening"),
+            "energy_morning": part("energy_morning"),
+            "energy_evening": part("energy_evening"),
+            "bedtime": _clock(d.get("sleep_start"), night=True),
+            "waketime": _clock(d.get("sleep_end")),
+            "train_hour": a.get("start"),
             "kcal": f.get("kcal"),
             "protein_g": f.get("protein_g"),
             "carbs_g": f.get("carbs_g"),
         }
+        if row["mood_morning"] is not None and row["mood_evening"] is not None:
+            row["mood_change"] = round(row["mood_evening"] - row["mood_morning"], 2)
+        else:
+            row["mood_change"] = None
+
+        # Schlafmitte: der Punkt, um den herum du schlaefst. Aussagekraeftiger
+        # als Zubettgehzeit allein, weil sie Dauer und Lage zusammenfasst.
+        if row["bedtime"] is not None and row["sleep_hours"]:
+            row["sleep_midpoint"] = round(row["bedtime"] + row["sleep_hours"] / 2, 3)
+        else:
+            row["sleep_midpoint"] = None
+
+        row["bedtime_shift"] = None
+        row["wake_shift"] = None
         if sum(1 for k, v in row.items() if k != "day" and v is not None) >= 2:
             rows.append(row)
+
+    # Regelmaessigkeit erst danach: Sie misst die Abweichung von DEINER
+    # ueblichen Zeit, und die kennt man erst, wenn alle Tage vorliegen.
+    for key, target in (("bedtime", "bedtime_shift"), ("waketime", "wake_shift")):
+        values = [r[key] for r in rows if r.get(key) is not None]
+        if len(values) >= MIN_PAIRS:
+            usual = sorted(values)[len(values) // 2]      # Median, nicht Mittel
+            for r in rows:
+                if r.get(key) is not None:
+                    r[target] = round(abs(r[key] - usual), 2)
     return rows
 
 
@@ -290,6 +403,134 @@ def matrix(days: int = 365, min_abs_r: float = 0.0) -> dict[str, Any]:
             f"{MIN_PAIRS} Tage, an denen beide Werte vorliegen — aktuell reichen "
             f"{len(usable)} von {len(keys)} Größen dafür aus."),
     }
+
+
+MIN_GROUP = 6             # so viele Tage muss jede Haelfte des Vergleichs haben
+
+
+def _fmt(key: str, value: float) -> str:
+    """Einen Wert so schreiben, wie man ihn liest — Uhrzeit als Uhrzeit."""
+    if key in CLOCK_METRICS:
+        return fmt_clock(value)
+    unit = LABELS[key][2]
+    digits = 0 if abs(value) >= 100 or key in ("steps", "kcal") else 1
+    return f"{value:,.{digits}f}".replace(",", ".") + unit
+
+
+def recommendations(days: int = 365, limit: int = 8) -> dict[str, Any]:
+    """Aus den belastbaren Funden konkrete Empfehlungen ableiten.
+
+    Ein Korrelationskoeffizient ist keine Empfehlung. Deshalb wird hier fuer
+    jeden belastbaren Fund, bei dem eine Seite etwas ist, woran du drehen
+    kannst, das Drittel deiner besten Tage gegen das Drittel deiner
+    schlechtesten gestellt — und der Unterschied in echten Einheiten
+    ausgerechnet. Aus "r = 0,52" wird so "an deinen 30 fruehesten Abenden lag
+    die HRV im Schnitt 6 ms hoeher".
+
+    Die Richtung bleibt offen und wird auch so benannt: Dass an fruehen Abenden
+    die HRV hoeher ist, kann am fruehen Zubettgehen liegen — oder daran, dass
+    man an erholten Tagen frueher muede wird.
+    """
+    data = matrix(days)
+    rows = collect(days)
+    out: list[dict[str, Any]] = []
+
+    for pair in data["robust"]:
+        for lever, outcome in ((pair["a"], pair["b"]), (pair["b"], pair["a"])):
+            if lever not in LEVERS or outcome in LEVERS:
+                continue
+            better = LABELS[outcome][3]
+            if better is None:            # ohne "besser oder schlechter" keine Empfehlung
+                continue
+
+            paired = [(r[lever], r[outcome]) for r in rows
+                      if r.get(lever) is not None and r.get(outcome) is not None]
+            if len(paired) < MIN_GROUP * 3:
+                continue
+            paired.sort(key=lambda t: t[0])
+            cut = len(paired) // 3
+            low, high = paired[:cut], paired[-cut:]
+            if len(low) < MIN_GROUP or len(high) < MIN_GROUP:
+                continue
+
+            low_mean = sum(v for _, v in low) / len(low)
+            high_mean = sum(v for _, v in high) / len(high)
+            # Welches Drittel ist das bessere — gemessen am Ergebnis, nicht am Hebel
+            high_is_better = (high_mean > low_mean) if better else (high_mean < low_mean)
+            good, bad = (high, low) if high_is_better else (low, high)
+            good_mean = high_mean if high_is_better else low_mean
+            bad_mean = low_mean if high_is_better else high_mean
+            gain = abs(good_mean - bad_mean)
+            if gain < 1e-9:
+                continue
+
+            threshold = good[0][0] if high_is_better else good[-1][0]
+            direction = "ab" if high_is_better else "bis"
+            if lever in CLOCK_METRICS:
+                direction = "ab" if high_is_better else "vor"
+
+            unit = LABELS[outcome][2]
+            share = round(gain / abs(bad_mean) * 100) if bad_mean else None
+            advice = (
+                f"{LABELS[lever][0]} {direction} {_fmt(lever, threshold)}: "
+                f"An diesen {len(good)} Tagen lag {LABELS[outcome][0]} bei "
+                f"{_fmt(outcome, good_mean)} statt {_fmt(outcome, bad_mean)} — "
+                f"ein Unterschied von {gain:.1f}{unit}"
+                + (f" ({share} %)." if share else "."))
+
+            out.append({
+                "lever": lever, "lever_label": LABELS[lever][0],
+                "outcome": outcome, "outcome_label": LABELS[outcome][0],
+                "threshold": round(threshold, 3),
+                "threshold_text": _fmt(lever, threshold),
+                "direction": direction,
+                "good_mean": round(good_mean, 2), "bad_mean": round(bad_mean, 2),
+                "good_text": _fmt(outcome, good_mean), "bad_text": _fmt(outcome, bad_mean),
+                "gain": round(gain, 2), "gain_pct": share,
+                "days_good": len(good), "days_bad": len(bad),
+                "n": len(paired), "r": pair["r"], "p_adjusted": pair["p_adjusted"],
+                "group": LABELS[outcome][1],
+                "text": advice,
+                # Nach Wirkung sortieren, gemessen am eigenen Streubereich der
+                # Zielgroesse — sonst gewaenne immer die Groesse mit den
+                # groessten Zahlen, nicht die mit dem groessten Effekt.
+                "_weight": gain / (_spread(rows, outcome) or 1),
+            })
+
+    out.sort(key=lambda x: -x["_weight"])
+    for item in out:
+        item.pop("_weight", None)
+
+    # Je Hebel nur die staerkste Empfehlung — sonst steht dreimal dasselbe da
+    seen: set[str] = set()
+    unique, rest = [], []
+    for item in out:
+        if item["lever"] in seen:
+            rest.append(item)
+        else:
+            seen.add(item["lever"])
+            unique.append(item)
+
+    return {
+        "days": days,
+        "recommendations": unique[:limit],
+        "also": rest[:limit],
+        "checked": data["tested"],
+        "robust": len(data["robust"]),
+        "hint": None if unique else (
+            "Noch keine Empfehlung ableitbar. Dafür braucht es einen belastbaren "
+            "Zusammenhang zwischen etwas, woran du drehen kannst (Schlafenszeit, "
+            "Schritte, Trainingsumfang, Ernährung), und einem Wert, bei dem klar "
+            "ist, was besser wäre."),
+    }
+
+
+def _spread(rows: list[dict[str, Any]], key: str) -> float:
+    values = [r[key] for r in rows if r.get(key) is not None]
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    return (sum((v - mean) ** 2 for v in values) / (len(values) - 1)) ** 0.5
 
 
 def for_metric(key: str, days: int = 365, limit: int = 12) -> dict[str, Any]:

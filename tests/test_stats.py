@@ -142,6 +142,107 @@ row_keys = set(stats.collect(5)[0].keys()) if stats.collect(5) else set()
 missing = [k for k, *_ in stats.METRICS if k not in row_keys]
 check("Alle Kennzahlen werden erhoben", missing, [])
 
+# --- Uhrzeiten -----------------------------------------------------------
+# 23:30 und 00:30 liegen eine Stunde auseinander, nicht 23. Ohne diese
+# Verschiebung waere jeder Zusammenhang mit der Zubettgehzeit zerstoert.
+late = dt.datetime(2026, 3, 1, 23, 30)
+past_midnight = dt.datetime(2026, 3, 2, 0, 30)
+check("23:30 als Nachtzeit", stats._clock(late.isoformat(), night=True), 23.5)
+check("00:30 als Nachtzeit", stats._clock(past_midnight.isoformat(), night=True), 24.5)
+check("… also eine Stunde Abstand",
+      stats._clock(past_midnight.isoformat(), night=True)
+      - stats._clock(late.isoformat(), night=True), 1.0)
+# Garmin liefert Millisekunden seit 1970, aeltere Eintraege eine Zeichenkette
+check("Millisekunden werden verstanden",
+      stats._clock(str(int(late.timestamp() * 1000)), night=True), 23.5)
+check("Sekunden werden verstanden",
+      stats._clock(int(late.timestamp()), night=True), 23.5)
+ok("Unsinn ergibt nichts", stats._clock("morgen früh") is None)
+ok("Leeres Feld ergibt nichts", stats._clock(None) is None and stats._clock("") is None)
+check("Uhrzeit wird lesbar geschrieben", stats.fmt_clock(22.75), "22:45")
+check("… auch nach Mitternacht", stats.fmt_clock(25.25), "01:15")
+check("… und rundet sauber", stats.fmt_clock(6.999), "07:00")
+
+# --- Ein gelegter Effekt muss als Empfehlung herauskommen ----------------
+# Frueh ins Bett -> hoehere HRV, sechs Millisekunden je Stunde.
+with get_db() as db:                    # Tisch abraeumen, nicht anbauen
+    db.execute("DELETE FROM daily_metrics")
+    db.execute("DELETE FROM mood_entries")
+
+rnd = random.Random(5)
+with get_db() as db:
+    for i in range(1, 120):
+        day = dt.date.today() - dt.timedelta(days=i)
+        bed_h = rnd.uniform(21.5, 25.0)
+        start = dt.datetime.combine(day - dt.timedelta(days=1), dt.time(0)) \
+            + dt.timedelta(hours=bed_h)
+        sleep_h = rnd.uniform(6.0, 8.5)
+        end = start + dt.timedelta(hours=sleep_h)
+        db.execute("""INSERT INTO daily_metrics(day, sleep_seconds, sleep_start,
+                          sleep_end, hrv_avg, resting_hr, steps, training_readiness)
+                      VALUES(?,?,?,?,?,?,?,?)""",
+                   (day.isoformat(), sleep_h * 3600,
+                    str(int(start.timestamp() * 1000)), str(int(end.timestamp() * 1000)),
+                    70 - 6 * (bed_h - 21.5) + rnd.gauss(0, 2),
+                    rnd.uniform(44, 56), rnd.uniform(3000, 15000), rnd.uniform(30, 90)))
+        for hour, base in ((8, 2.5), (20, 4.0)):
+            db.execute("""INSERT INTO mood_entries(day, recorded_at, mood, energy, stress)
+                          VALUES(?,?,?,?,?)""",
+                       (day.isoformat(), f"{day.isoformat()}T{hour:02d}:00:00",
+                        max(1, min(5, round(rnd.gauss(base, 0.6)))),
+                        rnd.randint(1, 5), rnd.randint(1, 5)))
+
+rows = stats.collect(200)
+sample = rows[1]
+ok("Zubettgehzeit wird erhoben", sample["bedtime"] is not None, str(sample["bedtime"]))
+ok("Aufstehzeit wird erhoben", sample["waketime"] is not None)
+ok("Schlafmitte liegt zwischen beiden",
+   sample["bedtime"] < sample["sleep_midpoint"], f"{sample['sleep_midpoint']}")
+ok("Regelmaessigkeit wird gerechnet", sample["bedtime_shift"] is not None)
+ok("Abweichung ist nie negativ",
+   all(r["bedtime_shift"] >= 0 for r in rows if r["bedtime_shift"] is not None))
+ok("Stimmung morgens und abends getrennt",
+   sample["mood_morning"] is not None and sample["mood_evening"] is not None,
+   f"{sample['mood_morning']} / {sample['mood_evening']}")
+ok("Der Tagesverlauf ist die Differenz",
+   abs(sample["mood_change"] - (sample["mood_evening"] - sample["mood_morning"])) < 0.01)
+# Abends besser als morgens war so gelegt — das muss sich zeigen
+changes = [r["mood_change"] for r in rows if r["mood_change"] is not None]
+ok("Der gelegte Stimmungsverlauf wird gefunden",
+   sum(changes) / len(changes) > 0.5, f"Ø {sum(changes) / len(changes):+.2f}")
+
+rec = stats.recommendations(200)
+texts = [r["text"] for r in rec["recommendations"]]
+print("   ", " | ".join(texts[:2]) if texts else "(keine)")
+bed = next((r for r in rec["recommendations"] if r["lever"] == "bedtime"), None)
+ok("Empfehlung zur Zubettgehzeit wird abgeleitet", bed is not None)
+if bed:
+    ok("… zielt auf die HRV", bed["outcome"] == "hrv_avg", bed["outcome"])
+    ok("… und nennt die richtige Richtung", bed["direction"] == "vor", bed["direction"])
+    ok("… mit plausibler Schwelle", 21.5 <= bed["threshold"] <= 24.0,
+       bed["threshold_text"])
+    # Sechs ms je Stunde, die Drittel liegen gut zwei Stunden auseinander
+    ok("… und plausibler Wirkung", 8 <= bed["gain"] <= 20, f"{bed['gain']} ms")
+    ok("… als Uhrzeit geschrieben", ":" in bed["threshold_text"], bed["threshold_text"])
+    ok("… mit genug Tagen je Seite",
+       bed["days_good"] >= stats.MIN_GROUP and bed["days_bad"] >= stats.MIN_GROUP)
+ok("Je Stellschraube nur eine Empfehlung",
+   len({r["lever"] for r in rec["recommendations"]}) == len(rec["recommendations"]))
+ok("Keine Empfehlung ohne Stellschraube",
+   all(r["lever"] in stats.LEVERS for r in rec["recommendations"]))
+ok("Keine Empfehlung auf eine andere Stellschraube",
+   all(r["outcome"] not in stats.LEVERS for r in rec["recommendations"]))
+ok("Keine Empfehlung ohne klare Richtung",
+   all(stats.LABELS[r["outcome"]][3] is not None for r in rec["recommendations"]))
+
+# Ohne Daten darf nichts empfohlen werden.
+with get_db() as db:
+    db.execute("DELETE FROM daily_metrics")
+    db.execute("DELETE FROM mood_entries")
+bare = stats.recommendations(90)
+check("Ohne Daten keine Empfehlung", bare["recommendations"], [])
+ok("Stattdessen ein Hinweis", bool(bare["hint"]))
+
 # --- Autopilot -----------------------------------------------------------
 cfg = autopilot.save_settings({"enabled": True, "focus": "run_faster",
                                "session_minutes": 60, "long_run_day": "So",

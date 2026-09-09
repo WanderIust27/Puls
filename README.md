@@ -160,6 +160,18 @@ gegen die übliche Schwelle von 5 %, findet man rein durch Zufall **rund
 dreißig „Zusammenhänge"**, die keine sind. Wer daraus Empfehlungen ableitet,
 folgt Rauschen.
 
+Erfasst sind dabei auch die Dinge, die man leicht vergisst, weil sie keine
+Messwerte im engeren Sinn sind:
+
+* **Uhrzeiten** — Zubettgehzeit, Aufstehzeit und Schlafmitte, dazu die
+  Abweichung von deiner üblichen Zeit als Maß für Regelmäßigkeit. Und die
+  Uhrzeit, zu der du trainierst. Gerechnet wird ohne Bruch um Mitternacht:
+  23:30 und 00:30 liegen eine Stunde auseinander, nicht dreiundzwanzig — sonst
+  wäre jeder Zusammenhang mit der Schlafenszeit rechnerisch zerstört.
+* **Gemüt getrennt nach Tageszeit** — Stimmung und Energie morgens sagen etwas
+  über die Nacht, abends etwas über den Tag. Ein Tagesmittel verliert genau
+  diesen Unterschied. Dazu der Verlauf über den Tag als eigene Größe.
+
 PULS macht deshalb zweierlei:
 
 * Ein Paar wird überhaupt erst betrachtet, wenn es **mindestens zwölf Tage**
@@ -178,6 +190,35 @@ treibt.
 
 Jede Größe lässt sich einzeln öffnen: ihr Verlauf, und alles, was mit ihr
 zusammenhängt.
+
+### Was daraus folgt
+
+Ein Korrelationskoeffizient ist keine Empfehlung. Über den belastbaren Funden
+steht deshalb eine Karte, die daraus etwas Handfestes macht — und zwar
+gerechnet, nicht formuliert.
+
+Für jeden Fund, bei dem eine Seite etwas ist, woran du **direkt drehen kannst**
+(Schlafenszeit, Schritte, Trainingsumfang, Nährwerte), wird das Drittel deiner
+besten Tage gegen das Drittel deiner schlechtesten gestellt und der Unterschied
+in echten Einheiten ausgerechnet:
+
+> **Zubettgehzeit vor 22:46** — an diesen 39 Tagen lag deine HRV bei 66 ms
+> statt 52,8 ms. Ein Unterschied von 13,2 ms (25 %).
+
+Aus „r = 0,52" wird so eine Uhrzeit, auf die man heute Abend achten kann. Die
+Gegenrichtung wird ausgeschlossen: „Schlaf besser, dann ist dein Ruhepuls
+tiefer" ist keine Empfehlung, sondern eine Umformulierung des Befunds — nur
+Größen, an denen du drehen kannst, kommen als Stellschraube in Frage, und nur
+Größen, bei denen klar ist was besser wäre, als Ziel.
+
+Sortiert wird nach Wirkung gemessen am eigenen Streubereich der Zielgröße, nicht
+nach der nackten Zahl — sonst gewänne immer die Größe mit den größten Werten.
+Je Stellschraube steht nur die stärkste Empfehlung, sonst stünde dreimal
+dasselbe da. Und darunter der Hinweis, der bleiben muss: Die Richtung ist damit
+nicht geklärt. Dass du an frühen Abenden erholter bist, kann am frühen
+Zubettgehen liegen — oder daran, dass man an erholten Tagen früher müde wird.
+Als Ansatzpunkt taugt es trotzdem: zwei Wochen ausprobieren, dann hier
+nachsehen.
 
 ## Autopilot — der Coach plant die Woche
 
@@ -456,7 +497,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Fünfzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Sechzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
 prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
 Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.
@@ -472,7 +513,16 @@ Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync
 samt Verlaufs-Import gegen einen nachgebauten Client, die komplette API gegen
 die echte Anwendung, und die Frontend-Struktur.
 
-Zwei Suiten kamen zuletzt dazu. Die eine prüft die Statistik dort, wo sie
+Eine Suite klickt die App in einem **echten Browser** durch — jede Ansicht,
+und beim Autopiloten bis zur gespeicherten Auswahl nach dem Neuladen. Anlass war
+ein Aufruf, der beim Bearbeiten in einen fremden Klick-Handler gerutscht war:
+Der Autopilot wurde dadurch nur noch beim Löschen eines Supplements befüllt, auf
+der Seite standen leere Auswahlfelder. Kein Python-Test konnte das sehen, denn
+die Datei war syntaktisch einwandfrei und jeder Endpunkt antwortete korrekt.
+Diese Suite braucht Playwright und einen Chromium; fehlt beides, überspringt sie
+sich, damit sie auf dem Server niemanden aufhält.
+
+Zwei weitere kamen mit der Statistik dazu. Die eine prüft sie dort, wo sie
 wehtut: Zweihundert reine Zufallspaare müssen die Mehrfachprüfung fast
 vollständig aussortieren, ein echter Zusammenhang mitten darin muss sie
 überstehen. Die andere hält den Garmin-Fehler fest, der Krafteinheiten

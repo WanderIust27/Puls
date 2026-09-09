@@ -899,6 +899,12 @@ def stats_metric(key: str, days: int = 365) -> dict[str, Any]:
     return data
 
 
+@router.get("/stats/recommendations")
+def stats_recommendations(days: int = 365) -> dict[str, Any]:
+    """Was aus den belastbaren Funden konkret folgt."""
+    return stats.recommendations(days)
+
+
 @router.post("/stats/explain")
 def stats_explain(days: int = 365, limit: int = 6) -> dict[str, str]:
     """Einschaetzung des Coaches zu den staerksten Zusammenhaengen."""

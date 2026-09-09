@@ -359,6 +359,16 @@ with TestClient(app) as client:
           client.get("/api/stats/metric/gibtsnicht").status_code, 404)
     check("Einschätzung antwortet auch ohne Modell",
           bool(client.post("/api/stats/explain").json()["message"]), True)
+    rec = client.get("/api/stats/recommendations?days=90").json()
+    check("Empfehlungen antworten", "recommendations" in rec, True)
+    check("Jede Empfehlung nennt eine Stellschraube und ein Ziel",
+          all(r["lever"] and r["outcome"] and r["text"]
+              for r in rec["recommendations"]), True)
+    check("Ohne Empfehlung steht ein Hinweis da",
+          bool(rec["recommendations"]) or bool(rec["hint"]), True)
+    check("Uhrzeiten und Gemüt sind erfasst",
+          {"bedtime", "waketime", "sleep_midpoint", "mood_morning",
+           "mood_evening"} <= {m["key"] for m in metrics}, True)
 
     # --- Autopilot ---------------------------------------------------------
     saved = client.post("/api/autopilot", json={
@@ -403,7 +413,8 @@ with TestClient(app) as client:
                  "/api/scale/status", "/api/coach/messages", "/api/running/summary",
                  "/api/supplements", "/api/supplements/all", "/api/mood",
                  "/api/mood/adaptations", "/api/recovery",
-                 "/api/today", "/api/autopilot", "/api/stats/metrics"):
+                 "/api/today", "/api/autopilot", "/api/stats/metrics",
+                 "/api/stats/recommendations"):
         code = client.get(path).status_code
         check(f"{path} antwortet", code, 200)
 
