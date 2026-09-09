@@ -34,6 +34,50 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+
+/* Das Modell schreibt Markdown — **fett**, Listen, Absätze. Ungerendert steht
+   das als Sternchen im Text. Hier wird nur das übersetzt, was tatsächlich
+   vorkommt; alles andere bleibt Text. Der Eingabetext wird vorher maskiert,
+   damit aus einer Modellantwort kein Markup werden kann. */
+function mdToHtml(text) {
+  if (!text) return "";
+  const lines = esc(String(text)).split(/\r?\n/);
+  const out = [];
+  let list = null;
+
+  const inline = (t) => t
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,;:!?)]|$)/g, "$1<em>$2</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { closeList(); continue; }
+
+    const heading = line.match(/^#{1,4}\s+(.*)$/);
+    if (heading) { closeList(); out.push(`<h4>${inline(heading[1])}</h4>`); continue; }
+
+    const bullet = line.match(/^[-*•]\s+(.*)$/);
+    if (bullet) {
+      if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; }
+      out.push(`<li>${inline(bullet[1])}</li>`);
+      continue;
+    }
+    const numbered = line.match(/^\d+[.)]\s+(.*)$/);
+    if (numbered) {
+      if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
+      out.push(`<li>${inline(numbered[1])}</li>`);
+      continue;
+    }
+    closeList();
+    out.push(`<p>${inline(line)}</p>`);
+  }
+  closeList();
+  return out.join("");
+}
+
 function toast(msg, err = false) {
   const el = document.createElement("div");
   el.className = "toast" + (err ? " err" : "");
@@ -237,6 +281,11 @@ async function loadDashboard() {
   renderRecentActivities(d.recent_activities);
   renderSleepAndHeart(d.recovery);
   renderSuggestions(d.suggestions);
+  renderTodayTiles(d.recovery);
+  renderBoosters(d.boosters);
+  renderFeedback(d.pending_feedback);
+  loadReadout();
+  loadMemory();
 
   ringChart($("#weekRing"), d.week.workouts, d.week.target);
   $("#ringCount").textContent = d.week.workouts;
@@ -308,15 +357,15 @@ async function loadDashboard() {
 
 $("#btnDaily").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   const r = await api("/coach/daily", { method: "POST" });
-  $("#coachMessage").textContent = r.message;
+  $("#coachMessage").innerHTML = mdToHtml(r.message);
 }));
 $("#btnRest").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   const r = await api("/coach/rest", { method: "POST" });
-  $("#coachMessage").textContent = r.message;
+  $("#coachMessage").innerHTML = mdToHtml(r.message);
 }));
 $("#btnResearch").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   const r = await api("/coach/research", { method: "POST", body: "{}" });
-  $("#researchTip").textContent = r.tip;
+  $("#researchTip").innerHTML = mdToHtml(r.tip);
 }));
 $("#syncBadge").addEventListener("click", async () => {
   try { toast("Sync läuft …"); const r = await api("/garmin/sync", { method: "POST" }); toast(r.ok ? "Sync fertig: " + r.detail : r.detail, !r.ok); loadDashboard(); }
@@ -932,7 +981,7 @@ $("#btnSaveNutrition").addEventListener("click", (e) => withSpinner(e.currentTar
 
 $("#btnNutritionAdvice").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   const r = await api("/coach/nutrition", { method: "POST" });
-  $("#nutritionAdvice").textContent = r.message;
+  $("#nutritionAdvice").innerHTML = mdToHtml(r.message);
 }));
 
 /* ------------------------------------------------------------------ K\u00f6rper */
@@ -1462,7 +1511,7 @@ $("#btnRecipeExplain").addEventListener("click", (e) => withSpinner(e.currentTar
   const meal = $("#recipeMeal").value;
   const r = await api(`/recipes/explain${meal ? `?meal=${meal}` : ""}`, { method: "POST" });
   $("#recipeAdvice").hidden = false;
-  $("#recipeAdvice").textContent = r.text;
+  $("#recipeAdvice").innerHTML = mdToHtml(r.text);
 }));
 
 
@@ -1669,6 +1718,208 @@ $$("[data-goto]").forEach((b) => b.addEventListener("click", () => {
 }));
 
 
+
+/* ------------------------------------------- Zustand, Schwung, Feedback */
+
+/* Puls, Schlaf, Stress und Bereitschaft in einer Reihe — die vier Werte,
+   nach denen sich entscheidet, was heute sinnvoll ist. */
+function renderTodayTiles(rec) {
+  if (!rec) return;
+  const l = rec.latest || {};
+  const b = rec.baselines || {};
+  const series = rec.series || [];
+  const col = (k) => series.map((r) => r[k]);
+
+  $("#todayTiles").innerHTML =
+    tile(l.resting_hr != null ? Math.round(l.resting_hr) : null, " bpm", "Ruhepuls",
+      { series: col("resting_hr"), color: "var(--bad)",
+        delta: b.resting_hr?.delta, lowerIsBetter: true, threshold: 1 }) +
+    tile(l.hrv_avg != null ? Math.round(l.hrv_avg) : null, " ms", "HRV",
+      { series: col("hrv_avg"), color: "var(--good)",
+        delta: b.hrv_avg?.delta, threshold: 1 }) +
+    tile(l.sleep_seconds ? +(l.sleep_seconds / 3600).toFixed(1) : null, " h", "Schlaf",
+      { series: series.map((r) => r.sleep_seconds ? r.sleep_seconds / 3600 : null),
+        color: "var(--teal)" }) +
+    tile(l.stress_avg != null ? Math.round(l.stress_avg) : null, "", "Stress Ø",
+      { series: col("stress_avg"), color: "var(--warn)", lowerIsBetter: true }) +
+    tile(l.training_readiness != null ? Math.round(l.training_readiness) : null,
+      "", "Bereitschaft", { series: col("training_readiness"), color: "var(--accent)" }) +
+    tile(l.body_battery_wake != null ? Math.round(l.body_battery_wake) : null,
+      "", "Body Battery früh", { series: col("body_battery_wake"), color: "var(--good)" });
+}
+
+async function loadReadout(force = false) {
+  const box = $("#readoutText");
+  if (!force && sessionStorage.getItem("readout")) {
+    box.innerHTML = mdToHtml(sessionStorage.getItem("readout"));
+    return;
+  }
+  box.innerHTML = '<span class="muted"><span class="spin"></span> Der Coach schaut auf die Zahlen …</span>';
+  try {
+    const r = await api("/coach/readout", { method: "POST" });
+    /* Die Einschätzung bis zum Neuladen behalten: auf der CPU dauert sie
+       spürbar, und sie ändert sich innerhalb einer Sitzung ohnehin kaum. */
+    sessionStorage.setItem("readout", r.message);
+    box.innerHTML = mdToHtml(r.message);
+  } catch (e) {
+    box.innerHTML = `<span class="muted">${esc(e.message)}</span>`;
+  }
+}
+
+$("#btnReadout").addEventListener("click", (e) =>
+  withSpinner(e.currentTarget, () => loadReadout(true)));
+
+const KIND_WORDS = { movement: "Bewegung", nutrition: "Ernährung", routine: "Gewohnheit" };
+
+function renderBoosters(d) {
+  const card = $("#boosterCard");
+  if (!d || !d.boosters || !d.boosters.length) { card.hidden = true; return; }
+  card.hidden = false;
+  $("#boosterSituation").textContent = d.situation.reasons.length
+    ? "Weil: " + d.situation.reasons.join(", ") : "";
+
+  $("#boosterList").innerHTML = d.boosters.map((b) => `
+    <div class="booster">
+      <div class="bk">${KIND_WORDS[b.kind] || b.kind}${b.minutes ? ` · ${b.minutes} min` : ""}</div>
+      <div class="bn">${esc(b.name)}</div>
+      <div class="bt">${esc(b.text)}</div>
+      ${b.stats && b.stats.bewertet >= 2
+        ? `<div class="bk">bei dir ${b.stats.gut} von ${b.stats.bewertet} Mal hilfreich</div>` : ""}
+      <div class="row">
+        <button class="btn small ghost" data-rate="${b.id}" data-help="1">Hat geholfen</button>
+        <button class="btn small ghost" data-rate="${b.id}" data-help="0">Bringt mir nichts</button>
+      </div>
+    </div>`).join("");
+
+  $("#boosterOpen").innerHTML = (d.open || []).length ? `
+    <div class="works">Von neulich noch offen — hat das etwas gebracht?
+      ${d.open.map((o) => `<button class="btn small ghost" data-rate="${o.tip_id}"
+        data-help="1">${esc(o.name)}: ja</button>
+        <button class="btn small ghost" data-rate="${o.tip_id}"
+        data-help="0">nein</button>`).join(" ")}</div>` : "";
+
+  $("#boosterWorks").innerHTML = (d.works || []).length ? `
+    <div class="works">Was bei dir bisher am besten wirkt:
+      ${d.works.slice(0, 3).map((w) =>
+        `<b>${esc(w.name)}</b> (${w.gut}/${w.bewertet})`).join(", ")}.</div>` : "";
+
+  $$("[data-rate]").forEach((b) => b.addEventListener("click", async () => {
+    try {
+      await api(`/boosters/${b.dataset.rate}/rate`, { method: "POST",
+        body: JSON.stringify({ helpful: b.dataset.help === "1" }) });
+      toast(b.dataset.help === "1" ? "Gemerkt — kommt öfter." : "Gemerkt — kommt seltener.");
+      loadDashboard();
+    } catch (e) { toast(e.message, true); }
+  }));
+}
+
+function scaleRow(label, name, id) {
+  return `<div class="fb-scale"><span class="lb">${label}</span>
+    ${[1, 2, 3, 4, 5].map((n) =>
+      `<button class="dot" data-fb="${id}" data-field="${name}" data-value="${n}">${n}</button>`
+    ).join("")}</div>`;
+}
+
+const fbDraft = {};
+
+function renderFeedback(list) {
+  const card = $("#feedbackCard");
+  if (!list || !list.length) { card.hidden = true; return; }
+  card.hidden = false;
+  $("#feedbackBody").innerHTML = list.map((a) => `
+    <div class="fb-item">
+      <div class="fn">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
+      <div class="fm">${fmtDate(a.start_time)} · ${fmtDur(a.duration_s)}${
+        a.distance_m ? " · " + (a.distance_m / 1000).toFixed(1) + " km" : ""}</div>
+      ${scaleRow("Wie war es?", "rating", a.id)}
+      ${scaleRow("Anstrengung", "effort", a.id)}
+      <input class="grow" data-note="${a.id}" placeholder="Notiz (optional)">
+      <div class="row" style="margin-top:6px">
+        <button class="btn small" data-fbsave="${a.id}">Speichern</button>
+      </div>
+    </div>`).join("");
+
+  $$("[data-fb]").forEach((b) => b.addEventListener("click", () => {
+    const id = b.dataset.fb, field = b.dataset.field;
+    fbDraft[id] = fbDraft[id] || {};
+    fbDraft[id][field] = +b.dataset.value;
+    $$(`[data-fb="${id}"][data-field="${field}"]`).forEach((x) =>
+      x.classList.toggle("on", +x.dataset.value === fbDraft[id][field]));
+  }));
+
+  $$("[data-fbsave]").forEach((b) => b.addEventListener("click", (e) =>
+    withSpinner(e.currentTarget, async () => {
+      const id = b.dataset.fbsave;
+      const note = $(`[data-note="${id}"]`);
+      await api(`/activities/${id}/feedback`, { method: "POST",
+        body: JSON.stringify({ ...(fbDraft[id] || {}),
+                               note: note ? note.value.trim() || null : null }) });
+      toast("Danke — das fließt in die Auswertung ein.");
+      delete fbDraft[id];
+      loadDashboard();
+    })));
+}
+
+/* --------------------------------------------- Chat auf der Startseite */
+
+function dashBubble(kind, text, who) {
+  const el = document.createElement("div");
+  el.className = "bubble " + kind;
+  el.innerHTML = (who ? `<div class="k">${esc(who)}</div>` : "") + mdToHtml(text);
+  $("#dashChatLog").appendChild(el);
+  $("#dashChatLog").scrollTop = $("#dashChatLog").scrollHeight;
+  return el;
+}
+
+async function dashAsk() {
+  const q = $("#dashChatInput").value.trim();
+  if (!q) return;
+  $("#dashChatInput").value = "";
+  dashBubble("user", q);
+  const pending = dashBubble("coach", "Denke nach … (lokale KI, kann dauern)", "PULS");
+  try {
+    const r = await api("/coach/ask", { method: "POST",
+      body: JSON.stringify({ question: q }) });
+    pending.innerHTML = '<div class="k">PULS</div>' + mdToHtml(r.answer);
+    loadMemory();
+  } catch (e) {
+    pending.innerHTML = '<div class="k">PULS</div>⚠️ ' + esc(e.message);
+  }
+}
+
+$("#btnDashAsk").addEventListener("click", dashAsk);
+$("#dashChatInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") dashAsk();
+});
+
+async function loadMemory() {
+  let list;
+  try { list = await api("/memory"); } catch (e) { return; }
+  $("#memoryList").innerHTML = list.length ? list.map((m) => `
+    <div class="mem-row">
+      <span class="mtopic">${esc(m.topic)}</span>
+      <span>${esc(m.fact)}</span>
+      <span>
+        <button class="pin${m.pinned ? " on" : ""}" data-forget="${m.id}"
+          title="Vergessen">×</button>
+      </span>
+    </div>`).join("") : '<p class="muted">Noch nichts gemerkt.</p>';
+  $$("[data-forget]").forEach((b) => b.addEventListener("click", async () => {
+    try { await api(`/memory/${b.dataset.forget}`, { method: "DELETE" });
+      loadMemory(); }
+    catch (e) { toast(e.message, true); }
+  }));
+}
+
+$("#btnMemAdd").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const topic = $("#memTopic").value.trim(), fact = $("#memFact").value.trim();
+  if (!topic || !fact) { toast("Thema und Inhalt bitte ausfüllen.", true); return; }
+  await api("/memory", { method: "POST",
+    body: JSON.stringify({ topic, fact, pinned: true }) });
+  $("#memTopic").value = ""; $("#memFact").value = "";
+  toast("Gemerkt"); loadMemory();
+}));
+
 /* -------------------------------------------------- Coach-Vorschläge */
 
 function renderSuggestions(list) {
@@ -1796,7 +2047,7 @@ async function ask(question) {
   const pending = addBubble("coach", "Denke nach … (lokale KI, kann dauern)", "PULS");
   try {
     const r = await api("/coach/ask", { method: "POST", body: JSON.stringify({ question }) });
-    pending.innerHTML = '<div class="k">PULS</div>' + esc(r.answer);
+    pending.innerHTML = '<div class="k">PULS</div>' + mdToHtml(r.answer);
   } catch (e) {
     pending.innerHTML = '<div class="k">PULS</div>⚠️ ' + esc(e.message);
   }

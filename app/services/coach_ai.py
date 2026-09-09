@@ -49,6 +49,32 @@ FALLBACK_MOTIVATION = [
 def _context_block() -> str:
     ctx = metrics.coach_context()
     ctx["goals"] = [GOAL_LABELS.get(g, g) for g in ctx.get("goals", [])]
+    # Merkposten und was erfahrungsgemaess hilft — beides gehoert in jeden
+    # Prompt, sonst faengt der Coach jedes Gespraech wieder bei null an.
+    try:
+        from . import memory
+        facts = memory.as_context()
+        if facts:
+            ctx["was_ich_ueber_dich_weiss"] = facts
+    except Exception as e:
+        log.debug("Merkposten nicht im Kontext: %s", e)
+    try:
+        from . import boosters
+        works = boosters.what_works()
+        if works:
+            ctx["hat_dir_bisher_geholfen"] = [
+                f"{w['name']} ({w['gut']} von {w['bewertet']} Mal hilfreich)"
+                for w in works]
+    except Exception as e:
+        log.debug("Erfahrungen nicht im Kontext: %s", e)
+    try:
+        from . import feedback
+        pat = feedback.patterns()
+        if pat.get("findings"):
+            ctx["muster_aus_deinen_rueckmeldungen"] = [
+                f["text"] for f in pat["findings"]]
+    except Exception as e:
+        log.debug("Muster nicht im Kontext: %s", e)
     return json.dumps(ctx, ensure_ascii=False, default=str)
 
 
@@ -88,6 +114,13 @@ def answer_question(question: str) -> str:
     try:
         msg = generate(prompt, system=SYSTEM)
         _store("answer", msg, question)
+        # Stand in der Frage etwas, das dauerhaft gilt? Dann behalten —
+        # sichtbar in der Merkposten-Liste, nicht heimlich.
+        try:
+            from . import memory
+            memory.extract(question, msg)
+        except Exception as e:
+            log.debug("Nichts gemerkt: %s", e)
         return msg
     except OllamaUnavailable as e:
         return f"Die lokale KI ist gerade nicht erreichbar ({e}). Versuch es gleich nochmal."
@@ -227,3 +260,82 @@ def research_tip(topic: str | None = None) -> str:
         return tip
     except OllamaUnavailable as e:
         return f"Die lokale KI ist gerade nicht erreichbar ({e})."
+
+
+def daily_readout() -> str:
+    """Ein kurzer Kommentar zu Puls, Schlaf, Stress und Bereitschaft.
+
+    Bewusst getrennt von der Tagesnachricht: hier geht es nur um die Werte der
+    letzten Tage und was daraus fuer heute folgt — keine Motivation, kein
+    Rueckblick auf das Training.
+    """
+    from . import boosters, metrics
+    rec = metrics.recovery_series(10)
+    latest, base = rec["latest"], rec["baselines"]
+    if not latest:
+        return ("Noch keine Erholungsdaten. Nach dem nächsten Garmin-Sync steht "
+                "hier, was Puls, Schlaf und Stress über deinen Zustand sagen.")
+
+    facts = {
+        "heute": {k: latest.get(k) for k in
+                  ("sleep_seconds", "sleep_score", "sleep_deep_s", "hrv_avg",
+                   "hrv_status", "resting_hr", "stress_avg", "body_battery_max",
+                   "body_battery_wake", "training_readiness", "respiration_avg")},
+        "basislinien": base,
+        "beobachtungen": [o["text"] for o in rec.get("observations", [])],
+        "lage": boosters.situation()["reasons"],
+    }
+    prompt = (
+        f"Erholungswerte des Athleten (JSON):\n"
+        f"{json.dumps(facts, ensure_ascii=False, default=str)}\n\n"
+        "Schreibe drei bis vier Sätze dazu, wie sein Zustand heute ist und was "
+        "daraus für den Tag folgt. Beziehe dich auf die konkreten Zahlen und "
+        "immer auf die Basislinie — ein Ruhepuls von 46 sagt nichts, ohne dass "
+        "man weiß, was sein Normalwert ist. Wenn die Werte unauffällig sind, "
+        "sag das ruhig kurz. Keine Überschrift, keine Aufzählung, keine "
+        "Motivationsfloskeln.")
+    try:
+        msg = generate(prompt, system=SYSTEM)
+        _store("readout", msg)
+        return msg
+    except OllamaUnavailable:
+        parts = []
+        if latest.get("sleep_seconds"):
+            parts.append(f"{latest['sleep_seconds'] / 3600:.1f} h Schlaf")
+        if latest.get("resting_hr"):
+            parts.append(f"Ruhepuls {latest['resting_hr']:.0f}")
+        if latest.get("hrv_avg"):
+            parts.append(f"HRV {latest['hrv_avg']:.0f} ms")
+        if latest.get("stress_avg"):
+            parts.append(f"Stressmittel {latest['stress_avg']:.0f}")
+        return ("Ohne laufendes Modell nur die Zahlen: " + ", ".join(parts)
+                + "." if parts else "Noch keine Werte für heute.")
+
+
+def mood_advice() -> str:
+    """Konkrete Hilfe bei einem Tief — mit dem, was bei dir bisher half."""
+    from . import boosters
+    picked = boosters.suggest(3)
+    ctx = picked["situation"]
+    if not picked["boosters"]:
+        return ("Deine Werte und Einträge sehen unauffällig aus — es gibt "
+                "gerade nichts, wogegen ich etwas vorschlagen müsste.")
+    works = boosters.what_works()
+    prompt = (
+        f"Lage: {', '.join(ctx['reasons']) or 'unauffällig'}\n"
+        f"Vorgeschlagene Maßnahmen: "
+        + "; ".join(f"{b['name']} — {b['text']}" for b in picked["boosters"])
+        + (f"\nWas ihm erfahrungsgemäß hilft: "
+           + ", ".join(f"{w['name']}" for w in works) if works else "")
+        + "\n\nSchreibe zwei bis drei Sätze, die diese Maßnahmen zu einem "
+          "Vorschlag für die nächsten Stunden verbinden. Sprich ihn direkt an, "
+          "bleib nüchtern, keine Aufzählung — die Maßnahmen stehen ohnehin "
+          "einzeln darunter.")
+    try:
+        msg = generate(prompt, system=SYSTEM)
+        _store("mood_advice", msg)
+        return msg
+    except OllamaUnavailable:
+        return ("Ohne laufendes Modell: " +
+                " ".join(b["name"] + "." for b in picked["boosters"]))
+

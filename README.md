@@ -117,6 +117,56 @@ einer Mängelliste.
 Gerechnet wird der Wert im Code. Das Modell darf ihn kommentieren, aber nicht
 bestimmen — sonst wäre er von Tag zu Tag beliebig.
 
+## Dein Zustand heute — und was daraus folgt
+
+Ganz oben auf dem Dashboard stehen die sechs Werte, nach denen sich entscheidet,
+was heute sinnvoll ist: Ruhepuls, HRV, Schlaf, Stressmittel, Trainingsbereitschaft
+und Body Battery beim Aufwachen. Jeder mit seiner Veränderung gegenüber deiner
+Basislinie und einem knappen Verlauf.
+
+Darunter schreibt der Coach drei bis vier Sätze dazu, was die Zahlen bedeuten und
+was für heute folgt — immer im Bezug zur Basislinie, denn ein Ruhepuls von 46
+sagt nichts, solange man deinen Normalwert nicht kennt. Die Einschätzung wird
+für die Sitzung behalten, weil sie auf der CPU spürbar dauert.
+
+## Was jetzt hilft — und was bei dir wirklich hilft
+
+Meldest du gedrückte Stimmung, wenig Energie, hohen Stress oder schlechten
+Schlaf, erscheint eine Karte mit drei konkreten Maßnahmen für die nächsten
+Stunden — aus Bewegung, Ernährung und Gewohnheiten. Jede ist sofort umsetzbar
+und nennt ihren Grund; keine Motivationssprüche.
+
+Der eigentliche Punkt ist die Rückmeldung darunter: **hat geholfen** oder
+**bringt mir nichts**. PULS merkt sich das und zieht beim nächsten Mal vor, was
+bei dir gewirkt hat. Was zweimal nichts gebracht hat, kommt seltener. Aus einer
+allgemeinen Liste wird so mit der Zeit deine Liste — und was sich bewährt hat,
+steht auch im Kontext des Coaches, wenn du ihn etwas fragst.
+
+## Rückmeldung nach jeder Einheit
+
+Die Uhr misst Puls und Tempo, aber nicht, ob sich eine Einheit gut angefühlt
+hat. Genau diese Größe fehlt: Zwei Läufe mit identischen Daten können sich völlig
+verschieden anfühlen, und der Unterschied liegt in Schlaf, Stress und Ernährung
+davor.
+
+Deshalb fragt PULS nach jeder Einheit kurz nach — zwei Regler und ein Feld. Ab
+sechs Rückmeldungen vergleicht es die Tage vor guten mit denen vor schlechten
+Einheiten und sagt, was sich unterscheidet: *„Vor guten Einheiten hattest du im
+Schnitt 1,4 h mehr Schlaf als vor schlechten."* Gemeldet wird nur, was deutlich
+auseinanderliegt.
+
+## Mit dem Coach sprechen — und was er behält
+
+Der Chat steht direkt auf der Startseite und kennt deine Daten. Damit du nicht
+zum dritten Mal erklärst, dass das linke Knie empfindlich ist, hält PULS eine
+kleine Zahl von **Merkposten** — Sätze, die dauerhaft gelten.
+
+Zwei Wege hinein: Du trägst sie selbst ein, oder das Modell erkennt nach einem
+Gespräch etwas, das über den Tag hinaus gilt (Vorlieben, Unverträglichkeiten,
+Verletzungsgeschichte, Arbeitszeiten). Beides landet **sichtbar** in der Liste
+unter dem Chat und lässt sich löschen — nichts wird heimlich behalten. Selbst
+eingetragene Merkposten sind angeheftet und werden nie verdrängt.
+
 ## Was der Coach von sich aus vorschlägt
 
 Deine Wochenstruktur ist der Rahmen und bleibt es. Aber ein Rahmen allein macht
@@ -262,7 +312,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Neun Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Zehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Abgedeckt sind der Waagen-Parser, das Referenzfenster mit
 seiner Kalibrierung, das Ausdünnen der Laufdaten, die Gym-Auswertung, die
 Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync

@@ -17,8 +17,8 @@ from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
 from ..services import activity_details as activity_details_svc
-from ..services import (gym_analysis, mood, recipes, score,
-                        suggestions, supplements)
+from ..services import (boosters, feedback, gym_analysis, memory, mood,
+                        recipes, score, suggestions, supplements)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -73,6 +73,8 @@ def dashboard() -> dict[str, Any]:
         # sagt nichts darueber, wohin es geht.
         "recovery": metrics.recovery_series(21),
         "suggestions": suggestions.list_open(4),
+        "boosters": boosters.suggest(3),
+        "pending_feedback": feedback.pending(2),
         "goal_progress": _goal_progress(),
     }
 
@@ -768,6 +770,72 @@ def garmin_backfill_cancel() -> dict[str, Any]:
     return garmin_sync.cancel_backfill()
 
 
+# ---------------------------------------------- Schwung, Gedächtnis, Feedback
+
+@router.get("/boosters")
+def boosters_suggest(count: int = 3) -> dict[str, Any]:
+    """Konkrete Massnahmen zur aktuellen Lage — Bewaehrtes zuerst."""
+    return {**boosters.suggest(count), "works": boosters.what_works(),
+            "open": boosters.open_ratings()}
+
+
+class BoosterRating(BaseModel):
+    helpful: bool
+
+
+@router.post("/boosters/{tip_id}/rate")
+def booster_rate(tip_id: str, r: BoosterRating) -> dict[str, Any]:
+    if not boosters.rate(tip_id, r.helpful):
+        raise HTTPException(404, "Diese Maßnahme gibt es nicht.")
+    return {"status": "ok", "works": boosters.what_works()}
+
+
+class MemoryIn(BaseModel):
+    topic: str
+    fact: str
+    pinned: bool = False
+
+
+@router.get("/memory")
+def memory_list() -> list[dict[str, Any]]:
+    return memory.all_facts()
+
+
+@router.post("/memory")
+def memory_add(m: MemoryIn) -> dict[str, Any]:
+    try:
+        return {"id": memory.remember(m.topic, m.fact, "user", m.pinned)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.delete("/memory/{memory_id}")
+def memory_delete(memory_id: int) -> dict[str, str]:
+    if not memory.forget(memory_id):
+        raise HTTPException(404, "Diesen Merkposten gibt es nicht.")
+    return {"status": "ok"}
+
+
+class FeedbackIn(BaseModel):
+    rating: int | None = None
+    effort: int | None = None
+    note: str | None = None
+
+
+@router.get("/feedback/pending")
+def feedback_pending() -> dict[str, Any]:
+    """Einheiten, zu denen noch keine Rueckmeldung vorliegt."""
+    return {"activities": feedback.pending(), "patterns": feedback.patterns()}
+
+
+@router.post("/activities/{activity_id}/feedback")
+def feedback_save(activity_id: int, f: FeedbackIn) -> dict[str, Any]:
+    try:
+        return feedback.save(activity_id, f.rating, f.effort, f.note)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
 # ------------------------------------------------------- Coach-Vorschläge
 
 @router.get("/suggestions")
@@ -1012,6 +1080,18 @@ def coach_nutrition() -> dict[str, str]:
 @router.post("/coach/research")
 def coach_research(body: TopicIn) -> dict[str, str]:
     return {"tip": coach_ai.research_tip(body.topic)}
+
+
+@router.post("/coach/readout")
+def coach_readout() -> dict[str, str]:
+    """Kommentar zu Puls, Schlaf, Stress und Bereitschaft."""
+    return {"message": coach_ai.daily_readout()}
+
+
+@router.post("/coach/mood-advice")
+def coach_mood_advice() -> dict[str, str]:
+    """Konkreter Vorschlag bei einem Tief."""
+    return {"message": coach_ai.mood_advice()}
 
 
 @router.get("/coach/messages")

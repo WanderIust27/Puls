@@ -27,6 +27,7 @@ run "Körperdaten"     python3 tests/test_body.py
 run "Detaildaten"     python3 tests/test_activity_details.py
 run "Gym-Auswertung"  python3 tests/test_gym_analysis.py
 run "Gemüt & Supplements" python3 tests/test_mood.py
+run "Lernen & Gedächtnis" python3 tests/test_learning.py
 run "Coach-Vorschläge" python3 tests/test_suggestions.py
 run "Garmin-Sync"     python3 tests/test_garmin_sync.py
 run "API"             python3 tests/test_api.py

@@ -82,6 +82,49 @@
       <button class="card-link" data-goto="exercises">Ganzes Protokoll ›</button>
     </div>
 
+    <div class="card span2" id="readoutCard">
+      <h3>Dein Zustand heute</h3>
+      <div class="tiles wide-tiles" id="todayTiles"></div>
+      <div class="coach-msg" id="readoutText" style="margin-top:14px">
+        <span class="muted">Der Coach schaut noch auf die Zahlen …</span></div>
+      <button class="btn small ghost" id="btnReadout" style="margin-top:8px">
+        Neu einschätzen</button>
+    </div>
+
+    <div class="card" id="feedbackCard" hidden>
+      <h3>Wie war’s?</h3>
+      <div id="feedbackBody"></div>
+    </div>
+
+    <div class="card span2" id="boosterCard" hidden>
+      <h3>Was jetzt hilft</h3>
+      <div id="boosterSituation" class="muted"></div>
+      <div class="coach-msg" id="boosterAdvice" hidden></div>
+      <div id="boosterList"></div>
+      <div id="boosterOpen"></div>
+      <div id="boosterWorks"></div>
+    </div>
+
+    <div class="card span2">
+      <h3>Mit dem Coach sprechen</h3>
+      <div class="chat" id="dashChatLog"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="dashChatInput" class="grow" placeholder="Frag etwas — er kennt deine Daten">
+        <button class="btn" id="btnDashAsk">Fragen</button>
+      </div>
+      <details style="margin-top:10px">
+        <summary class="field" style="cursor:pointer">Was der Coach sich gemerkt hat</summary>
+        <p class="muted">Merkposten gelten dauerhaft und stehen in jedem Gespräch
+          zur Verfügung. Sag „merk dir, dass …“, oder trag es hier selbst ein.</p>
+        <div id="memoryList"></div>
+        <div class="row" style="margin-top:8px">
+          <input id="memTopic" placeholder="Thema" style="max-width:150px">
+          <input id="memFact" class="grow" placeholder="Was dauerhaft gilt">
+          <button class="btn ghost small" id="btnMemAdd">Merken</button>
+        </div>
+      </details>
+    </div>
+
     <div class="card">
       <h3>Schlaf</h3>
       <div class="tiles" id="sleepTiles"></div>

@@ -204,6 +204,41 @@ with TestClient(app) as client:
     check("Unsinniger Puls wird verworfen", ra.efficiency(5000, 1500, 20), None)
     check("Ohne Distanz keine Effizienz", ra.efficiency(None, 1500, 150), None)
 
+    # --- Schwung, Gedächtnis, Feedback --------------------------------------
+    bo = client.get("/api/boosters").json()
+    check("Maßnahmen abrufbar", "boosters" in bo and "works" in bo, True)
+    check("Unbekannte Maßnahme meldet 404",
+          client.post("/api/boosters/gibtsnicht/rate",
+                      json={"helpful": True}).status_code, 404)
+
+    r = client.post("/api/memory", json={"topic": "Schicht",
+                                         "fact": "Arbeitet oft bis 19 Uhr"})
+    check("Merkposten angelegt", r.status_code, 200)
+    mem_id = r.json()["id"]
+    check("Merkposten gelistet", len(client.get("/api/memory").json()), 1)
+    check("Leeres Thema wird abgelehnt",
+          client.post("/api/memory", json={"topic": " ", "fact": "x"}).status_code, 400)
+    check("Merkposten löschbar", client.delete(f"/api/memory/{mem_id}").status_code, 200)
+    check("Unbekannter Merkposten meldet 404",
+          client.delete("/api/memory/999999").status_code, 404)
+
+    fb = client.get("/api/feedback/pending").json()
+    check("Offene Rückmeldungen abrufbar", "activities" in fb, True)
+    check("Muster werden mitgeliefert", "patterns" in fb, True)
+    check("Rückmeldung zu unbekannter Aktivität meldet 404",
+          client.post("/api/activities/999999/feedback",
+                      json={"rating": 4}).status_code, 404)
+    check("Rückmeldung wird angenommen",
+          client.post(f"/api/activities/{act_id}/feedback",
+                      json={"rating": 4, "effort": 3}).status_code, 200)
+    check("Danach nicht mehr offen",
+          any(a["id"] == act_id for a in
+              client.get("/api/feedback/pending").json()["activities"]), False)
+
+    check("Dashboard führt Maßnahmen und offene Rückmeldungen",
+          {"boosters", "pending_feedback"} <= set(client.get("/api/dashboard").json()),
+          True)
+
     # --- Coach-Vorschläge ---------------------------------------------------
     sg = client.get("/api/suggestions").json()
     check("Vorschläge abrufbar", "open" in sg and "history" in sg, True)

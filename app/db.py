@@ -96,6 +96,35 @@ CREATE TABLE IF NOT EXISTS coach_adaptations (
     status TEXT NOT NULL DEFAULT 'open',          -- open | applied | dismissed | auto
     applied_at TEXT
 );
+CREATE TABLE IF NOT EXISTS coach_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic TEXT NOT NULL,                          -- kurzer Schluessel, z. B. "Schicht"
+    fact TEXT NOT NULL,                           -- der Satz, den der Coach behaelt
+    source TEXT NOT NULL DEFAULT 'coach',         -- user | coach
+    pinned INTEGER NOT NULL DEFAULT 0,            -- 1 = nie automatisch verdraengen
+    uses INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(topic)
+);
+CREATE TABLE IF NOT EXISTS activity_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    activity_id INTEGER NOT NULL UNIQUE REFERENCES activities(id) ON DELETE CASCADE,
+    rating INTEGER,                               -- 1..5, wie es sich angefuehlt hat
+    effort INTEGER,                               -- 1..5, empfundene Anstrengung
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS tip_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tip_id TEXT NOT NULL,                         -- Kennung aus der Massnahmenliste
+    context TEXT,                                 -- Lage, in der der Tipp kam
+    given_at TEXT NOT NULL DEFAULT (datetime('now')),
+    day TEXT NOT NULL,
+    helpful INTEGER,                              -- NULL offen, 1 half, -1 half nicht
+    rated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tip_log_tip ON tip_log(tip_id);
 CREATE TABLE IF NOT EXISTS planned_workouts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
