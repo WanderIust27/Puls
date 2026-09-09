@@ -94,6 +94,15 @@ def _balance_main(pool: list[dict[str, Any]], count: int) -> list[dict[str, Any]
     """Hauptteil so wählen, dass die Muskelgruppen über die Woche abgedeckt sind."""
     prefer_machines = get_setting("prefer_machines", "1") == "1"
     order = ["legs", "chest", "back", "shoulders", "arms", "core"]
+    # Hat der Coach eine vernachlässigte Gruppe vorgeschlagen und du hast den
+    # Vorschlag übernommen, kommt sie hier zuerst dran.
+    try:
+        from . import suggestions
+        focus = [g for g in suggestions.active_focus() if g in order]
+    except Exception:
+        focus = []
+    if focus:
+        order = focus + [g for g in order if g not in focus]
     by_group: dict[str, list[dict[str, Any]]] = {g: [] for g in order}
     for e in pool:
         by_group.setdefault(e["muscle_group"], []).append(e)

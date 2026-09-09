@@ -19,7 +19,13 @@ scheduler = BackgroundScheduler(timezone=TZ)
 def _sync_job() -> None:
     if get_setting("garmin_linked") == "1":
         garmin_sync.full_sync()
-
+    # Nach jedem Sync prüfen, ob sich ein Vorschlag ergibt — die Regeln
+    # brauchen die frischen Daten.
+    try:
+        from . import suggestions
+        suggestions.generate()
+    except Exception as e:
+        log.debug("Vorschläge übersprungen: %s", e)
 
 def _daily_message_job() -> None:
     try:

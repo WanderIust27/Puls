@@ -117,6 +117,34 @@ einer Mängelliste.
 Gerechnet wird der Wert im Code. Das Modell darf ihn kommentieren, aber nicht
 bestimmen — sonst wäre er von Tag zu Tag beliebig.
 
+## Was der Coach von sich aus vorschlägt
+
+Deine Wochenstruktur ist der Rahmen und bleibt es. Aber ein Rahmen allein macht
+noch kein Training — irgendwann fehlt ein langer Lauf, es wurde wochenlang nur
+locker gelaufen, oder die Belastung steigt schneller, als die Erholung
+mitkommt. Dafür prüft PULS nach jedem Sync sieben Regeln und legt bei Bedarf
+einen Vorschlag auf das Dashboard:
+
+| Regel | Wann sie greift |
+|---|---|
+| Langer Lauf | 14 Tage ohne Lauf über 50 Minuten — schlägt einen Sonntag vor |
+| Tempoeinheit | Alle Läufe nur locker, kein harter Anteil seit 12 Tagen |
+| Zu viel Intensität | Unter 68 % der Laufzeit in Zone 1–2 |
+| Ruhigere Woche | Belastungsverhältnis über 1,45 |
+| Erholungstag | HRV unter, Ruhepuls über der Basislinie — beides zugleich |
+| Vernachlässigte Muskelgruppe | Über drei Wochen ohne Satz dafür |
+| Klimmzüge | Ziel noch offen, aber kaum Sätze in drei Wochen |
+
+Jeder Vorschlag nennt seinen Anlass und lässt sich mit einem Tipp übernehmen
+oder verwerfen — **nichts geht ungefragt an die Uhr**. Bei „Übernehmen" wird
+aus dem Vorschlag ein echtes Workout mit Datum, oder ein Schwerpunkt, den die
+nächste Gym-Einheit für zwei Wochen berücksichtigt. Verworfenes kommt zehn Tage
+lang nicht wieder.
+
+Der Unterschied zu Beschwerden ist Absicht: Auf gemeldete Schmerzen reagiert
+PULS sofort und ohne Rückfrage, weil das keine Geschmacksfrage ist. Ein
+zusätzlicher Sonntagslauf dagegen ist deine Entscheidung.
+
 ## Gemütszustand und Beschwerden
 
 Ein eigener Tab, mehrmals am Tag nutzbar: Stimmung, Energie und Stress auf
@@ -234,7 +262,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Acht Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Neun Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Abgedeckt sind der Waagen-Parser, das Referenzfenster mit
 seiner Kalibrierung, das Ausdünnen der Laufdaten, die Gym-Auswertung, die
 Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync

@@ -17,7 +17,8 @@ from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
 from ..services import activity_details as activity_details_svc
-from ..services import gym_analysis, mood, recipes, score, supplements
+from ..services import (gym_analysis, mood, recipes, score,
+                        suggestions, supplements)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -71,6 +72,7 @@ def dashboard() -> dict[str, Any]:
         # Kurze Reihen fuer die Sparklines der Kacheln — der letzte Wert allein
         # sagt nichts darueber, wohin es geht.
         "recovery": metrics.recovery_series(21),
+        "suggestions": suggestions.list_open(4),
         "goal_progress": _goal_progress(),
     }
 
@@ -764,6 +766,37 @@ def garmin_backfill_reset() -> dict[str, Any]:
 def garmin_backfill_cancel() -> dict[str, Any]:
     """Laufenden Import abbrechen — das bereits Geholte bleibt."""
     return garmin_sync.cancel_backfill()
+
+
+# ------------------------------------------------------- Coach-Vorschläge
+
+@router.get("/suggestions")
+def suggestions_open() -> dict[str, Any]:
+    """Offene Vorschlaege — und was zuletzt daraus wurde."""
+    return {"open": suggestions.list_open(), "history": suggestions.history(10),
+            "focus": suggestions.active_focus()}
+
+
+@router.post("/suggestions/refresh")
+def suggestions_refresh() -> dict[str, Any]:
+    """Regeln jetzt pruefen (sonst passiert das beim Sync)."""
+    created = suggestions.generate()
+    return {"created": len(created), "open": suggestions.list_open()}
+
+
+@router.post("/suggestions/{sid}/apply")
+def suggestion_apply(sid: int) -> dict[str, Any]:
+    try:
+        return suggestions.apply(sid)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/suggestions/{sid}/dismiss")
+def suggestion_dismiss(sid: int) -> dict[str, str]:
+    if not suggestions.dismiss(sid):
+        raise HTTPException(404, "Diesen offenen Vorschlag gibt es nicht.")
+    return {"status": "ok"}
 
 
 # ------------------------------------------------------------------ Score

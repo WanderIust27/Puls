@@ -204,6 +204,18 @@ with TestClient(app) as client:
     check("Unsinniger Puls wird verworfen", ra.efficiency(5000, 1500, 20), None)
     check("Ohne Distanz keine Effizienz", ra.efficiency(None, 1500, 150), None)
 
+    # --- Coach-Vorschläge ---------------------------------------------------
+    sg = client.get("/api/suggestions").json()
+    check("Vorschläge abrufbar", "open" in sg and "history" in sg, True)
+    made = client.post("/api/suggestions/refresh").json()
+    check("Regeln lassen sich anstoßen", "created" in made, True)
+    check("Unbekannter Vorschlag meldet 404",
+          client.post("/api/suggestions/999999/dismiss").status_code, 404)
+    check("Unbekannter Vorschlag lässt sich nicht übernehmen",
+          client.post("/api/suggestions/999999/apply").status_code, 400)
+    check("Vorschläge stehen im Dashboard",
+          "suggestions" in client.get("/api/dashboard").json(), True)
+
     # --- Score --------------------------------------------------------------
     sc = client.get("/api/score").json()
     check("Score antwortet", "score" in sc, True)

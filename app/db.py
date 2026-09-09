@@ -288,6 +288,9 @@ DEFAULT_SETTINGS = {
     "pullup_best": "",
     # Laufleistung aus dem Benchmark (m in 12 min, Cooper)
     "supplements_seeded": "0",
+    # Vom Coach vorgeschlagener Schwerpunkt im Gym (auf Zeit)
+    "gym_focus_groups": "[]",
+    "gym_focus_until": "",
     # Ernaehrung: Schwerpunkte fuer die Rezeptauswahl
     "diet_style": json.dumps(["vegetarian_lean", "quick", "mealprep"]),
     "diet_exclude": "",

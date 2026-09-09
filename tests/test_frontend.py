@@ -65,7 +65,7 @@ check("charts.js wird vor app.js geladen",
 # Nur die tragenden Klassen; Vollstaendigkeit waere hier eher hinderlich.
 for cls in ("score-ring", "pillar", "diag", "supp-row", "mood-row", "body-facts",
             "bf-bar", "gym-ex", "chip", "profile", "routemap", "grid-cards",
-            "tile", "mini", "card-link", "bests"):
+            "tile", "mini", "card-link", "bests", "suggest"):
     check(f"CSS-Klasse .{cls} definiert", f".{cls}" in css, True)
 
 # --- 0 darf nicht als "kein Wert" behandelt werden -----------------------

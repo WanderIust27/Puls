@@ -236,6 +236,7 @@ async function loadDashboard() {
   renderScore(d.score);
   renderRecentActivities(d.recent_activities);
   renderSleepAndHeart(d.recovery);
+  renderSuggestions(d.suggestions);
 
   ringChart($("#weekRing"), d.week.workouts, d.week.target);
   $("#ringCount").textContent = d.week.workouts;
@@ -1666,6 +1667,41 @@ $$("[data-goto]").forEach((b) => b.addEventListener("click", () => {
   const target = $(`nav.bottom [data-view="${b.dataset.goto}"]`);
   if (target) target.click();
 }));
+
+
+/* -------------------------------------------------- Coach-Vorschläge */
+
+function renderSuggestions(list) {
+  const card = $("#suggestCard");
+  if (!list || !list.length) { card.hidden = true; return; }
+  card.hidden = false;
+  $("#suggestList").innerHTML = list.map((v) => `
+    <div class="suggest" data-sid="${v.id}">
+      <div class="st">${esc(v.title)}</div>
+      <div class="sd">${esc(v.detail || "")}</div>
+      ${v.trigger ? `<div class="sw">Anlass: ${esc(v.trigger)}</div>` : ""}
+      <div class="row">
+        ${v.payload && v.payload.action !== "advice"
+          ? `<button class="btn small" data-apply="${v.id}">Übernehmen</button>` : ""}
+        <button class="btn small ghost" data-dismiss="${v.id}">
+          ${v.payload && v.payload.action !== "advice" ? "Verwerfen" : "Verstanden"}</button>
+      </div>
+    </div>`).join("");
+
+  $$("[data-apply]").forEach((b) => b.addEventListener("click", (e) =>
+    withSpinner(e.currentTarget, async () => {
+      const r = await api(`/suggestions/${b.dataset.apply}/apply`, { method: "POST" });
+      toast(r.planned_date
+        ? `Eingeplant für ${fmtDate(r.planned_date)}`
+        : "Übernommen — die nächste Einheit berücksichtigt es.");
+      loadDashboard();
+    })));
+  $$("[data-dismiss]").forEach((b) => b.addEventListener("click", async () => {
+    try { await api(`/suggestions/${b.dataset.dismiss}/dismiss`, { method: "POST" });
+      loadDashboard(); }
+    catch (e) { toast(e.message, true); }
+  }));
+}
 
 /* -------------------------------------------------------------- Score */
 
