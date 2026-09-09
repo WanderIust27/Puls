@@ -441,7 +441,7 @@ async function loadPoses() {
 
 async function loadPlan() {
   const [overview, workouts, bench] = await Promise.all([
-    api("/plan/overview"), api("/workouts?limit=80"), api("/benchmark/status"),
+    api("/plan/overview"), api("/workouts?limit=80&upcoming=1"), api("/benchmark/status"),
   ]);
 
   const open = workouts.filter((w) => ["planned", "pushed"].includes(w.status));
@@ -510,7 +510,7 @@ $("#btnPlanWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, 
 }));
 
 $("#btnPushAll").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const workouts = await api("/workouts?limit=80");
+  const workouts = await api("/workouts?limit=80&upcoming=1");
   const todo = workouts.filter((w) => w.status === "planned");
   if (!todo.length) return toast("Nichts zu senden.");
   let ok = 0, failed = 0;
@@ -2404,7 +2404,10 @@ function renderAutoWeek(w) {
   const cond = w.condition;
   $("#autoPreview").innerHTML = `
     <div class="detail-section">
-      <h4>${esc(w.focus)} · ${w.runs} Läufe, ${w.gyms} Gym</h4>
+      <h4>${esc(w.focus)} · ${w.runs} Läufe, ${w.gyms} Gym${
+        w.mobility_count ? ` · ${w.mobility_count}× Abend-Yoga à 12 min` : ""}</h4>
+      <p class="muted">${w.runs + w.gyms} Trainingseinheiten in der Woche${
+        w.mobility_count ? `, dazu das kurze Abend-Yoga — das lässt sich oben abschalten` : ""}.</p>
       <p class="muted">Zustand: <b>${esc(cond.state)}</b>${
         cond.reasons.length ? " — " + cond.reasons.map(esc).join(", ") : " — die Werte passen"}.
         ${cond.dose < 1 ? `Dosis auf ${Math.round(cond.dose * 100)} % reduziert.` : ""}
@@ -2446,7 +2449,9 @@ $("#btnAutoApply").addEventListener("click", (e) => withSpinner(e.currentTarget,
   await saveCoachPlan();
   const w = await api("/autopilot/apply", { method: "POST" });
   renderAutoWeek(w);
-  toast(`${w.created.length} Einheiten eingeplant`);
+  toast(w.replaced
+    ? `${w.created.length} Einheiten eingeplant, ${w.replaced} ersetzt`
+    : `${w.created.length} Einheiten eingeplant`);
   loadDashboard();
 }));
 

@@ -191,6 +191,89 @@ ok("Die Laufarten heißen unterschiedlich",
 ok("Der Kraft-Schwerpunkt steht im Namen",
    any("Gym" in n for n in built.values()), names)
 
+# --- Der Plan darf sich nicht anhäufen ----------------------------------
+# Dreimal "Übernehmen" hat dreimal eine komplette Woche angelegt — nach ein
+# paar Versuchen stand ein Vielfaches im Plan.
+with get_db() as db:
+    db.execute("DELETE FROM planned_workouts")
+counts = []
+for _ in range(3):
+    autopilot.plan(monday, apply_it=True)
+    with get_db() as db:
+        counts.append(db.execute(
+            "SELECT COUNT(*) c FROM planned_workouts").fetchone()["c"])
+ok("Wiederholtes Übernehmen häuft nichts an",
+   counts[0] == counts[1] == counts[2], str(counts))
+ok("… und meldet, was es ersetzt hat",
+   autopilot.plan(monday, apply_it=True)["replaced"] == counts[0],
+   str(counts[0]))
+
+# Erledigtes und Selbstgeplantes darf dabei nicht verschwinden.
+with get_db() as db:
+    db.execute("UPDATE planned_workouts SET status='done' WHERE id IN "
+               "(SELECT id FROM planned_workouts LIMIT 2)")
+    db.execute("UPDATE planned_workouts SET status='pushed' WHERE id IN "
+               "(SELECT id FROM planned_workouts WHERE status='planned' LIMIT 1)")
+    db.execute("""INSERT INTO planned_workouts(name, sport, planned_date,
+                      steps_json, created_by)
+                  VALUES('Selbst geplant','strength',?,'{}','user')""",
+               (monday.isoformat(),))
+autopilot.plan(monday, apply_it=True)
+with get_db() as db:
+    kept = {(r["status"], r["created_by"]): r["c"] for r in db.execute(
+        "SELECT status, created_by, COUNT(*) c FROM planned_workouts "
+        "GROUP BY status, created_by").fetchall()}
+check("Erledigtes bleibt erhalten", kept.get(("done", "autopilot")), 2)
+check("An die Uhr Geschicktes bleibt erhalten", kept.get(("pushed", "autopilot")), 1)
+check("Selbst Angelegtes bleibt erhalten", kept.get(("planned", "user")), 1)
+
+# Was vergangen und nie erledigt wurde, verschwindet — sonst wächst der Plan
+# um jede nicht abgehakte Einheit weiter.
+with get_db() as db:
+    db.execute("""INSERT INTO planned_workouts(name, sport, planned_date,
+                      steps_json, created_by)
+                  VALUES('Alte Einheit','strength',?,'{}','autopilot')""",
+               ((TODAY - dt.timedelta(days=20)).isoformat(),))
+autopilot.plan(monday, apply_it=True)
+with get_db() as db:
+    old_left = db.execute("SELECT COUNT(*) c FROM planned_workouts "
+                          "WHERE name='Alte Einheit'").fetchone()["c"]
+check("Verpasste Altlasten werden aufgeräumt", old_left, 0)
+
+# --- Eine Einheit muss so lang sein, wie sie heißt ----------------------
+from app.services import planner                                # noqa: E402
+for wanted in (45, 60, 75, 90, 120):
+    session = planner.build_gym_session(wanted)
+    real = planner.step_seconds(session["steps"]) / 60
+    ok(f"{wanted}-Minuten-Einheit trifft die Zeit",
+       abs(real - wanted) <= wanted * 0.1, f"{real:.0f} min gebaut")
+    ok(f"… und der Name sagt die Wahrheit ({wanted})",
+       abs(session["minutes"] - real) < 1 and str(session["minutes"]) in session["name"],
+       session["name"])
+
+# Mehr Zeit muss auch mehr Training bedeuten.
+short = planner.build_gym_session(45)
+long_one = planner.build_gym_session(120)
+ok("Mehr Zeit ergibt mehr Einheit",
+   planner.step_seconds(long_one["steps"]) > planner.step_seconds(short["steps"]) * 1.8,
+   f"{planner.step_seconds(short['steps'])/60:.0f} vs "
+   f"{planner.step_seconds(long_one['steps'])/60:.0f} min")
+ok("… und mehr Übungen",
+   len(long_one["exercise_ids"]) > len(short["exercise_ids"]),
+   f"{len(short['exercise_ids'])} vs {len(long_one['exercise_ids'])}")
+
+# Zwei Aufrufe mit derselben Vorgabe müssen dasselbe ergeben.
+a, b = planner.build_gym_session(75), planner.build_gym_session(75)
+check("Gleiche Vorgabe, gleiches Ergebnis", a["name"], b["name"])
+
+# Die Rechnung selbst: Wiederholungen, Pausen und Umsetzen zählen mit.
+one = [{"type": "repeat", "count": 3, "steps": [
+    {"type": "work", "name": "X", "reps": 10},
+    {"type": "rest", "name": "Pause", "duration_s": 60}]}]
+expected = 3 * (10 * planner.SECONDS_PER_REP + 60) + planner.CHANGEOVER_S
+ok("Die Dauerrechnung stimmt", abs(planner.step_seconds(one) - expected) < 0.01,
+   f"{planner.step_seconds(one)} statt {expected}")
+
 # Ohne eingetragene Tage muss der Coach selbst verteilen.
 set_setting("gym_days", "[]")
 set_setting("run_days", "[]")

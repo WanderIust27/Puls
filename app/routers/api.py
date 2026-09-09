@@ -346,11 +346,20 @@ def _insert_workout(w: dict[str, Any], created_by: str) -> int:
 
 
 @router.get("/workouts")
-def list_workouts(limit: int = 50) -> list[dict[str, Any]]:
+def list_workouts(limit: int = 50, upcoming: bool = False) -> list[dict[str, Any]]:
+    """upcoming=1 blendet aus, was ohnehin vorbei ist.
+
+    Ohne diesen Filter wuchs die Liste endlos: Eine Einheit, die man nicht
+    ausdruecklich abhakt, bleibt "geplant" und stand danach fuer immer im Plan.
+    Nach ein paar Wochen sah das aus wie ein voellig ueberladener Plan.
+    """
+    today = dt.date.today().isoformat()
+    where = ("WHERE planned_date IS NULL OR planned_date >= ?") if upcoming else ""
+    params: tuple[Any, ...] = (today, limit) if upcoming else (limit,)
     with get_db() as db:
         rows = rows_to_dicts(db.execute(
-            "SELECT * FROM planned_workouts ORDER BY id DESC LIMIT ?",
-            (limit,)).fetchall())
+            f"SELECT * FROM planned_workouts {where} ORDER BY id DESC LIMIT ?",
+            params).fetchall())
     for r in rows:
         r["steps"] = json.loads(r.pop("steps_json") or "{}").get("steps", [])
     return rows
@@ -1486,9 +1495,13 @@ def create_week_plan(body: WeekPlanIn) -> dict[str, Any]:
     start = dt.date.fromisoformat(body.start) if body.start else dt.date.today()
     end = start + dt.timedelta(days=6)
     if body.replace:
+        # Auch die Einheiten des Autopiloten: Beide Planer schreiben in
+        # dieselbe Woche, und wer nur die eigenen entfernt, plant neben die
+        # fremden statt an ihre Stelle.
         with get_db() as db:
             db.execute("DELETE FROM planned_workouts WHERE status='planned' "
-                       "AND created_by='coach' AND planned_date BETWEEN ? AND ?",
+                       "AND created_by IN ('coach','autopilot') "
+                       "AND planned_date BETWEEN ? AND ?",
                        (start.isoformat(), end.isoformat()))
     workouts = planner.plan_week(start, body.include_runs, body.include_gym,
                                  body.include_mobility)

@@ -26,6 +26,27 @@ Woche; **Alles an Garmin** schiebt sie auf die Fenix.
 - **Mehr Klimmzüge** — eigener Block in jeder Gym-Einheit. Je nach Maximum arbeitet PULS
   mit negativen, bandunterstützten oder freien Klimmzügen.
 
+## Wie lange eine Einheit wirklich dauert
+
+Eine Gym-Einheit, die „90 min" heißt und nach 80 vorbei ist, ist eine Ansage,
+auf die man sich nicht verlassen kann. Genau das war lange der Fall: Die Zahl
+kam aus einer Nachschlagetabelle mit drei Einträgen (60/75/90), die festlegte,
+wie viele Übungen in jeden Block kommen — wie lange das dann dauert, hat nie
+jemand nachgerechnet. Jeder Wunsch dazwischen rutschte auf einen der drei
+Werte, 68 Minuten ergaben dieselbe Einheit wie 75.
+
+Jetzt wird gerechnet. Jede Wiederholung zählt mit dreieinhalb Sekunden (zwei
+hoch, zwei runter, plus Ansetzen), jede Pause und jede Zeitübung mit ihrer
+Dauer, dazu 45 Sekunden Umsetzen je Übung — Gewicht einstellen, Gerät suchen.
+Danach werden Übungen zugefügt oder weggenommen, bis die Einheit die Vorgabe
+auf ±7 % trifft: erst im Hauptteil, dann Kettlebell und Klimmzüge, das Dehnen
+zuletzt. Genauer geht es nicht sinnvoll — die kleinste Einheit ist eine Übung,
+und die dauert rund fünf Minuten.
+
+Im Namen steht danach die **gerechnete** Dauer, nicht die gewünschte. Wer 75
+Minuten einstellt, bekommt womöglich „Gym Ganzkörper 80 min" — das ist keine
+Ungenauigkeit, sondern die ehrliche Zahl.
+
 ## Wie die Progression funktioniert
 
 Die Zahlen rechnet Code, nicht die KI — das Modell wählt aus und erklärt, aber es erfindet
@@ -294,6 +315,14 @@ am Puls, nicht am Namen der Einheit: Der Name sagt, was geplant war, der Puls,
 was gelaufen wurde.
 
 ### Die kommende Woche
+
+**Übernehmen ersetzt die Woche, es legt sie nicht dazu.** Vorher hat jeder
+Klick eine weitere komplette Woche obendrauf gelegt — nach dreimal Ausprobieren
+standen einundzwanzig Einheiten im Plan. Entfernt wird nur, was noch offen ist
+und von einem Planer stammt; Erledigtes, an die Uhr Geschicktes und selbst
+Angelegtes bleibt. Ebenso verschwinden Einheiten, deren Datum vorbei ist und
+die nie abgehakt wurden: Sie können nicht mehr stattfinden, und stehenzulassen
+hieße den Plan mit Unerledigbarem zu füllen.
 
 Die Vorschau zeigt jeden Tag mit Begründung, bevor irgendetwas angelegt wird:
 welche Laufart und warum, welcher Kraft-Schwerpunkt und warum, welche Tage die

@@ -279,7 +279,27 @@ def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]
         days.append(entry)
 
     created: list[int] = []
+    replaced = 0
     if apply_it:
+        # Erst aufraeumen, dann anlegen. Ohne das legt jeder Klick auf
+        # "Übernehmen" eine weitere komplette Woche OBEN DRAUF — nach dreimal
+        # Ausprobieren stehen einundzwanzig Einheiten im Plan. Entfernt wird
+        # nur, was noch offen ist und von einem Planer stammt: Erledigtes,
+        # bereits an die Uhr Geschicktes und selbst Angelegtes bleibt.
+        last = (start + dt.timedelta(days=6)).isoformat()
+        yesterday = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+        with get_db() as db:
+            replaced = db.execute(
+                "DELETE FROM planned_workouts "
+                "WHERE status='planned' AND created_by IN ('autopilot','coach') "
+                "AND planned_date BETWEEN ? AND ?",
+                (start.isoformat(), last)).rowcount
+            # Was vergangen und nie erledigt wurde, kann nicht mehr stattfinden.
+            # Stehen lassen hiesse, den Plan mit Unerledigbarem zu fuellen.
+            db.execute(
+                "DELETE FROM planned_workouts "
+                "WHERE status='planned' AND created_by IN ('autopilot','coach') "
+                "AND planned_date IS NOT NULL AND planned_date <= ?", (yesterday,))
         for entry in days:
             for session in entry["sessions"]:
                 workout = _build(session, planner, running)
@@ -306,6 +326,8 @@ def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]
         "days": days,
         "run_days": run_days, "gym_days": gym_days, "dropped_days": dropped,
         "runs": len(kind_for), "gyms": len(gym_days),
+        "mobility_count": sum(1 for d in days for s in d["sessions"]
+                              if s["sport"] == "mobility"),
         "minutes_per_session": minutes, "gym_minutes": gym_minutes,
         "total_minutes": total_minutes,
         "emphasis": emphasis, "emphasis_labels": emphasis_labels,
@@ -314,6 +336,7 @@ def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]
         "adapted": adapt["summary"] if adapt["complaints"] else [],
         "applied": bool(apply_it),
         "created": created,
+        "replaced": replaced,
         "wishes": cfg["wishes"],
     }
 

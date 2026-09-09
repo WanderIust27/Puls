@@ -25,12 +25,26 @@ log = logging.getLogger("puls.planner")
 
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
-# Wie viele Übungen pro Block, je nach verfügbarer Zeit
+# Ausgangsverteilung der Übungen auf die Blöcke, je nach verfügbarer Zeit.
+# Sie ist nur der Startpunkt: Wie lang die Einheit wirklich wird, hängt an
+# Sätzen, Wiederholungen und Pausen der konkret gewählten Übungen. Deshalb wird
+# hinterher nachgerechnet und angepasst (siehe _fit_to_minutes).
 BLOCK_SIZES = {
+    45: {"kettlebell": 1, "main": 3, "pullup": 1, "stretch": 2},
     60: {"kettlebell": 2, "main": 4, "pullup": 1, "stretch": 3},
     75: {"kettlebell": 2, "main": 5, "pullup": 2, "stretch": 4},
     90: {"kettlebell": 3, "main": 6, "pullup": 2, "stretch": 5},
+    105: {"kettlebell": 3, "main": 7, "pullup": 3, "stretch": 5},
+    120: {"kettlebell": 3, "main": 9, "pullup": 3, "stretch": 6},
 }
+
+# Wie lange eine Wiederholung dauert. Zwei Sekunden hoch, zwei runter, plus
+# Ansetzen — grob, aber deutlich näher an der Wahrheit als sie zu ignorieren.
+SECONDS_PER_REP = 3.5
+# Umsetzen, Gewicht einstellen, Gerät suchen: zwischen zwei Übungen vergeht
+# Zeit, die in keinem Satz steht.
+CHANGEOVER_S = 45
+TOLERANCE = 0.07          # ±7 % gelten als getroffen
 
 
 def _weekday_of(date: dt.date) -> str:
@@ -39,7 +53,75 @@ def _weekday_of(date: dt.date) -> str:
 
 def _block_sizes(minutes: int) -> dict[str, int]:
     key = min(BLOCK_SIZES, key=lambda k: abs(k - minutes))
-    return BLOCK_SIZES[key]
+    return dict(BLOCK_SIZES[key])
+
+
+def step_seconds(steps: list[dict[str, Any]], depth: int = 0) -> float:
+    """Wie lange diese Schritte tatsächlich dauern.
+
+    Wiederholungen zählen mit SECONDS_PER_REP, Pausen und Zeitübungen mit ihrer
+    Dauer, dazu je Übung ein Umsetzen. Das ist eine Schätzung — aber eine, die
+    nachrechenbar ist, statt einer Zahl im Namen, die niemand geprüft hat.
+    """
+    total = 0.0
+    for step in steps:
+        if step.get("type") == "repeat":
+            total += int(step.get("count", 1)) * step_seconds(step.get("steps", []),
+                                                              depth + 1)
+            if depth == 0:
+                total += CHANGEOVER_S
+            continue
+        if step.get("duration_s"):
+            total += float(step["duration_s"])
+        elif step.get("reps"):
+            total += float(step["reps"]) * SECONDS_PER_REP
+        if depth == 0 and step.get("type") == "work":
+            total += CHANGEOVER_S
+    return total
+
+
+def _fit_to_minutes(build, minutes: int, sizes: dict[str, int]
+                    ) -> tuple[list[dict[str, Any]], dict[str, int], float]:
+    """Übungen zufügen oder wegnehmen, bis die Einheit die Zeit trifft.
+
+    build(sizes) liefert die Schritte für eine Verteilung. Angepasst wird in
+    der Reihenfolge, in der es am wenigsten weh tut: erst der Hauptteil, dann
+    Kettlebell und Klimmzüge, das Dehnen zuletzt.
+    """
+    target = minutes * 60
+    order = ["main", "kettlebell", "pullup", "stretch"]
+    limits = {"main": (2, 10), "kettlebell": (0, 4), "pullup": (0, 3),
+              "stretch": (1, 6)}
+    steps = build(sizes)
+    best = (abs(step_seconds(steps) - target), dict(sizes), steps)
+
+    for _ in range(12):
+        actual = step_seconds(steps)
+        if abs(actual - target) <= target * TOLERANCE:
+            break
+        grow = actual < target
+        for key in order:
+            low, high = limits[key]
+            nxt = sizes[key] + (1 if grow else -1)
+            if not low <= nxt <= high:
+                continue
+            trial = dict(sizes, **{key: nxt})
+            trial_steps = build(trial)
+            # Nur übernehmen, wenn die Änderung tatsächlich etwas bewirkt hat;
+            # sonst dreht man an einem Block, dessen Pool erschöpft ist.
+            if step_seconds(trial_steps) == actual:
+                continue
+            sizes, steps = trial, trial_steps
+            break
+        else:
+            break                      # nichts mehr zu drehen
+        gap = abs(step_seconds(steps) - target)
+        if gap < best[0]:
+            best = (gap, dict(sizes), steps)
+
+    if abs(step_seconds(steps) - target) > best[0]:
+        _, sizes, steps = best
+    return steps, sizes, step_seconds(steps)
 
 
 def _rest_days(ex: dict[str, Any]) -> int:
@@ -162,41 +244,56 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
     for e in lib:
         by_slot.setdefault(e.get("slot") or "main", []).append(e)
 
-    steps: list[dict[str, Any]] = []
     used: list[dict[str, Any]] = []
 
-    # 1. Aufwärmen
-    warm = by_slot.get("cardio") or []
-    if warm:
-        w = warm[0]
-        steps.append({"type": "warmup", "name": w["name"],
-                      "duration_s": min(w.get("target_duration_s") or 480, 480),
-                      "notes": "Locker starten, Puls hochfahren"})
-    else:
-        steps.append({"type": "warmup", "name": "Aufwärmen", "duration_s": 480})
+    def assemble(sz: dict[str, int]) -> list[dict[str, Any]]:
+        """Die Einheit für eine bestimmte Verteilung bauen.
 
-    # 2. Kettlebell-Auftakt
-    for e in _pick(by_slot.get("kettlebell", []), sizes["kettlebell"], "kb"):
-        steps.extend(_exercise_to_steps(e))
-        used.append(e)
+        Wird von _fit_to_minutes mehrfach aufgerufen, bis die Dauer passt —
+        deshalb steht hier alles, was von der Verteilung abhängt, und nichts,
+        was nebenbei etwas verändert.
+        """
+        used.clear()
+        out: list[dict[str, Any]] = []
 
-    # 3. Klimmzug-Arbeit — früh, solange du frisch bist
-    for e in _pick(by_slot.get("pullup", []), sizes["pullup"], "pu"):
-        steps.extend(_exercise_to_steps(e))
-        used.append(e)
+        # 1. Aufwärmen
+        warm = by_slot.get("cardio") or []
+        if warm:
+            w = warm[0]
+            out.append({"type": "warmup", "name": w["name"],
+                        "duration_s": min(w.get("target_duration_s") or 480, 480),
+                        "notes": "Locker starten, Puls hochfahren"})
+        else:
+            out.append({"type": "warmup", "name": "Aufwärmen", "duration_s": 480})
 
-    # 4. Hauptteil an den Maschinen
-    for e in _balance_main(by_slot.get("main", []), sizes["main"], emphasis):
-        steps.extend(_exercise_to_steps(e))
-        used.append(e)
+        # 2. Kettlebell-Auftakt
+        for e in _pick(by_slot.get("kettlebell", []), sz["kettlebell"], "kb"):
+            out.extend(_exercise_to_steps(e))
+            used.append(e)
 
-    # 5. Dehnen zum Abschluss
-    stretches = _pick(by_slot.get("stretch", []), sizes["stretch"], "st")
-    for e in stretches:
-        steps.append({"type": "cooldown", "name": e["name"],
-                      "duration_s": e.get("target_duration_s") or 40,
-                      "notes": e.get("notes")})
-        used.append(e)
+        # 3. Klimmzug-Arbeit — früh, solange du frisch bist
+        for e in _pick(by_slot.get("pullup", []), sz["pullup"], "pu"):
+            out.extend(_exercise_to_steps(e))
+            used.append(e)
+
+        # 4. Hauptteil an den Maschinen
+        for e in _balance_main(by_slot.get("main", []), sz["main"], emphasis):
+            out.extend(_exercise_to_steps(e))
+            used.append(e)
+
+        # 5. Dehnen zum Abschluss
+        for e in _pick(by_slot.get("stretch", []), sz["stretch"], "st"):
+            out.append({"type": "cooldown", "name": e["name"],
+                        "duration_s": e.get("target_duration_s") or 40,
+                        "notes": e.get("notes")})
+            used.append(e)
+        return out
+
+    # Die Verteilung ist nur der Startwert. Wie lang die Einheit wirklich wird,
+    # steht erst fest, wenn die Übungen gewählt sind — also wird nachgerechnet
+    # und angepasst, bis die Dauer die Vorgabe trifft.
+    steps, sizes, seconds = _fit_to_minutes(assemble, minutes, sizes)
+    actual_minutes = round(seconds / 60)
 
     groups = sorted({ex_lib.MUSCLE_LABELS.get(e["muscle_group"], e["muscle_group"])
                      for e in used if e.get("slot") == "main"})
@@ -214,6 +311,7 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
                 steps.append({"type": "cooldown", "name": pose["name"],
                               "duration_s": pose["duration_s"],
                               "notes": pose.get("cue")})
+    actual_minutes = round(step_seconds(steps) / 60)
 
     adapted = None
     if skipped or adapt["relief_poses"]:
@@ -229,10 +327,15 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
 
     return {
         "adapted": adapted,
-        "name": name or (f"Gym {'/'.join(emphasis_labels)} {minutes} min"
-                         if emphasis_labels else f"Gym Ganzkörper {minutes} min"),
+        # Im Namen steht die gerechnete Dauer, nicht die gewünschte: Eine
+        # Einheit, die "90 min" heißt und nach 80 vorbei ist, ist eine Ansage,
+        # auf die man sich nicht verlassen kann.
+        "name": name or (f"Gym {'/'.join(emphasis_labels)} {actual_minutes} min"
+                         if emphasis_labels else f"Gym Ganzkörper {actual_minutes} min"),
         "sport": "strength",
         "emphasis": emphasis_labels,
+        "minutes": actual_minutes,
+        "minutes_requested": minutes,
         "description": (f"Kettlebell-Auftakt, Klimmzug-Arbeit, dann Maschinen "
                         f"({', '.join(groups)}) und Dehnen zum Abschluss."
                         + (f" Schwerpunkt: {', '.join(emphasis_labels)}."
