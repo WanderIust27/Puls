@@ -946,3 +946,30 @@ ol.plain li, ul.plain li { margin-bottom: 5px; }
   color: var(--teal); margin-top: 2px; }
 .prop .pe { font-size: 0.78em; color: var(--ink-2); margin-top: 3px; }
 .prop .pr { font-size: 0.78em; color: var(--ink-3); margin-bottom: 6px; }
+
+/* Schritte */
+.steps-head { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 26px; }
+.st-main { display: flex; align-items: baseline; gap: 8px; }
+.st-now { font-size: 2em; font-variant-numeric: tabular-nums; color: var(--accent); }
+.st-sub { font-size: 0.84em; color: var(--ink-3); }
+.st-facts { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+.st-f .v { font-size: 1.02em; font-variant-numeric: tabular-nums; }
+.st-f .l { font-size: 0.74em; color: var(--ink-3); }
+.st-bar { position: relative; height: 6px; border-radius: 999px;
+  background: var(--surface-2); margin: 12px 0 8px; }
+.st-bar i { display: block; height: 100%; border-radius: 999px;
+  background: var(--accent); transition: width .4s; }
+.st-bar i.short { background: var(--warn); }
+.st-mark { position: absolute; top: -3px; width: 2px; height: 12px;
+  background: var(--ink-2); border-radius: 1px; }
+
+/* Vom Waagenwert zum Referenzwert */
+.chain { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+  margin-bottom: 12px; font-size: 0.82em; }
+.chain .c1, .chain .c2, .chain .c3 { font-variant-numeric: tabular-nums;
+  font-size: 1.15em; }
+.chain .c1 { color: var(--ink-2); }
+.chain .c2 { color: var(--ink); }
+.chain .c3 { color: var(--teal); font-weight: 600; }
+.chain .cl { color: var(--ink-3); }
+.chain .ca { color: var(--ink-3); margin: 0 2px; }

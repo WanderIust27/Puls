@@ -5,6 +5,7 @@ import datetime as dt
 import io
 import json
 import logging
+import re
 import sqlite3
 import threading
 from typing import Any
@@ -20,8 +21,8 @@ from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
 from ..services import activity_details as activity_details_svc
 from ..services import (autopilot, boosters, feedback, gym_analysis,
                         insights, memory, mood, nutrition, recipes, score,
-                        sleep as sleep_svc, stats, suggestions, supplements,
-                        trends, vitals)
+                        sleep as sleep_svc, stats, steps as steps_svc, suggestions,
+                        supplements, trends, vitals)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -1015,6 +1016,63 @@ def exercise_changes(days: int = 10) -> list[dict[str, Any]]:
     return ex_lib.recent_changes(days=days)
 
 
+@router.get("/layout")
+def layout_get() -> dict[str, Any]:
+    """Die selbst gewaehlte Kartenreihenfolge je Ansicht."""
+    try:
+        stored = json.loads(get_setting("layout_order", "{}") or "{}")
+    except ValueError:
+        stored = {}
+    return {"views": stored if isinstance(stored, dict) else {}}
+
+
+class LayoutIn(BaseModel):
+    view: str
+    order: list[str]
+
+
+@router.post("/layout")
+def layout_set(l: LayoutIn) -> dict[str, Any]:
+    """Reihenfolge einer Ansicht merken — geraeteuebergreifend."""
+    try:
+        stored = json.loads(get_setting("layout_order", "{}") or "{}")
+    except ValueError:
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
+    view = re.sub(r"[^a-z]", "", l.view)[:20]
+    if not view:
+        raise HTTPException(400, "Unbekannte Ansicht.")
+    # Kennungen bewusst knapp halten: Sie stammen aus dem Browser, und was in
+    # die Einstellungen wandert, soll klein und harmlos bleiben.
+    stored[view] = [str(k)[:60] for k in l.order][:60]
+    set_setting("layout_order", json.dumps(stored, ensure_ascii=False))
+    return {"views": stored}
+
+
+@router.delete("/layout/{view}")
+def layout_reset(view: str) -> dict[str, Any]:
+    try:
+        stored = json.loads(get_setting("layout_order", "{}") or "{}")
+    except ValueError:
+        stored = {}
+    stored.pop(re.sub(r"[^a-z]", "", view)[:20], None)
+    set_setting("layout_order", json.dumps(stored, ensure_ascii=False))
+    return {"views": stored}
+
+
+@router.get("/steps/today")
+def steps_today() -> dict[str, Any]:
+    """Schrittstand, Vergleich mit dem üblichen Tag und Hochrechnung."""
+    return steps_svc.today()
+
+
+@router.get("/steps/typical")
+def steps_typical(days: int = 28, weekday: int | None = None) -> dict[str, Any]:
+    """Wann du dich üblicherweise wie viel bewegst."""
+    return steps_svc.typical(days, weekday)
+
+
 @router.get("/vitals/threshold")
 def vitals_threshold() -> dict[str, Any]:
     """Laktatschwelle: Puls, Tempo und die daraus abgeleiteten Bereiche."""
@@ -1410,6 +1468,7 @@ class SettingsIn(BaseModel):
     run_days: list[str] | None = None
     run_minutes: int | None = None
     wake_target: str | None = None
+    step_goal: int | None = None
     gym_days: list[str] | None = None
     gym_minutes: int | None = None
     evening_mobility: bool | None = None
@@ -1719,6 +1778,7 @@ def get_settings() -> dict[str, Any]:
         "run_days": json.loads(get_setting("run_days", "[]") or "[]"),
         "run_minutes": int(get_setting("run_minutes", "45") or 45),
         "wake_target": get_setting("wake_target", "06:30"),
+        "step_goal": int(get_setting("step_goal", "10000") or 10000),
         "gym_days": json.loads(get_setting("gym_days", "[]") or "[]"),
         "gym_minutes": int(get_setting("gym_minutes", "75") or 75),
         "evening_mobility": get_setting("evening_mobility", "1") == "1",
@@ -1747,6 +1807,8 @@ def post_settings(s: SettingsIn) -> dict[str, str]:
         set_setting("run_days", json.dumps(s.run_days))
     if s.run_minutes is not None:
         set_setting("run_minutes", str(s.run_minutes))
+    if s.step_goal is not None:
+        set_setting("step_goal", str(max(1000, min(50000, int(s.step_goal)))))
     if s.wake_target is not None:
         # Nur echte Uhrzeiten annehmen — sonst rechnet der Schlafplan mit Unsinn
         try:

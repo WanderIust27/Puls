@@ -112,8 +112,17 @@ for i in range(12):
     body.record({"weight_kg": 78.0 + model_delta * 2,
                  "measured_at": f"{day}T21:00:00"}, source="miscale")
 factor = body.personal_factor()
-check("Kalibrierung erkennt die staerkere Schwankung", 1.7 < factor < 2.3, True)
-check("Faktor bleibt gedeckelt", 0.3 <= factor <= 2.5, True)
+check("Kalibrierung erkennt die staerkere Schwankung",
+      factor > 1.2, True)
+# Nach oben gedeckelt, und das mit Absicht: Ein Koerper, der zweieinhalbmal so
+# stark schwankt wie das Modell, ist keine Eigenheit, sondern ein Artefakt aus
+# verrauschten Messpaaren — und eine Umrechnung, die groesser ist als der
+# Unterschied, den man messen wollte, schadet mehr als sie nutzt.
+check("Der Faktor bleibt im plausiblen Rahmen",
+      body.FACTOR_RANGE[0] <= factor <= body.FACTOR_RANGE[1], True)
+check("Die Umrechnung selbst ist gedeckelt",
+      abs(body.adjust(78.0, f"{dt.date.today().isoformat()}T23:30:00", factor=99) - 78.0)
+      <= 78.0 * body.MAX_ADJUST_PCT / 100 + 0.01, True)
 
 # --- Trend und Zusammenfassung -------------------------------------------
 s = body.summary()

@@ -291,6 +291,15 @@ CREATE TABLE IF NOT EXISTS exercise_sets (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_sets_exercise_day ON exercise_sets(exercise_id, day);
+CREATE TABLE IF NOT EXISTS step_intervals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day TEXT NOT NULL,
+    hour INTEGER NOT NULL,                        -- 0..23, lokale Zeit
+    steps INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(day, hour)
+);
+CREATE INDEX IF NOT EXISTS idx_step_day ON step_intervals(day);
 CREATE TABLE IF NOT EXISTS progression_proposals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,

@@ -405,12 +405,21 @@ try:
         ok("Die Anordnung überlebt das Neuladen", card_titles() == after_order,
            str(card_titles()[:3]))
 
+        # Sie muss auf dem Server liegen, nicht im Browser: Nach dem Leeren des
+        # lokalen Speichers steht sie sonst nur auf diesem Gerät.
+        page.evaluate("localStorage.clear()")
+        page.reload(wait_until="networkidle")
+        page.wait_for_timeout(3000)
+        ok("Die Anordnung liegt auf dem Server, nicht im Browser",
+           card_titles() == after_order, str(card_titles()[:3]))
+
         # Zurücksetzen muss die ursprüngliche Reihenfolge wiederherstellen.
         page.click('nav.bottom button[data-view="settings"]')
         page.wait_for_timeout(1200)
         page.click('nav.bottom button[data-view="start"]')
         page.wait_for_timeout(800)
         page.evaluate("localStorage.removeItem('puls.layout.start')")
+        page.request.delete(f"http://127.0.0.1:{PORT}/api/layout/start")
         page.reload(wait_until="networkidle")
         page.wait_for_timeout(2500)
         ok("Zurücksetzen stellt die Vorgabe wieder her",
@@ -436,6 +445,24 @@ try:
         page.wait_for_timeout(2500)
         ok("Kraft: Anpassungen werden erklärt",
            bool(page.eval_on_selector("#changeList", "el => el.textContent.trim()")))
+
+        # --- Schritte: Ziel und Tagesverlauf -------------------------------
+        page.click('nav.bottom button[data-view="start"]')
+        page.wait_for_timeout(2500)
+        ok("Schritte: Karte steht da", page.is_visible("#stepCard"))
+        ok("Schritte: Ziel wird genannt",
+           bool(page.eval_on_selector("#stepGoal", "el => el.textContent.trim()")),
+           page.eval_on_selector("#stepGoal", "el => el.textContent"))
+        ok("Schritte: ein Satz erklärt den Stand",
+           bool(page.eval_on_selector("#stepNote", "el => el.textContent.trim()")))
+
+        page.click('nav.bottom button[data-view="vital"]')
+        page.wait_for_timeout(2500)
+        ok("Schritte: der typische Tag antwortet",
+           bool(page.eval_on_selector("#stepTypicalChart", "el => el.textContent.trim()")
+                or page.eval_on_selector_all("#stepTypicalChart svg", "e => e.length")))
+        tabs = page.eval_on_selector_all("#stepTypicalRange [data-range]", "e => e.length")
+        ok("Schritte: Zeitraum wählbar", tabs == 3, f"{tabs} Knöpfe")
 
         # --- Statistik: Empfehlungen muessen erscheinen -------------------
         page.click('nav.bottom button[data-view="stats"]')

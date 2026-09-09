@@ -317,6 +317,94 @@ if pid2:
     ok("… und der Vorschlag ist weg",
        not any(o["id"] == pid2 for o in ex_lib.open_proposals()))
 
+# --- Ein zu leichtes Gewicht muss ordentlich steigen --------------------
+def probe(weight, reps, target_w, target_r, rep_min, rep_max, inc=2.5):
+    with get_db() as db:
+        db.execute("DELETE FROM exercise_sets")
+        db.execute("DELETE FROM progression_proposals")
+        eid = db.execute("SELECT id FROM exercises WHERE slot='main' LIMIT 1"
+                         ).fetchone()["id"]
+        db.execute("""UPDATE exercises SET weight_kg=?, target_reps=?, rep_min=?,
+                          rep_max=?, weight_increment=? WHERE id=?""",
+                   (target_w, target_r, rep_min, rep_max, inc, eid))
+    for i in range(3):
+        ex_lib.record_set(eid, reps=reps, weight_kg=weight,
+                          day=TODAY.isoformat(), set_index=i + 1)
+    made = ex_lib.propose_for_day(TODAY.isoformat())
+    return made[0] if made else None
+
+# Der gemeldete Fall: 18 Wiederholungen bei einer Obergrenze von 15.
+p = probe(22.5, 18, 22.5, 15, 10, 15)
+ok("Gerissene Obergrenze ergibt einen Vorschlag", p is not None)
+if p:
+    ok("… und zwar mehr als eine Stufe", p["to_weight"] >= 22.5 + 2 * 2.5,
+       f"{p['from_weight']} → {p['to_weight']} kg")
+    ok("… mit zurückgesetzten Wiederholungen", p["to_reps"] == 10, str(p["to_reps"]))
+    ok("… und einer Begründung, die den Sprung erklärt",
+       "zu leicht" in p["reason"], p["reason"][:60])
+
+# Deutlich gerissen heißt deutlich mehr.
+weit = probe(30, 25, 30, 12, 8, 12)
+ok("Weit gerissen heißt ein größerer Sprung",
+   weit and weit["to_weight"] >= 40, f"{weit['to_weight'] if weit else '–'} kg")
+
+# Genau die Obergrenze bleibt die normale Steigerung.
+genau = probe(22.5, 15, 22.5, 15, 10, 15)
+ok("Genau die Obergrenze steigert nur eine Stufe",
+   genau and abs(genau["to_weight"] - 25.0) < 0.01,
+   f"{genau['to_weight'] if genau else '–'} kg")
+
+# Eine Wiederholung über dem Ziel, aber unter der Obergrenze: Gewicht statt
+# Wiederholungsziel — das Ziel soll nicht davonlaufen.
+knapp = probe(25, 13, 25, 12, 10, 15)
+ok("Etwas mehr Wiederholungen heben das Gewicht, nicht das Ziel",
+   knapp and knapp["to_weight"] > 25 and knapp["to_reps"] == 12,
+   f"{knapp['to_weight'] if knapp else '–'} kg × {knapp['to_reps'] if knapp else '–'}")
+
+ok("Kein Vorschlag ist je kleiner als der Ausgangswert",
+   all(x is None or x["to_weight"] >= x["from_weight"]
+       for x in (p, weit, genau, knapp)))
+
+# --- Der Referenzwert muss zur Waage passen -----------------------------
+from app.services import body as body_svc                            # noqa: E402
+with get_db() as db:
+    db.execute("DELETE FROM body_metrics")
+
+# Der gemeldete Fall: lange nicht gewogen, dann mehrfach abends. Der
+# "7-Tage-Median" lief früher über die letzten sieben EINTRÄGE — bei
+# unregelmäßigem Wiegen also über Monate, und oben stand ein Gewicht von vor
+# einem Vierteljahr.
+for back, kg, hour in [(120, 78.0, 7), (95, 78.4, 7), (60, 79.5, 7),
+                       (30, 81.0, 7), (10, 82.0, 21), (3, 82.5, 21),
+                       (0, 82.9, 21)]:
+    d = TODAY - dt.timedelta(days=back)
+    body_svc.record({"weight_kg": kg,
+                     "measured_at": f"{d.isoformat()}T{hour:02d}:40:00"},
+                    source="test")
+
+sm = body_svc.summary(180)
+lm = sm["last_measurement"]
+ok("Die letzte Messung wird mitgeliefert", lm is not None)
+check("… mit dem Rohwert der Waage", lm["weight_kg"], 82.9)
+ok("Der Referenzwert liegt nahe an der letzten Messung",
+   abs(sm["current_kg"] - lm["adjusted_kg"]) < 1.0,
+   f"{sm['current_kg']} vs {lm['adjusted_kg']}")
+ok("… und nicht mehr Kilos darunter",
+   sm["current_kg"] > 80.0, f"{sm['current_kg']} kg")
+check("Die Glättung ist auf Tage bezogen", sm["current_from_days"], body_svc.SMOOTH_DAYS)
+
+# Die Umrechnung darf nie größer sein als plausibel.
+ok("Die Umrechnung bleibt im Rahmen",
+   abs(lm["delta_kg"]) <= lm["weight_kg"] * body_svc.MAX_ADJUST_PCT / 100 + 0.01,
+   f"{lm['delta_kg']} kg")
+extreme = body_svc.adjust(82.9, f"{TODAY.isoformat()}T23:59:00", factor=99)
+ok("Auch ein entgleister Faktor korrigiert nicht mehr als erlaubt",
+   abs(extreme - 82.9) <= 82.9 * body_svc.MAX_ADJUST_PCT / 100 + 0.01,
+   f"{extreme} kg")
+ok("Der persönliche Faktor bleibt in Grenzen",
+   body_svc.FACTOR_RANGE[0] <= body_svc.personal_factor() <= body_svc.FACTOR_RANGE[1],
+   str(body_svc.personal_factor()))
+
 print()
 if failures:
     print(f"{len(failures)} Test(s) fehlgeschlagen: {', '.join(failures)}")

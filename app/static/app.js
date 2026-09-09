@@ -360,6 +360,7 @@ async function loadDashboard() {
   renderToday(d.today);
   loadBedtime();
   loadProposals();
+  loadSteps();
   renderTodayTiles(d.recovery);
   renderBoosters(d.boosters);
   renderFeedback(d.pending_feedback);
@@ -1126,7 +1127,9 @@ async function loadBody() {
   const l = summary.latest || {};
   const est = new Set(summary.estimated_fields || []);
   const cells = [
-    { v: summary.current_kg?.toFixed(1), u: "kg", l: "Gewicht", extra: arrow(summary.delta_7d) },
+    { v: summary.current_kg?.toFixed(1), u: "kg",
+      l: `Referenzwert (${summary.current_from_days ?? 7} Tage)`,
+      extra: arrow(summary.delta_7d) },
     { v: l.body_fat_pct, u: "%", l: "Körperfett", f: "body_fat_pct" },
     { v: l.muscle_kg, u: "kg", l: "Muskeln", f: "muscle_kg" },
     { v: l.water_pct, u: "%", l: "Wasser", f: "water_pct" },
@@ -1134,6 +1137,25 @@ async function loadBody() {
     { v: l.visceral_fat, u: "", l: "Viszeralfett", f: "visceral_fat" },
     { v: l.bmi, u: "", l: "BMI" },
   ].filter((c) => c.v != null && c.v !== "");
+  /* Die Kette sichtbar machen: gemessen → umgerechnet → Referenzwert.
+     Wer 82,9 auf der Waage sieht und oben 81,4 liest, muss den Weg dazwischen
+     nachlesen können — sonst glaubt er der Anzeige zu Recht nicht. */
+  const lm = summary.last_measurement;
+  $("#bodyChain").innerHTML = lm ? `
+    <div class="chain">
+      <span class="c1">${lm.weight_kg?.toFixed(1)}\u2009kg</span>
+      <span class="cl">gemessen ${fmtDate(lm.measured_at)}, ${
+        esc((lm.measured_at || "").slice(11, 16))} Uhr</span>
+      ${lm.in_window || !lm.delta_kg ? "" : `
+        <span class="ca">→</span>
+        <span class="c2">${lm.adjusted_kg?.toFixed(1)}\u2009kg</span>
+        <span class="cl">umgerechnet auf ${esc(summary.window_label || "das Fenster")}
+          (${lm.delta_kg > 0 ? "+" : ""}${lm.delta_kg}\u2009kg)</span>`}
+      <span class="ca">→</span>
+      <span class="c3">${summary.current_kg?.toFixed(1)}\u2009kg</span>
+      <span class="cl">Referenzwert, Median über ${summary.current_from_days ?? 7} Tage</span>
+    </div>` : "";
+
   $("#bodyFacts").innerHTML = cells.map((c) => `
     <div class="f${est.has(c.f) ? " est" : ""}">
       <div class="v">${esc(String(c.v))}<span class="u">${c.u}</span></div>
@@ -2909,6 +2931,7 @@ async function loadSettings() {
   $("#setKcal").value = s.kcal_target;
   $("#setProtein").value = s.protein_target;
   $("#setProfile").value = s.profile.text || "";
+  $("#setStepGoal").value = s.step_goal || 10000;
   $("#setWakeTarget").value = s.wake_target || "06:30";
   $("#setPullupGoal").value = s.pullup_goal;
   $("#setRunGoalKm").value = s.run_goal_distance_km;
@@ -2940,6 +2963,7 @@ $("#btnCopyToken").addEventListener("click", async () => {
 
 $("#btnSaveWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   await api("/settings", { method: "POST", body: JSON.stringify({
+    step_goal: +$("#setStepGoal").value || 10000,
     wake_target: $("#setWakeTarget").value || "06:30",
     pullup_goal: +$("#setPullupGoal").value || 10,
     run_goal_distance_km: +$("#setRunGoalKm").value || 10,
@@ -3056,8 +3080,13 @@ function startScalePolling() {
    gespeicherte Reihenfolge darf ein Update nicht überleben, indem sie neue
    Karten unterschlägt. */
 
+/* Die Reihenfolge liegt auf dem Server, nicht im Browser: Sie soll auf dem
+   Telefon dieselbe sein wie am Rechner. localStorage bleibt als Zwischenspeicher
+   erhalten, damit die erste Zeichnung nicht auf das Netz warten muss — sobald
+   die Antwort da ist, gilt der Server. */
 const LAYOUT_KEY = "puls.layout.";
 let dragging = null;
+let layoutFromServer = null;
 
 function cardKey(card, index) {
   // Eine eigene id ist die beste Kennung; sonst die Überschrift, sonst die
@@ -3077,6 +3106,7 @@ function cardHost(view) {
 }
 
 function loadOrder(view) {
+  if (layoutFromServer && layoutFromServer[view]) return layoutFromServer[view];
   try { return JSON.parse(localStorage.getItem(LAYOUT_KEY + view) || "[]"); }
   catch (e) { return []; }
 }
@@ -3088,6 +3118,24 @@ function saveOrder(view) {
     .map((c, i) => cardKey(c, i));
   try { localStorage.setItem(LAYOUT_KEY + view, JSON.stringify(keys)); }
   catch (e) { /* Kein Speicher — dann eben nur für diese Sitzung */ }
+  if (layoutFromServer) layoutFromServer[view] = keys;
+  api("/layout", { method: "POST", body: JSON.stringify({ view, order: keys }) })
+    .catch(() => toast("Anordnung konnte nicht gespeichert werden", true));
+}
+
+/* Beim Start einmal holen und überall anwenden. */
+async function syncLayout() {
+  let d;
+  try { d = await api("/layout"); } catch (e) { return; }
+  layoutFromServer = d.views || {};
+  $$(".view").forEach((v) => {
+    const name = v.id.replace("view-", "");
+    if (layoutFromServer[name]) {
+      try { localStorage.setItem(LAYOUT_KEY + name,
+        JSON.stringify(layoutFromServer[name])); } catch (e) { /* egal */ }
+      applyOrder(name);
+    }
+  });
 }
 
 function applyOrder(view) {
@@ -3166,9 +3214,98 @@ function makeSortable(view) {
   });
 }
 
-function resetLayout(view) {
+async function resetLayout(view) {
   try { localStorage.removeItem(LAYOUT_KEY + view); } catch (e) { /* egal */ }
+  if (layoutFromServer) delete layoutFromServer[view];
+  try { await api(`/layout/${view}`, { method: "DELETE" }); } catch (e) { /* egal */ }
   location.reload();
+}
+
+/* ---------------------------------------------------------------- Schritte */
+
+/* Ein Schrittziel allein sagt am Nachmittag wenig: 6.000 von 10.000 sind um
+   zehn Uhr viel und um zwanzig Uhr wenig. Deshalb steht daneben, was zu dieser
+   Stunde bei dir üblich ist — und was daraus bis Mitternacht wird. */
+async function loadSteps() {
+  let d;
+  try { d = await api("/steps/today"); } catch (e) { return; }
+
+  $("#stepNow").textContent = d.steps.toLocaleString("de-DE");
+  $("#stepGoal").textContent = d.goal.toLocaleString("de-DE");
+  $("#stepBar").style.width = `${d.percent}%`;
+  $("#stepBar").className = d.reaches_goal === false ? "short" : "";
+
+  // Die Marke zeigt, wo du um diese Uhrzeit üblicherweise stehst.
+  const mark = $("#stepMark");
+  if (d.expected_by_now != null && d.goal) {
+    mark.hidden = false;
+    mark.style.left = `${Math.min(100, (d.expected_by_now / d.goal) * 100)}%`;
+    mark.title = `üblich um diese Zeit: ${d.expected_by_now.toLocaleString("de-DE")}`;
+  } else { mark.hidden = true; }
+
+  $("#stepFacts").innerHTML = [
+    d.expected_by_now != null
+      ? { l: "üblich um diese Zeit", v: d.expected_by_now.toLocaleString("de-DE") } : null,
+    d.ahead_by != null
+      ? { l: d.ahead_by >= 0 ? "voraus" : "zurück",
+          v: `${d.ahead_by >= 0 ? "+" : ""}${d.ahead_by.toLocaleString("de-DE")}` } : null,
+    d.projected != null ? { l: "bis Mitternacht", v: d.projected.toLocaleString("de-DE") } : null,
+    d.remaining ? { l: "noch bis zum Ziel", v: d.remaining.toLocaleString("de-DE") } : null,
+  ].filter(Boolean).map((f) => `
+    <div class="st-f"><div class="v">${esc(f.v)}</div><div class="l">${esc(f.l)}</div></div>`
+  ).join("");
+  $("#stepNote").textContent = d.note || "";
+
+  // Heute gegen den typischen Tag — zwei Kurven, damit der Vergleich sichtbar
+  // ist und nicht nur behauptet.
+  const base = new Date(); base.setHours(0, 0, 0, 0);
+  const at = (h) => base.getTime() + h * 3600e3;
+  let sum = 0;
+  const mine = d.hours.map((r) => ({ t: at(r.hour + 1), value: (sum += r.steps) }));
+  const norm = (d.typical.cumulative || [])
+    .filter((c) => c.steps > 0)
+    .map((c) => ({ t: at(c.hour + 1), value: c.steps }));
+  timeChart($("#stepChart"), [
+    { key: "heute", label: "heute", color: "var(--chart-2)", points: mine },
+    norm.length ? { key: "üblich", label: "üblich", color: "var(--chart-1)", points: norm } : null,
+  ].filter(Boolean), {
+    from: at(0), to: at(24), height: 150, unit: " Schritte",
+    empty: "Für heute liegt noch kein Verlauf vor.", label: "Schritte im Tagesverlauf",
+  });
+}
+
+/* Der typische Tag als Balken je Stunde — hier geht es nicht um heute,
+   sondern um den Rhythmus. */
+async function loadTypicalSteps() {
+  const host = $("#stepTypicalChart");
+  if (!host) return;
+  rangeTabs($("#stepTypicalRange"), "stepTypical", ["week", "month", "quarter"],
+    async (range, days) => {
+      let d;
+      try { d = await api(`/steps/typical?days=${days}`); } catch (e) { return; }
+      if (d.hint) {
+        host.innerHTML = `<p class="muted">${esc(d.hint)}</p>`;
+        $("#stepTypicalFacts").innerHTML = "";
+        return;
+      }
+      barChart(host, d.hours.map((h) => ({
+        value: h.steps, label: h.hour % 3 === 0 ? `${h.hour}` : "",
+        tip: `${h.hour}:00–${h.hour + 1}:00 · ${h.steps} Schritte`,
+      })));
+      $("#stepTypicalFacts").innerHTML = `
+        <div class="tiles wide-tiles" style="margin-top:10px">
+          <div class="tile"><div class="tv">${d.total.toLocaleString("de-DE")}</div>
+            <div class="tl">Schritte an einem üblichen Tag</div></div>
+          <div class="tile"><div class="tv">${d.busiest_hour}<span class="tu"> Uhr</span></div>
+            <div class="tl">stärkste Stunde (${d.busiest_steps})</div></div>
+          <div class="tile"><div class="tv">${d.half_by_hour}<span class="tu"> Uhr</span></div>
+            <div class="tl">Hälfte des Tagespensums erreicht</div></div>
+          <div class="tile"><div class="tv">${d.morning.toLocaleString("de-DE")}</div>
+            <div class="tl">morgens · ${d.afternoon.toLocaleString("de-DE")} nachmittags
+              · ${d.evening.toLocaleString("de-DE")} abends</div></div>
+        </div>
+        <p class="muted" style="margin-top:6px">Aus ${d.days} aufgezeichneten Tagen.</p>`;
+    }, "month");
 }
 
 /* ------------------------------------------- Vorschläge nach dem Training */
@@ -3408,6 +3545,7 @@ async function loadVitalView() {
   loadRecovery();
   loadThreshold();
   loadStressPattern();
+  loadTypicalSteps();
 }
 
 /* Die Schwelle in Pulsbereiche übersetzt: Der Maximalpuls ist eine Zahl, die
@@ -3529,6 +3667,7 @@ $$(".view").forEach((v) => {
   applyOrder(name);
   makeSortable(name);
 });
+syncLayout();
 loadDashboard().catch((e) => toast(e.message, true));
 
 async function loadStatsAll() {

@@ -502,7 +502,38 @@ def _collect_day(g: Garmin, day: str) -> dict[str, Any]:
     if isinstance(steps, list) and steps:
         entry["steps"] = steps[0].get("totalSteps")
 
+    _collect_step_hours(g, day)
+
     return {k: v for k, v in entry.items() if v is not None}
+
+
+def _collect_step_hours(g: Garmin, day: str) -> None:
+    """Den Tagesverlauf der Schritte stundenweise ablegen.
+
+    Garmin liefert Viertelstunden-Abschnitte mit Zeitstempel. Aufgehoben wird
+    nur die Stundensumme: Feiner braucht es niemand, und eine Zeile je
+    Viertelstunde waere das Vierfache an Daten fuer dieselbe Aussage.
+    """
+    raw = _call(g, "get_steps_data", day)
+    if not isinstance(raw, list) or not raw:
+        return
+    per_hour: dict[int, int] = {}
+    for chunk in raw:
+        if not isinstance(chunk, dict):
+            continue
+        stamp = (chunk.get("startGMT") or chunk.get("startTimeLocal")
+                 or chunk.get("startTimeGMT"))
+        count = chunk.get("steps")
+        if not stamp or not count:
+            continue
+        try:
+            when = dt.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        per_hour[when.hour] = per_hour.get(when.hour, 0) + int(count)
+    if per_hour:
+        from . import steps as steps_svc
+        steps_svc.record_day(day, per_hour)
 
 
 DAILY_FIELDS = (

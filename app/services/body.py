@@ -32,6 +32,16 @@ _DIURNAL: list[tuple[float, float]] = [
 ]
 
 MIN_PAIRS_FOR_CALIBRATION = 5
+# Ueber wie viele Kalendertage geglaettet wird.
+SMOOTH_DAYS = 7
+# Wie weit der persoenliche Faktor vom Standardmodell abweichen darf. Ein
+# Koerper, der zweieinhalbmal so stark schwankt wie das Modell, ist keine
+# Eigenheit, sondern ein Rechenartefakt aus verrauschten Messpaaren.
+FACTOR_RANGE = (0.6, 1.6)
+# Obergrenze der Umrechnung. Mehr als das ist bei einer Tagesschwankung nicht
+# plausibel — und eine Korrektur, die groesser ist als der Unterschied, den man
+# messen wollte, richtet mehr Schaden an als sie nutzt.
+MAX_ADJUST_PCT = 2.5
 
 
 def _hours(ts: dt.datetime) -> float:
@@ -143,7 +153,7 @@ def personal_factor() -> float:
         return 1.0
     ratios.sort()
     median = ratios[len(ratios) // 2]
-    return max(0.3, min(2.5, median))
+    return max(FACTOR_RANGE[0], min(FACTOR_RANGE[1], median))
 
 
 def adjust(weight_kg: float | None, ts: dt.datetime | str | None,
@@ -169,6 +179,7 @@ def adjust(weight_kg: float | None, ts: dt.datetime | str | None,
     if factor is None:
         factor = personal_factor()
     delta_pct = (_diurnal_pct(_hours(stamp)) - _diurnal_pct(mid)) * factor
+    delta_pct = max(-MAX_ADJUST_PCT, min(MAX_ADJUST_PCT, delta_pct))
     return round(weight_kg - delta_pct / 100 * weight_kg, 2)
 
 
@@ -290,11 +301,19 @@ def trend(days: int = 180) -> list[dict[str, Any]]:
             "count": len(entries),
         })
 
-    # 7-Tage-Median als ruhige Linie ueber den Tageswerten
-    values = [p["weight_kg"] for p in points]
+    # Ruhige Linie ueber den Tageswerten: Median der letzten sieben KALENDER-
+    # tage, nicht der letzten sieben Eintraege.
+    #
+    # Das war ein handfester Fehler: values[i-6:i+1] nimmt die letzten sieben
+    # vorhandenen Messungen. Wer unregelmaessig wiegt, bekam damit einen
+    # "7-Tage-Median" ueber drei Monate — und oben stand ein aktuelles Gewicht,
+    # das Kilos unter dem lag, was die Waage eben angezeigt hatte.
     for i, p in enumerate(points):
-        chunk = [v for v in values[max(0, i - 6):i + 1] if v is not None]
-        p["smooth_kg"] = round(_median(chunk), 2) if chunk else None
+        today = dt.date.fromisoformat(p["day"])
+        window_start = (today - dt.timedelta(days=SMOOTH_DAYS - 1)).isoformat()
+        chunk = [q["weight_kg"] for q in points[max(0, i - 30):i + 1]
+                 if q["weight_kg"] is not None and window_start <= q["day"] <= p["day"]]
+        p["smooth_kg"] = round(_median(chunk), 2) if chunk else p["weight_kg"]
     return points
 
 
@@ -358,8 +377,28 @@ def summary(days: int = 180) -> dict[str, Any]:
         earlier = [p for p in smooth if p["day"] <= target]
         return round(current - earlier[-1]["smooth_kg"], 2) if earlier else None
 
+    # Die Kette sichtbar machen: gemessen → umgerechnet → Referenzwert. Wer
+    # 82,9 auf der Waage sieht und oben 81,0 liest, muss den Weg dazwischen
+    # nachvollziehen koennen, sonst glaubt er der Anzeige zu Recht nicht.
+    last = None
+    raw = measurements(30, limit=1)
+    if raw:
+        r = raw[0]
+        last = {
+            "measured_at": r["measured_at"],
+            "weight_kg": r["weight_kg"],
+            "adjusted_kg": r["weight_adj_kg"],
+            "in_window": bool(r["in_window"]),
+            "time_known": bool(r["time_known"]),
+            "delta_kg": (round((r["weight_adj_kg"] or 0) - (r["weight_kg"] or 0), 2)
+                         if r["weight_adj_kg"] is not None and r["weight_kg"] else None),
+        }
+
     return {
         "current_kg": current,
+        "current_from_days": SMOOTH_DAYS,
+        "last_measurement": last,
+        "window_label": window_label(),
         "delta_7d": _delta(7),
         "delta_30d": _delta(30),
         "delta_90d": _delta(90),

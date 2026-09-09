@@ -538,10 +538,25 @@ Der Unterschied zu Beschwerden ist Absicht: Auf gemeldete Schmerzen reagiert
 PULS sofort und ohne Rückfrage, weil das keine Geschmacksfrage ist. Ein
 zusätzlicher Sonntagslauf dagegen ist deine Entscheidung.
 
+## Schritte: Ziel und Tagesrhythmus
+
+Ein Schrittziel allein sagt am Nachmittag wenig: 6.000 von 10.000 sind um zehn
+Uhr viel und um zwanzig Uhr wenig. Auf der Startseite steht deshalb neben dem
+Stand, **was zu dieser Stunde bei dir üblich ist** — und was daraus bis
+Mitternacht wird, wenn der Tag normal weiterläuft. Reicht es nicht, steht da,
+wie viele Minuten Gehen fehlen.
+
+Dafür wird der Tagesverlauf stundenweise von der Uhr geholt. Unter *Vital*
+steht der typische Tag als Balken: stärkste Stunde, wann die Hälfte des
+Pensums erreicht ist, wie sich morgens, nachmittags und abends verteilen.
+Gerechnet wird der **Median** je Stunde, nicht der Mittelwert — ein einzelner
+Wandertag soll den Normalfall nicht verschieben.
+
 ## Das Layout gehört dir
 
 Jede Karte hat oben links einen Griff (⠿). Damit lässt sie sich verschieben;
-die Reihenfolge bleibt **je Ansicht** gespeichert. Ohne Maus geht es auch:
+die Reihenfolge bleibt **je Ansicht** gespeichert — und zwar auf dem Server,
+nicht im Browser: Am Telefon steht sie danach genauso wie am Rechner. Ohne Maus geht es auch:
 Griff anwählen, dann Pfeiltasten. Unter *Mehr → Darstellung* steht ein Knopf,
 der die Anordnung der gerade offenen Ansicht zurücksetzt.
 
@@ -653,6 +668,29 @@ Messpunkte gemittelt, die GPS-Spur mit Douglas-Peucker vereinfacht. An einem
 45-Minuten-Lauf gemessen: 539 kB roh, 23 kB gespeichert, größte Abweichung der
 Spur 1,2 m. So passt jeder Lauf dauerhaft ins Volume.
 
+## Warum das angezeigte Gewicht nicht der Waagenwert ist
+
+Drei Zahlen, und sie sind bewusst verschieden:
+
+    82,9 kg  gemessen um 21:40
+    81,6 kg  umgerechnet auf dein Referenzfenster
+    81,4 kg  Referenzwert (Median über sieben Tage)
+
+Die Kette steht so auf der Seite, weil ein Kopfwert, der zwei Kilo unter der
+Waage liegt, ohne Erklärung schlicht unglaubwürdig ist.
+
+Zwei Dinge waren daran lange falsch. Der „7-Tage-Median" lief über die letzten
+sieben **Einträge**, nicht über sieben Tage — wer unregelmäßig wiegt, bekam
+damit einen Median über Monate, und oben stand ein Gewicht von vor einem
+Vierteljahr. Und die Umrechnung auf das Referenzfenster war nach oben nur sehr
+weit gedeckelt: Bei verrauschten Messpaaren konnte der persönliche Faktor auf
+das Zweieinhalbfache laufen und aus 82,9 kg rechnerisch 79,5 machen.
+
+Jetzt gilt: Der Median läuft über sieben **Kalendertage**, der persönliche
+Faktor bleibt zwischen 0,6 und 1,6, und die Umrechnung selbst ist auf 2,5 %
+begrenzt. Eine Korrektur, die größer ist als der Unterschied, den man messen
+wollte, schadet mehr als sie nutzt.
+
 ## Körperdaten und Referenzfenster
 
 Zwischen der Messung früh nüchtern und der abends nach dem Essen liegen leicht
@@ -688,10 +726,17 @@ Automatik scheiterte:
 
 | Was passiert ist | Was vorgeschlagen wird |
 |---|---|
-| Schwerer als geplant | Das bewegte Gewicht wird die neue Vorgabe, die Wiederholungen richten sich nach dem, was dabei ging |
-| Wie geplant, Obergrenze erreicht | Gewicht hoch, Wiederholungen zurück an den Anfang der Spanne |
-| Mehr Wiederholungen als verlangt | Das Wiederholungsziel wächst mit |
+| Schwerer als geplant | Das bewegte Gewicht wird die neue Vorgabe |
+| Obergrenze deutlich gerissen | Ein **richtiger** Sprung, nicht eine Stufe — über das geschätzte Maximalgewicht gerechnet |
+| Obergrenze genau erreicht | Gewicht eine Stufe hoch, Wiederholungen zurück an den Anfang der Spanne |
+| Etwas mehr Wiederholungen | Das **Gewicht** steigt, nicht das Wiederholungsziel |
 | Alles wie geplant | Eine Wiederholung mehr als nächster Schritt |
+
+Der zweite und der vierte Fall waren die eigentliche Schwäche: Wer 18
+Wiederholungen schafft, wo 15 die Obergrenze sind, braucht kein höheres
+Wiederholungsziel — das Gewicht ist zu leicht. Umgerechnet wird über Epley,
+damit der Sprung zur Leistung passt und nicht geraten ist: 22,5 kg × 18 werden
+zu 27,5 kg × 10, nicht zu 25 kg.
 
 Ein Tippen macht daraus die neue Vorgabe, „Alle übernehmen" erledigt die ganze
 Einheit auf einmal. Was abgelehnt wird, bleibt unverändert. Unter *Kraft* steht
@@ -752,7 +797,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Zwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Einundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
 prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
 Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.

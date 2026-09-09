@@ -123,6 +123,20 @@
     </div>
   </div>
 
+  <div class="card span2" id="stepCard">
+    <h3>Schritte</h3>
+    <div class="steps-head">
+      <div class="st-main">
+        <div class="st-now" id="stepNow">–</div>
+        <div class="st-sub">von <span id="stepGoal">–</span></div>
+      </div>
+      <div class="st-facts" id="stepFacts"></div>
+    </div>
+    <div class="st-bar"><i id="stepBar"></i><span class="st-mark" id="stepMark"></span></div>
+    <p class="muted" id="stepNote"></p>
+    <div class="chart-wrap" id="stepChart"></div>
+  </div>
+
   <div class="card span2" id="bedtimeCard" hidden>
     <h3>Schlafenszeit</h3>
     <div class="bedtime">
@@ -629,6 +643,7 @@
 
 <div class="card">
     <h3>Körperdaten</h3>
+    <div id="bodyChain"></div>
     <div id="bodyFacts" class="body-facts"></div>
     <div id="bodyRange"></div><div class="chart-wrap" id="bodyChart" style="margin-top:12px"></div>
     <div id="bodyDiscipline" class="muted" style="margin-top:4px"></div>
@@ -696,6 +711,16 @@
       <button class="btn ghost small" id="btnLthrSave">Eintragen</button>
       <button class="btn ghost small" id="btnLthrClear">Schätzen lassen</button>
     </div>
+  </div>
+
+  <div class="card span2">
+    <h3>Wann du dich bewegst</h3>
+    <p class="muted">Der typische Tag aus deinen letzten Wochen — je Stunde der
+      Median, nicht der Mittelwert: Ein einzelner Wandertag soll den Normalfall
+      nicht verschieben.</p>
+    <div id="stepTypicalRange"></div>
+    <div class="chart-wrap" id="stepTypicalChart"></div>
+    <div id="stepTypicalFacts"></div>
   </div>
 
   <div class="card span2">
@@ -926,6 +951,8 @@
       <a href="#" data-goto="plan">Plan-Reiter</a> ein — dort sieht man dabei
       gleich, was daraus für die Woche folgt.</p>
     <div class="grid3">
+      <div><label class="field">Schritte pro Tag</label>
+        <input id="setStepGoal" type="number" step="500" min="1000" max="50000"></div>
       <div><label class="field">Aufstehen um</label>
         <input id="setWakeTarget" type="time" step="300"></div>
       <div><label class="field">Klimmzug-Ziel</label><input id="setPullupGoal" type="number" min="1"></div>
@@ -960,7 +987,8 @@
 <div class="card">
     <h3>Darstellung</h3>
     <p class="muted">Die Karten lassen sich an ihrem Griff (⠿ oben links)
-      verschieben — jede Ansicht merkt sich ihre eigene Reihenfolge. Mit der
+      verschieben — jede Ansicht merkt sich ihre eigene Reihenfolge, und zwar
+      auf dem Server: Am Telefon steht sie danach genauso wie am Rechner. Mit der
       Tastatur geht es auch: Griff anwählen, dann Pfeiltasten.</p>
     <button class="btn ghost small" id="btnResetLayout"
       style="margin-bottom:12px">Anordnung dieser Ansicht zurücksetzen</button>

@@ -785,7 +785,32 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
             evidence = f"{reps}× {lifted:g} kg geschafft (Vorgabe {from_reps}× {from_weight:g} kg)"
             reason = (f"Du hast {lifted:g} kg bewegt, geplant waren "
                       f"{from_weight:g} kg — das ist die neue Grundlage.")
-        # 2. Wie geplant, aber die Obergrenze erreicht: Gewicht hoch, Wieder-
+            # Wurde auch dabei die Obergrenze gerissen, war selbst das noch zu
+            # leicht: dann gleich eine Stufe weiter statt naechste Woche wieder.
+            if reps > ex["rep_max"]:
+                step = ex["weight_increment"] or 2.5
+                to_weight = round_to_increment(
+                    max(lifted + step,
+                        weight_for_reps(epley_1rm(lifted, reps), ex["rep_max"])), step)
+                to_reps = ex["rep_max"]
+                reason += (f" Und weil dabei {reps} Wiederholungen drin waren, "
+                           f"geht gleich noch eine Stufe auf {to_weight:g} kg.")
+        # 2. Obergrenze deutlich gerissen: Dann war das Gewicht nicht knapp,
+        #    sondern klar zu leicht. Eine Stufe waere hier zu zaghaft — das
+        #    aequivalente Gewicht kommt ueber das geschaetzte Maximalgewicht
+        #    (Epley), damit der Sprung zur Leistung passt.
+        elif done and max(done) > ex["rep_max"]:
+            step = ex["weight_increment"] or 2.5
+            to_reps = ex["rep_min"]
+            to_weight = round_to_increment(
+                max(lifted + step,
+                    weight_for_reps(epley_1rm(lifted, max(done)), to_reps)), step)
+            evidence = f"{max(done)}× {lifted:g} kg — die Obergrenze liegt bei {ex['rep_max']}"
+            reason = (f"{max(done)} Wiederholungen bei einer Obergrenze von "
+                      f"{ex['rep_max']} heißt: deutlich zu leicht. "
+                      f"{to_weight:g} kg bei {to_reps} Wiederholungen ist der "
+                      f"passende Sprung, nicht eine Stufe.")
+        # 3. Wie geplant, Obergrenze genau erreicht: Gewicht hoch, Wieder-
         #    holungen zurueck auf den Anfang der Spanne.
         elif all_hit and from_reps >= ex["rep_max"]:
             step = ex["weight_increment"] or 2.5
@@ -794,14 +819,25 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
             evidence = f"{ex['rep_max']}× {lifted:g} kg in allen Sätzen"
             reason = (f"Die Obergrenze von {ex['rep_max']} Wiederholungen sitzt "
                       f"— jetzt mehr Gewicht, dafür wieder {to_reps} Wiederholungen.")
-        # 3. Mehr Wiederholungen als verlangt: Ziel anheben.
+        # 4. Etwas mehr Wiederholungen als verlangt: Das heisst nicht, dass das
+        #    Wiederholungsziel wachsen soll — es heisst, dass das Gewicht zu
+        #    leicht ist. Wer 18 statt 15 schafft, soll nicht 18 anstreben,
+        #    sondern mehr auflegen und wieder bei 15 landen. Umgerechnet wird
+        #    ueber das geschaetzte Maximalgewicht (Epley), damit der Sprung zur
+        #    Leistung passt und nicht geraten ist.
         elif done and max(done) > from_reps:
-            to_weight = lifted
-            to_reps = min(ex["rep_max"], max(done))
+            step = ex["weight_increment"] or 2.5
+            equivalent = weight_for_reps(epley_1rm(lifted, max(done)), from_reps)
+            # Mindestens eine Stufe: Bei hohen Wiederholungen ist Epley
+            # vorsichtig, und ein Vorschlag ueber null Komma fuenf Kilo waere
+            # keiner.
+            to_weight = round_to_increment(max(lifted + step, equivalent), step)
+            to_reps = from_reps
             evidence = f"{max(done)}× {lifted:g} kg statt der geplanten {from_reps}"
-            reason = (f"Du hast mehr Wiederholungen geschafft als verlangt — "
-                      f"das Ziel darf mitwachsen.")
-        # 4. Alles wie geplant: eine Wiederholung mehr als naechster Schritt.
+            reason = (f"{max(done)} statt {from_reps} Wiederholungen heißt: Das "
+                      f"Gewicht ist zu leicht. Mit {to_weight:g} kg sind "
+                      f"{from_reps} Wiederholungen wieder ein Reiz.")
+        # 5. Alles wie geplant: eine Wiederholung mehr als naechster Schritt.
         elif all_hit and from_reps < ex["rep_max"]:
             to_weight = lifted or from_weight
             to_reps = from_reps + 1
