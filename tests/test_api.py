@@ -256,6 +256,8 @@ with TestClient(app) as client:
     check("Rückmeldung zu unbekannter Aktivität meldet 404",
           client.post("/api/activities/999999/feedback",
                       json={"rating": 4}).status_code, 404)
+    check("Analyse liefert vorhandene Rückmeldung mit",
+          "feedback" in client.get(f"/api/activities/{act_id}/analysis").json(), True)
     check("Rückmeldung wird angenommen",
           client.post(f"/api/activities/{act_id}/feedback",
                       json={"rating": 4, "effort": 3}).status_code, 200)

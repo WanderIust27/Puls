@@ -1458,7 +1458,8 @@ def activity_analysis(activity_id: int) -> dict[str, Any]:
             act["hr_zones"] = json.loads(act.pop("hr_zones_json"))
         except (ValueError, TypeError):
             act.pop("hr_zones_json", None)
-    return {"activity": act, "analysis": analysis, "gym": gym}
+    return {"activity": act, "analysis": analysis, "gym": gym,
+            "feedback": feedback.get(activity_id)}
 
 
 @router.get("/running/trend")

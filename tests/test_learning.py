@@ -163,6 +163,22 @@ empty = feedback.patterns()
 check("Ohne Rückmeldungen keine Aussage", empty["findings"], [])
 check("Stattdessen ein Hinweis", bool(empty["hint"]), True)
 
+
+# --- Die Tagesauswahl muss stabil bleiben --------------------------------
+# Sonst springt die Karte bei jedem Neuladen, und schlimmer: jede Anzeige
+# wird protokolliert, sodass nach ein paar Aufrufen alle Maßnahmen als
+# "gezeigt" gelten, obwohl nur drei zu sehen waren.
+with get_db() as db:
+    db.execute("DELETE FROM tip_log")
+first = [b["id"] for b in boosters.suggest(3)["boosters"]]
+for _ in range(5):
+    boosters.suggest(3)
+with get_db() as db:
+    logged = db.execute("SELECT COUNT(*) AS n FROM tip_log").fetchone()["n"]
+check("Nur die gezeigten Maßnahmen werden protokolliert", logged, 3)
+check("Auswahl bleibt über den Tag gleich",
+      [b["id"] for b in boosters.suggest(3)["boosters"]], first)
+
 if failures:
     print(f"\n{len(failures)} Test(s) fehlgeschlagen:")
     for name in failures:

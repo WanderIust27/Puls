@@ -90,7 +90,9 @@ def daily_message() -> str:
     prompt = (
         "Hier sind die aktuellen Trainingsdaten des Athleten als JSON:\n"
         f"{_context_block()}\n\n"
-        "Schreibe eine kurze Tagesnachricht (3–5 Sätze): Würdige konkret, was "
+        "Schreibe eine kurze Tagesnachricht (3–5 Sätze): Nenne einmal den "
+        "Zufriedenheitswert aus dem Feld 'score' und in einem Halbsatz, woran "
+        "er gerade hängt. Würdige konkret, was "
         "zuletzt gut lief (nutze echte Zahlen aus den Daten), sag, was heute "
         "sinnvoll ist (Training oder Erholung — beachte ACWR, Schlaf, HRV und "
         "Training Readiness, falls vorhanden), und schließe motivierend. "

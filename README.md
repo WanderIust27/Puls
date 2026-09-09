@@ -359,8 +359,13 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Elf Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
-nicht angefasst. Abgedeckt sind der Waagen-Parser, das Referenzfenster mit
+Zwölf Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+nicht angefasst. Eine davon prüft Eigenschaften, die für die ganze API gelten sollen: dass alle
+39 GET-Endpunkte fehlerfrei antworten, dass keiner davon Daten verändert, und
+dass zweimal dieselbe Abfrage dasselbe ergibt. Genau dort ist ein Fehler
+aufgefallen, den keine einzelne Prüfung gefunden hätte.
+
+Abgedeckt sind ansonsten der Waagen-Parser, das Referenzfenster mit
 seiner Kalibrierung, das Ausdünnen der Laufdaten, die Gym-Auswertung, die
 Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync
 samt Verlaufs-Import gegen einen nachgebauten Client, die komplette API gegen

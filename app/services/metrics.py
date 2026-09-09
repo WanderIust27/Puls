@@ -219,6 +219,17 @@ def coach_context() -> dict[str, Any]:
     except Exception as e:
         log.debug("Supplements nicht im Kontext: %s", e)
     try:
+        from . import score as _score
+        overall = _score.overall()
+        extra["zufriedenheit"] = {
+            "wert": overall["score"], "urteil": overall["mood"],
+            "saeulen": {p["label"]: p.get("value") for p in overall["pillars"]},
+            "groesstes_potenzial": overall["potential"][0]["title"]
+            if overall["potential"] else None,
+        }
+    except Exception as e:
+        log.debug("Score nicht im Kontext: %s", e)
+    try:
         rec = recovery_series(14)
         if rec["observations"]:
             extra["erholung"] = [o["text"] for o in rec["observations"]]

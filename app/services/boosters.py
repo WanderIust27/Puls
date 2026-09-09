@@ -193,42 +193,50 @@ def effectiveness() -> dict[str, dict[str, Any]]:
 
 
 def suggest(count: int = 3, as_of: str | None = None) -> dict[str, Any]:
-    """Passende Massnahmen — bewaehrte zuerst."""
+    """Passende Massnahmen — bewaehrte zuerst.
+
+    Die Auswahl eines Tages steht fest, sobald sie einmal getroffen wurde.
+    Zwei Gruende: Die Karte soll beim Neuladen nicht springen, und jede
+    Anzeige wird protokolliert — waere die Auswahl jedes Mal neu, waeren nach
+    ein paar Aufrufen alle Massnahmen als "gezeigt" vermerkt, obwohl nur drei
+    zu sehen waren. Das wuerde die Lernstatistik verwaessern.
+    """
     ctx = situation(as_of)
     stats = effectiveness()
     day = as_of or dt.date.today().isoformat()
 
-    # Was heute schon vorgeschlagen wurde, nicht erneut zeigen
+    # Steht die Auswahl fuer heute schon? Dann genau die zurueckgeben.
     with get_db() as db:
-        shown = {r["tip_id"] for r in db.execute(
-            "SELECT tip_id FROM tip_log WHERE day = ?", (day,)).fetchall()}
+        today_ids = [r["tip_id"] for r in db.execute(
+            "SELECT tip_id FROM tip_log WHERE day = ? ORDER BY id",
+            (day,)).fetchall()]
+    chosen = [b for b in (_by_id(i) for i in today_ids) if b][:count]
 
-    def score(b: dict[str, Any]) -> float:
-        hits = len(set(b["tags"]) & set(ctx["tags"]))
-        if not hits:
-            return -1.0
-        stat = stats.get(b["id"], {})
-        # Erfahrung schlägt Passung, sobald genug Bewertungen da sind
-        learned = (stat.get("score", 0.5) - 0.5) * 4
-        fresh = -0.5 if b["id"] in shown else 0.0
-        return hits + learned + fresh
+    if len(chosen) < count:
+        def score(b: dict[str, Any]) -> float:
+            hits = len(set(b["tags"]) & set(ctx["tags"]))
+            if not hits:
+                return -1.0
+            stat = stats.get(b["id"], {})
+            # Erfahrung schlaegt Passung, sobald genug Bewertungen da sind
+            return hits + (stat.get("score", 0.5) - 0.5) * 4
 
-    ranked = sorted((b for b in BOOSTERS if score(b) > -1),
-                    key=lambda b: -score(b))
-    picks = ranked[:count]
-
-    if picks:
-        with get_db() as db:
-            for b in picks:
-                if b["id"] in shown:
-                    continue
-                db.execute(
-                    "INSERT INTO tip_log(tip_id, context, day) VALUES(?,?,?)",
-                    (b["id"], ",".join(ctx["tags"]), day))
+        taken = {b["id"] for b in chosen}
+        ranked = sorted((b for b in BOOSTERS
+                         if b["id"] not in taken and score(b) > -1),
+                        key=lambda b: -score(b))
+        fresh = ranked[:count - len(chosen)]
+        if fresh:
+            with get_db() as db:
+                for b in fresh:
+                    db.execute(
+                        "INSERT INTO tip_log(tip_id, context, day) VALUES(?,?,?)",
+                        (b["id"], ",".join(ctx["tags"]), day))
+        chosen += fresh
 
     return {
         "situation": ctx,
-        "boosters": [{**b, "stats": stats.get(b["id"])} for b in picks],
+        "boosters": [{**b, "stats": stats.get(b["id"])} for b in chosen],
         "learned": sum(1 for v in stats.values() if v["bewertet"] >= MIN_RATINGS),
     }
 

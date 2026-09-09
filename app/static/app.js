@@ -793,6 +793,40 @@ $("#fitFile").addEventListener("change", async (e) => {
 
 const LEVEL_WORD = { good: "Gut", ok: "Okay", warn: "Achtung" };
 
+
+function renderDetailFeedback(activityId, existing) {
+  const box = $("#detailFeedback");
+  if (!box) return;
+  const draft = { rating: existing?.rating ?? null, effort: existing?.effort ?? null };
+  const dots = (label, field) => `<div class="fb-scale"><span class="lb">${label}</span>
+    ${[1, 2, 3, 4, 5].map((n) =>
+      `<button class="dot${draft[field] === n ? " on" : ""}" data-dfb="${field}"
+        data-value="${n}">${n}</button>`).join("")}</div>`;
+
+  const paint = () => {
+    box.innerHTML = dots("Wie war es?", "rating") + dots("Anstrengung", "effort") +
+      `<input class="grow" id="detailNote" placeholder="Notiz (optional)"
+        value="${esc(existing?.note || "")}">
+       <div class="row" style="margin-top:6px">
+         <button class="btn small" id="btnDetailFb">
+           ${existing ? "Aktualisieren" : "Speichern"}</button>
+       </div>`;
+    $$("[data-dfb]").forEach((b) => b.addEventListener("click", () => {
+      draft[b.dataset.dfb] = +b.dataset.value;
+      paint();
+    }));
+    $("#btnDetailFb").addEventListener("click", (e) =>
+      withSpinner(e.currentTarget, async () => {
+        await api(`/activities/${activityId}/feedback`, { method: "POST",
+          body: JSON.stringify({ ...draft,
+            note: $("#detailNote").value.trim() || null }) });
+        toast("Danke — das fließt in die Auswertung ein.");
+        loadDashboard();
+      }));
+  };
+  paint();
+}
+
 async function openRunAnalysis(activityId) {
   $("#runContent").innerHTML = '<p class="muted"><span class="spin"></span> Wird ausgewertet …</p>';
   $("#runDialog").hidden = false;
@@ -909,7 +943,14 @@ async function openRunAnalysis(activityId) {
   if (det && !det.has_details && det.hint) {
     html += `<p class="muted">${esc(det.hint)}</p>`;
   }
+
+  /* Rückmeldung direkt hier, nicht nur auf dem Dashboard — hier ist man
+     ohnehin, wenn man über die Einheit nachdenkt. */
+  html += `<div class="detail-section"><h4>Wie hat es sich angefühlt?</h4>
+    <div id="detailFeedback"></div></div>`;
   $("#runContent").innerHTML = html;
+
+  renderDetailFeedback(activityId, d.feedback);
 
   /* --- Diagramme zeichnen, nachdem das Gerüst im Dokument steht --- */
   let moveDot = null;
@@ -1506,7 +1547,25 @@ function openRecipe(r) {
       <ul class="plain">${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>
     <div class="detail-section"><h4>Zubereitung</h4>
       <ol class="plain">${r.steps.map((i) => `<li>${esc(i)}</li>`).join("")}</ol></div>
-    ${r.note ? `<p class="muted">${esc(r.note)}</p>` : ""}`;
+    ${r.note ? `<p class="muted">${esc(r.note)}</p>` : ""}
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="btnEatRecipe">Gegessen — eintragen</button>
+      <select id="eatPortions" class="small">
+        <option value="0.5">halbe Portion</option>
+        <option value="1" selected>1 Portion</option>
+        <option value="1.5">1,5 Portionen</option>
+        <option value="2">2 Portionen</option>
+      </select>
+    </div>`;
+  $("#btnEatRecipe").addEventListener("click", (e) =>
+    withSpinner(e.currentTarget, async () => {
+      await api("/nutrition/meals/from-recipe", { method: "POST",
+        body: JSON.stringify({ recipe_id: r.id,
+                               portions: +$("#eatPortions").value }) });
+      toast("Eingetragen");
+      $("#recipeDialog").hidden = true;
+      loadMeals(); loadDashboard();
+    }));
   $("#recipeDialog").hidden = false;
 }
 
