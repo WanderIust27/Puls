@@ -373,15 +373,30 @@ with TestClient(app) as client:
     # --- Autopilot ---------------------------------------------------------
     saved = client.post("/api/autopilot", json={
         "enabled": True, "focus": "balanced", "session_minutes": 55,
-        "available_days": ["Mo", "Mi", "Fr", "So"], "long_run_day": "So",
-        "wishes": "Sonntags gerne länger"}).json()
+        "gym_minutes": 70, "gym_days": ["Mo", "Mi", "Fr"], "run_days": ["Di", "Do"],
+        "long_run_day": "So", "wishes": "10 km unter 55 Minuten"}).json()
     check("Autopilot speichert den Schwerpunkt", saved["focus"], "balanced")
     check("… und die Dauer", saved["session_minutes"], 55)
+    check("… und die Gym-Tage", saved["gym_days"], ["Mo", "Mi", "Fr"])
+    check("… und die Lauftage", saved["run_days"], ["Di", "Do"])
     check("… und liest sie zurück",
-          client.get("/api/autopilot").json()["session_minutes"], 55)
+          client.get("/api/autopilot").json()["gym_days"], ["Mo", "Mi", "Fr"])
+
+    # Trends: die Grundlage, auf der der Coach die Woche baut
+    tr = client.get("/api/trends").json()
+    check("Trends antworten", {"muscles", "running", "goal"} <= set(tr), True)
+    check("Jede Muskelgruppe hat einen Bedarf zwischen 0 und 100",
+          all(0 <= g["need"] <= 100 for g in tr["muscles"]["groups"]), True)
+    check("Das Ziel wird gelesen", "10-km-Zeit" in tr["goal"]["recognised"], True)
     preview = client.post if False else client.get("/api/autopilot/preview")
     week = preview.json()
     check("Vorschau plant sieben Tage", len(week["days"]), 7)
+    on = {d["weekday"] for d in week["days"]
+          for se in d["sessions"] if se["sport"] == "strength"}
+    check("Kraft liegt auf den gewählten Tagen", on, {"Mo", "Mi", "Fr"})
+    on_run = {d["weekday"] for d in week["days"]
+              for se in d["sessions"] if se["sport"] == "running"}
+    check("Laufen liegt auf den gewählten Tagen", on_run, {"Di", "Do"})
     check("Vorschau legt nichts an", week["applied"], False)
     check("Vorschau nennt den Zustand", bool(week["condition"]["state"]), True)
     before = len(client.get("/api/workouts").json())
@@ -414,7 +429,7 @@ with TestClient(app) as client:
                  "/api/supplements", "/api/supplements/all", "/api/mood",
                  "/api/mood/adaptations", "/api/recovery",
                  "/api/today", "/api/autopilot", "/api/stats/metrics",
-                 "/api/stats/recommendations"):
+                 "/api/stats/recommendations", "/api/trends"):
         code = client.get(path).status_code
         check(f"{path} antwortet", code, 200)
 

@@ -534,7 +534,75 @@
 
 <!-- ============================== COACH ================================== -->
 <section id="view-coach" class="view">
+  <div class="card span2">
+    <h3>Dein Ziel</h3>
+    <p class="muted">Schreib in eigenen Worten, worauf du hinarbeitest. Der Coach
+      liest daraus mit, worauf er das Training ausrichtet — zusammen mit dem,
+      was deine Daten über deine Entwicklung sagen.</p>
+    <textarea id="goalText" rows="2"
+      placeholder="z. B. 10 km unter 55 Minuten, dabei stärkere Beine und keine Rückenschmerzen"></textarea>
+    <div id="goalRead" class="muted" style="margin-top:6px"></div>
+    <div class="grid3" style="margin-top:10px">
+      <div><label class="field">Schwerpunkt</label>
+        <select id="autoFocus"></select></div>
+      <div><label class="field">Minuten je Lauf</label>
+        <input id="autoMinutes" type="number" step="5" min="20" max="180"></div>
+      <div><label class="field">Minuten je Gym-Einheit</label>
+        <input id="autoGymMinutes" type="number" step="5" min="20" max="180"></div>
+    </div>
+    <p class="muted" id="autoFocusNote"></p>
+  </div>
+
+  <div class="card span2">
+    <h3>Deine Woche</h3>
+    <p class="muted">Sag nur, an welchen Tagen du was machst. Welche Einheit
+      genau darauf liegt, entscheidet der Coach jede Woche neu — nach deiner
+      Erholung, deinem Ziel und dem, was zuletzt zu kurz kam.</p>
+
+    <label class="field">Gym an diesen Tagen</label>
+    <div id="gymDayPick" class="chips"></div>
+
+    <label class="field" style="margin-top:12px">Laufen an diesen Tagen</label>
+    <div id="runDayPick" class="chips"></div>
+
+    <div class="grid3" style="margin-top:12px">
+      <div><label class="field">Langer Lauf möglichst am</label>
+        <select id="autoLongDay"></select></div>
+      <div><label class="field">Abend-Yoga</label>
+        <select id="autoMobility">
+          <option value="1">jeden Abend</option>
+          <option value="0">nicht einplanen</option>
+        </select></div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button class="btn ghost" id="btnAutoSave">Speichern</button>
+      <button class="btn ghost" id="btnAutoPreview">Woche vorschlagen</button>
+      <button class="btn" id="btnAutoApply">Übernehmen</button>
+    </div>
+    <div class="coach-msg" id="autoAdvice" hidden></div>
+  </div>
+
+  <div class="card span2">
+    <h3>Die kommende Woche</h3>
+    <div id="autoPreview"><p class="muted">Noch nichts vorgeschlagen.</p></div>
+  </div>
+
   <div class="card">
+    <h3>Muskelgruppen</h3>
+    <p class="muted">Volumen und geschätzte Maximalkraft der letzten vier Wochen
+      gegen die vier davor. Oben steht, was am ehesten dran wäre.</p>
+    <div id="trendMuscles"></div>
+  </div>
+
+  <div class="card">
+    <h3>Laufen</h3>
+    <p class="muted">Der ehrlichste Maßstab ist das Tempo bei gleichem Puls —
+      gleiche Anstrengung, mehr Strecke.</p>
+    <div id="trendRunning"></div>
+  </div>
+
+  <div class="card span2">
     <h3>Frag deinen Coach</h3>
     <div class="chat" id="chatLog"></div>
     <div class="row" style="margin-top:10px">
@@ -542,11 +610,7 @@
       <button class="btn" id="btnAsk">Senden</button>
     </div>
     <p class="muted">Antworten kommen von deiner lokalen KI — auf CPU dauert das einen Moment.</p>
-  </div>
-
-  <div class="card">
-    <h3>Schnellfragen</h3>
-    <div class="quick-grid">
+    <div class="quick-grid" style="margin-top:12px">
       <button class="btn ghost" data-quick="Wie sollte mein Training diese Woche aussehen?">Wochenausblick</button>
       <button class="btn ghost" data-quick="Wie lange sollte ich zwischen harten Einheiten pausieren?">Pausenzeiten</button>
       <button class="btn ghost" data-quick="Was sollte ich heute nach dem Training essen?">Nach dem Training</button>
@@ -554,7 +618,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card span2">
     <h3>Wissens-Archiv</h3>
     <div id="tipArchive" class="muted">Noch keine Häppchen.</div>
   </div>
@@ -676,33 +740,6 @@
 
 <section id="view-settings" class="view">
   <div class="card">
-    <h3>Autopilot</h3>
-    <p class="muted">Statt Tage und Minuten einzeln einzustellen: Sag, was du
-      willst und wie viel Zeit du hast — den Rest legt der Coach fest, aus
-      deinen Werten. Bei schlechter Erholung plant er von sich aus weniger.</p>
-    <label class="field">Schwerpunkt</label>
-    <select id="autoFocus"></select>
-    <p class="muted" id="autoFocusNote"></p>
-    <div class="grid3" style="margin-top:8px">
-      <div><label class="field">Minuten je Einheit</label>
-        <input id="autoMinutes" type="number" step="5" min="20" max="180"></div>
-      <div><label class="field">Langer Lauf am</label>
-        <select id="autoLongDay"></select></div>
-    </div>
-    <label class="field" style="margin-top:8px">An diesen Tagen hast du Zeit</label>
-    <div id="autoDays" class="chips"></div>
-    <label class="field" style="margin-top:10px">Wünsche (frei)</label>
-    <input id="autoWishes" placeholder="z. B. mittwochs nur kurz, Waldstrecke bevorzugt">
-    <div class="row" style="margin-top:10px">
-      <button class="btn ghost" id="btnAutoSave">Speichern</button>
-      <button class="btn ghost" id="btnAutoPreview">Woche vorschlagen</button>
-      <button class="btn" id="btnAutoApply">Übernehmen</button>
-    </div>
-    <div class="coach-msg" id="autoAdvice" hidden></div>
-    <div id="autoPreview"></div>
-  </div>
-
-  <div class="card">
     <h3>Supplements</h3>
     <p class="muted">Feste Uhrzeit oder ans Training gekoppelt. Was ans Training
       gekoppelt ist, wird an trainingsfreien Tagen gar nicht erst fällig.</p>
@@ -768,27 +805,19 @@
   </div>
 
   <div class="card">
-    <h3>Wochenstruktur</h3>
-    <label class="field">Lauftage (morgens)</label>
-    <div class="row" id="runDayChips"></div>
-    <label class="field">Gym-Tage (abends)</label>
-    <div class="row" id="gymDayChips"></div>
-    <div class="grid3" style="margin-top:10px">
-      <div><label class="field">Lauf (min)</label><input id="setRunMin" type="number" min="10" max="180"></div>
-      <div><label class="field">Gym (min)</label><input id="setGymMin" type="number" min="30" max="150"></div>
+    <h3>Trainingsziele</h3>
+    <p class="muted">Welche Tage, wie lange und was darauf liegt, stellst du im
+      <a href="#" data-goto="coach">Coach-Tab</a> ein — dort sieht man dabei
+      gleich, was daraus für die Woche folgt.</p>
+    <div class="grid3">
       <div><label class="field">Klimmzug-Ziel</label><input id="setPullupGoal" type="number" min="1"></div>
-    </div>
-    <div class="grid3" style="margin-top:10px">
       <div><label class="field">Laufziel: km</label><input id="setRunGoalKm" type="number" step="0.5"></div>
       <div><label class="field">in Minuten</label><input id="setRunGoalMin" type="number"></div>
     </div>
     <label class="row toggle" style="margin-top:12px">
-      <input type="checkbox" id="setEveningMobility"> Jeden Abend eine Yoga-/Dehneinheit
-    </label>
-    <label class="row toggle">
       <input type="checkbox" id="setPreferMachines"> Maschinen gegenüber freien Gewichten bevorzugen
     </label>
-    <button class="btn" id="btnSaveWeek" style="margin-top:12px">Wochenstruktur speichern</button>
+    <button class="btn" id="btnSaveWeek" style="margin-top:12px">Speichern</button>
   </div>
 
   <div class="card">

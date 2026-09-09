@@ -2269,64 +2269,150 @@ $("#btnSleepAdvice").addEventListener("click", (e) => withSpinner(e.currentTarge
 }));
 
 
-/* ------------------------------------------------------------ Autopilot */
+/* ------------------------------------------------ Coach: Ziel, Woche, Trends */
 
 const AUTO_WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-let autoDays = [];
+let planRunDays = [], planGymDays = [];
 
-async function loadAutopilot() {
-  // Nicht stillschweigend aussteigen: Ein leeres Autopilot-Feld sieht aus wie
-  // eine kaputte Seite, und ohne Meldung sucht man an der falschen Stelle.
+async function loadCoachPlan() {
   let cfg;
   try { cfg = await api("/autopilot"); }
-  catch (e) { toast("Autopilot nicht erreichbar: " + e.message, true); return; }
-  autoDays = (cfg.available_days && cfg.available_days.length)
-    ? cfg.available_days : AUTO_WEEKDAYS.slice();
+  catch (e) { toast("Wochenplanung nicht erreichbar: " + e.message, true); return; }
+
+  planRunDays = cfg.run_days || [];
+  planGymDays = cfg.gym_days || [];
 
   $("#autoFocus").innerHTML = Object.entries(cfg.presets).map(([k, v]) =>
     `<option value="${k}"${k === cfg.focus ? " selected" : ""}>${esc(v.label)}</option>`
   ).join("");
   $("#autoFocusNote").textContent = cfg.presets[cfg.focus]?.note || "";
   $("#autoMinutes").value = cfg.session_minutes;
+  $("#autoGymMinutes").value = cfg.gym_minutes;
   $("#autoLongDay").innerHTML = AUTO_WEEKDAYS.map((d) =>
     `<option value="${d}"${d === cfg.long_run_day ? " selected" : ""}>${d}</option>`
   ).join("");
-  $("#autoWishes").value = cfg.wishes || "";
-  renderAutoDays();
+  $("#autoMobility").value = cfg.evening_mobility ? "1" : "0";
+  $("#goalText").value = cfg.wishes || "";
+  renderPlanDays();
 
   $("#autoFocus").onchange = () => {
     $("#autoFocusNote").textContent = cfg.presets[$("#autoFocus").value]?.note || "";
   };
+  loadTrends();
 }
 
-function renderAutoDays() {
-  $("#autoDays").innerHTML = AUTO_WEEKDAYS.map((d) =>
-    `<button class="chip${autoDays.includes(d) ? " on" : ""}" data-autoday="${d}">${d}</button>`
-  ).join("");
-  $$("#autoDays [data-autoday]").forEach((b) => b.addEventListener("click", () => {
-    const d = b.dataset.autoday;
-    autoDays = autoDays.includes(d) ? autoDays.filter((x) => x !== d) : [...autoDays, d];
-    renderAutoDays();
-  }));
+function renderPlanDays() {
+  const draw = (id, chosen, attr) => {
+    $(id).innerHTML = AUTO_WEEKDAYS.map((d) =>
+      `<button class="chip${chosen.includes(d) ? " on" : ""}" data-${attr}="${d}">${d}</button>`
+    ).join("");
+    $$(`${id} [data-${attr}]`).forEach((b) => b.addEventListener("click", () => {
+      const day = b.dataset[attr];
+      const list = attr === "gymday" ? planGymDays : planRunDays;
+      const next = list.includes(day) ? list.filter((x) => x !== day) : [...list, day];
+      next.sort((a, z) => AUTO_WEEKDAYS.indexOf(a) - AUTO_WEEKDAYS.indexOf(z));
+      if (attr === "gymday") planGymDays = next; else planRunDays = next;
+      renderPlanDays();
+    }));
+  };
+  draw("#gymDayPick", planGymDays, "gymday");
+  draw("#runDayPick", planRunDays, "runday");
 }
 
-async function saveAutopilot() {
+async function saveCoachPlan() {
   return api("/autopilot", { method: "POST", body: JSON.stringify({
     focus: $("#autoFocus").value,
-    available_days: autoDays,
+    run_days: planRunDays,
+    gym_days: planGymDays,
     session_minutes: +$("#autoMinutes").value || 60,
+    gym_minutes: +$("#autoGymMinutes").value || 75,
     long_run_day: $("#autoLongDay").value,
-    wishes: $("#autoWishes").value.trim() }) });
+    evening_mobility: $("#autoMobility").value === "1",
+    wishes: $("#goalText").value.trim() }) });
 }
+
+/* ------------------------------------------------------------------ Trends */
+
+function trendArrow(direction) {
+  return direction === "steigt" ? '<span class="ta up">▲</span>'
+    : direction === "fällt" ? '<span class="ta down">▼</span>'
+    : '<span class="ta flat">—</span>';
+}
+
+function signed(value, unit) {
+  if (value === null || value === undefined) return "–";
+  return `${value > 0 ? "+" : ""}${value}${unit || ""}`;
+}
+
+async function loadTrends() {
+  let d;
+  try { d = await api("/trends"); }
+  catch (e) { $("#trendMuscles").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+
+  $("#goalRead").innerHTML = d.goal.recognised.length
+    ? `Daraus gelesen: <b>${d.goal.recognised.map(esc).join(", ")}</b>.`
+    : (d.goal.text
+       ? "Daraus konnte noch kein Schwerpunkt gelesen werden — nenne ruhig eine Strecke, eine Zeit oder eine Übung."
+       : "Noch kein Ziel hinterlegt.");
+
+  const m = d.muscles;
+  $("#trendMuscles").innerHTML = m.hint
+    ? `<p class="muted">${esc(m.hint)}</p>`
+    : m.groups.map((g) => `
+      <div class="trend${g.need >= 40 ? " hot" : ""}">
+        <div class="th">${trendArrow(g.direction)} ${esc(g.label)}
+          <span class="tn">${g.need} von 100</span></div>
+        <div class="tbar"><i style="width:${g.need}%"></i></div>
+        <div class="tm">${g.sets_recent} Sätze in ${g.sessions} Einheiten ·
+          ${g.share} % vom Volumen (ausgewogen wären ${g.target_share} %) ·
+          Kraft ${signed(g.strength_change, " %")}</div>
+        ${g.reasons.length ? `<div class="tr">${g.reasons.map(esc).join(" · ")}</div>` : ""}
+      </div>`).join("");
+
+  const r = d.running;
+  $("#trendRunning").innerHTML = r.hint
+    ? `<p class="muted">${esc(r.hint)}</p>`
+    : `
+      <div class="trend">
+        <div class="th">${trendArrow(r.direction)} Tempo bei gleichem Puls
+          <span class="tn">${r.pace_recent ? paceStr(r.pace_recent) + "/km" : "–"}</span></div>
+        <div class="tm">${r.pace_gain_s !== null
+          ? `${Math.abs(r.pace_gain_s)} s/km ${r.pace_gain_s > 0 ? "schneller" : "langsamer"} als in den vier Wochen davor`
+          : "Für den Vergleich fehlen noch Läufe im lockeren Pulsbereich"}</div>
+      </div>
+      <div class="trend">
+        <div class="th">Umfang <span class="tn">${r.km_per_week} km/Woche</span></div>
+        <div class="tm">${r.km_recent} km in vier Wochen (davor ${r.km_before} km,
+          ${signed(r.km_change, " %")}) · ${r.runs_recent} Läufe ·
+          davon ${r.hard_runs} hart</div>
+      </div>
+      <div class="trend">
+        <div class="th">Längste Einheit <span class="tn">${r.longest_recent} km</span></div>
+        <div class="tm">davor ${r.longest_before} km${
+          r.days_since !== null ? ` · letzter Lauf vor ${r.days_since} Tagen` : ""}</div>
+      </div>
+      ${r.needs.length ? `<div class="tr" style="margin-top:8px">${
+        r.needs.map((n) => `<div>${esc(n)}</div>`).join("")}</div>` : ""}`;
+}
+
+/* -------------------------------------------------------- Die kommende Woche */
+
+const RUN_KIND = { easy: "locker", tempo: "Tempo", interval: "Intervalle",
+                   long: "lang", gym: "Kraft", yoga: "Yoga" };
 
 function renderAutoWeek(w) {
   const cond = w.condition;
   $("#autoPreview").innerHTML = `
     <div class="detail-section">
-      <h4>${esc(w.focus)} · ${w.runs} Läufe, ${w.gyms} Gym, je ${w.minutes_per_session} min</h4>
+      <h4>${esc(w.focus)} · ${w.runs} Läufe, ${w.gyms} Gym</h4>
       <p class="muted">Zustand: <b>${esc(cond.state)}</b>${
         cond.reasons.length ? " — " + cond.reasons.map(esc).join(", ") : " — die Werte passen"}.
-        ${cond.dose < 1 ? `Dosis auf ${Math.round(cond.dose * 100)} % reduziert.` : ""}</p>
+        ${cond.dose < 1 ? `Dosis auf ${Math.round(cond.dose * 100)} % reduziert.` : ""}
+        ${w.dropped_days && w.dropped_days.length
+          ? `Ausgelassen: ${w.dropped_days.map(esc).join(", ")}.` : ""}</p>
+      ${w.emphasis_labels.length ? `<p class="muted">Kraft-Schwerpunkt diese Woche:
+        <b>${w.emphasis_labels.map(esc).join(", ")}</b>.</p>` : ""}
+      ${w.run_needs.length ? `<p class="muted">${w.run_needs.map(esc).join(" ")}</p>` : ""}
       ${w.adapted.length ? `<p class="muted">Beschwerden berücksichtigt: ${
         w.adapted.map(esc).join("; ")}</p>` : ""}
       ${w.days.map((d) => `
@@ -2335,7 +2421,7 @@ function renderAutoWeek(w) {
           <div>
             ${d.sessions.length ? d.sessions.map((se) => `
               <div class="as">${esc(SPORT_LABEL[se.sport] || se.sport)} ·
-                ${esc(se.kind)} · ${se.minutes} min</div>
+                ${esc(RUN_KIND[se.kind] || se.kind)} · ${se.minutes} min</div>
               <div class="aw">${esc(se.why)}</div>`).join("")
               : '<div class="as">frei</div>'}
           </div>
@@ -2344,19 +2430,20 @@ function renderAutoWeek(w) {
 }
 
 $("#btnAutoSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await saveAutopilot(); toast("Gespeichert");
+  await saveCoachPlan(); await loadTrends(); toast("Gespeichert");
 }));
 
 $("#btnAutoPreview").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await saveAutopilot();
+  await saveCoachPlan();
   renderAutoWeek(await api("/autopilot/preview"));
+  loadTrends();
   const r = await api("/autopilot/explain", { method: "POST" });
   $("#autoAdvice").hidden = false;
   $("#autoAdvice").innerHTML = mdToHtml(r.message);
 }));
 
 $("#btnAutoApply").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await saveAutopilot();
+  await saveCoachPlan();
   const w = await api("/autopilot/apply", { method: "POST" });
   renderAutoWeek(w);
   toast(`${w.created.length} Einheiten eingeplant`);
@@ -2506,6 +2593,7 @@ $("#chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#
 $$("[data-quick]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.quick)));
 
 async function loadCoach() {
+  loadCoachPlan();
   const tips = await api("/coach/research-tips?limit=10");
   $("#tipArchive").innerHTML = tips.length ? tips.map((t) =>
     `<div class="list-item"><div class="grow"><div class="title">${esc(t.topic || "Tipp")}</div>
@@ -2623,26 +2711,6 @@ function startModelPolling() {
 }
 
 const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-let runDays = [], gymDays = [];
-
-function renderDayChips() {
-  const build = (selected, attr) => DAYS.map((d) =>
-    `<button class="btn small ghost ${selected.includes(d) ? "on" : ""}" data-${attr}="${d}">${d}</button>`).join("");
-  $("#runDayChips").innerHTML = build(runDays, "runday");
-  $("#gymDayChips").innerHTML = build(gymDays, "gymday");
-  $$("#runDayChips [data-runday]").forEach((b) => b.addEventListener("click", () => {
-    const d = b.dataset.runday;
-    runDays = runDays.includes(d) ? runDays.filter((x) => x !== d) : [...runDays, d];
-    runDays.sort((a, z) => DAYS.indexOf(a) - DAYS.indexOf(z));
-    renderDayChips();
-  }));
-  $$("#gymDayChips [data-gymday]").forEach((b) => b.addEventListener("click", () => {
-    const d = b.dataset.gymday;
-    gymDays = gymDays.includes(d) ? gymDays.filter((x) => x !== d) : [...gymDays, d];
-    gymDays.sort((a, z) => DAYS.indexOf(a) - DAYS.indexOf(z));
-    renderDayChips();
-  }));
-}
 
 async function loadSettings() {
   const [s, g, h] = await Promise.all([api("/settings"), api("/garmin/status"), api("/health")]);
@@ -2651,19 +2719,14 @@ async function loadSettings() {
     : "Diese Version meldet noch keine Kennung — das Update ist nicht angekommen.";
   pollBackfill();
   loadSupplementManager();      // zeigt einen laufenden Verlaufs-Import auch nach Neuladen
-  loadAutopilot();
   selectedGoals = s.goals; renderGoalChips();
-  runDays = s.run_days || []; gymDays = s.gym_days || []; renderDayChips();
   $("#setWeeklyTarget").value = s.weekly_workout_target;
   $("#setKcal").value = s.kcal_target;
   $("#setProtein").value = s.protein_target;
   $("#setProfile").value = s.profile.text || "";
-  $("#setRunMin").value = s.run_minutes;
-  $("#setGymMin").value = s.gym_minutes;
   $("#setPullupGoal").value = s.pullup_goal;
   $("#setRunGoalKm").value = s.run_goal_distance_km;
   $("#setRunGoalMin").value = s.run_goal_time_min;
-  $("#setEveningMobility").checked = !!s.evening_mobility;
   $("#setPreferMachines").checked = !!s.prefer_machines;
   $("#apiToken").value = s.api_token || "";
   applyFontScale(s.font_scale || 100);
@@ -2691,16 +2754,12 @@ $("#btnCopyToken").addEventListener("click", async () => {
 
 $("#btnSaveWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   await api("/settings", { method: "POST", body: JSON.stringify({
-    run_days: runDays, gym_days: gymDays,
-    run_minutes: +$("#setRunMin").value || 25,
-    gym_minutes: +$("#setGymMin").value || 75,
     pullup_goal: +$("#setPullupGoal").value || 10,
     run_goal_distance_km: +$("#setRunGoalKm").value || 10,
     run_goal_time_min: +$("#setRunGoalMin").value || 60,
-    evening_mobility: $("#setEveningMobility").checked,
     prefer_machines: $("#setPreferMachines").checked,
   }) });
-  toast("Wochenstruktur gespeichert"); loadDashboard();
+  toast("Gespeichert"); loadDashboard();
 }));
 
 $("#btnSaveSettings").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {

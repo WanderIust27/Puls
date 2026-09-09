@@ -246,6 +246,7 @@ ok("Stattdessen ein Hinweis", bool(bare["hint"]))
 # --- Autopilot -----------------------------------------------------------
 cfg = autopilot.save_settings({"enabled": True, "focus": "run_faster",
                                "session_minutes": 60, "long_run_day": "So",
+                               "run_days": [], "gym_days": [],
                                "available_days": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
                                "wishes": "Bergläufe wären schön"})
 check("Autopilot merkt sich den Schwerpunkt", cfg["focus"], "run_faster")
@@ -265,7 +266,8 @@ ok("Kein Tag traegt zwei Laeufe",
 ok("Zustand wird benannt", week["condition"]["state"] in autopilot.DOSE)
 
 # Weniger verfuegbare Tage duerfen nicht mehr Training ergeben.
-autopilot.save_settings({"available_days": ["Di", "Do", "Sa"]})
+autopilot.save_settings({"available_days": ["Di", "Do", "Sa"],
+                         "run_days": [], "gym_days": []})
 small = autopilot.plan(dt.date.today() + dt.timedelta(days=1))
 sessions_small = sum(len(d["sessions"]) for d in small["days"])
 ok("Weniger Tage, nicht mehr Einheiten",
@@ -277,7 +279,7 @@ ok("Nur an verfuegbaren Tagen wird trainiert",
 
 # Ein muerber Zustand muss die Dosis senken, nicht heben.
 autopilot.save_settings({"available_days": list(autopilot.WEEKDAYS),
-                         "focus": "recover"})
+                         "run_days": [], "gym_days": [], "focus": "recover"})
 calm = autopilot.plan(dt.date.today() + dt.timedelta(days=1))
 ok("Ruhiger Schwerpunkt plant weniger",
    calm["total_minutes"] < week["total_minutes"],

@@ -14,8 +14,10 @@ PULS plant genau so, wie du trainierst:
 | Mo / Mi / Fr abends | Gym 60–90 min: Kettlebell-Auftakt → Klimmzug-Arbeit → Maschinen → Dehnen |
 | Jeden Abend | Kurze Yoga-/Dehneinheit vor dem Schlafen |
 
-Alles davon ist unter *Mehr → Wochenstruktur* umstellbar. Ein Klick auf **Woche planen**
-erzeugt die komplette Woche; **Alles an Garmin** schiebt sie auf die Fenix.
+Alles davon stellst du im **Coach-Tab** um: Gym-Tage und Lauftage getrennt
+anklicken, Dauer setzen, Ziel hineinschreiben — den Rest legt der Coach fest
+(siehe *Der Coach-Tab*). Ein Klick auf **Woche planen** erzeugt die komplette
+Woche; **Alles an Garmin** schiebt sie auf die Fenix.
 
 ## Die zwei Hauptziele
 
@@ -220,33 +222,88 @@ Zubettgehen liegen — oder daran, dass man an erholten Tagen früher müde wird
 Als Ansatzpunkt taugt es trotzdem: zwei Wochen ausprobieren, dann hier
 nachsehen.
 
-## Autopilot — der Coach plant die Woche
+## Der Coach-Tab — Ziel, Woche, Trends
 
-Wer nicht Lauftage, Gym-Tage und Minuten einzeln einstellen will, gibt in den
-Einstellungen nur noch grob an, was er möchte:
+Alles, was das Training bestimmt, steht auf einer Seite: was du erreichen
+willst, an welchen Tagen du kannst, wie sich deine Werte entwickeln, und was
+daraus für die kommende Woche folgt.
 
-| Schwerpunkt | Was daraus wird |
+### Dein Ziel
+
+Ein Freitextfeld. Schreib hinein, worauf du hinarbeitest — „10 km unter 55
+Minuten, dazu stärkere Beine". PULS liest daraus die Schwerpunkte und zeigt
+direkt darunter, was es verstanden hat. Erkannt wird über eine feste
+Stichwortliste im Code, nicht vom Modell: Bei „Halbmarathon" soll immer
+dasselbe passieren, nicht mal so und mal so. Wird nichts erkannt, steht das da
+— dann fehlt eine Strecke, eine Zeit oder eine Übung.
+
+Dazu ein Schwerpunkt (schneller laufen, Muskeln aufbauen, beides halten,
+ruhiger werden) und die Dauer je Lauf und je Gym-Einheit.
+
+### Deine Woche
+
+Du sagst nur, **an welchen Tagen du was machst** — Gym-Tage und Lauftage
+getrennt. Mo/Mi/Fr ins Gym, Di/Do laufen: zwei Reihen anklickbarer Tage, mehr
+nicht. Welche Einheit genau auf welchem Tag landet, entscheidet der Coach jede
+Woche neu.
+
+| Was du festlegst | Was der Coach daraus macht |
 |---|---|
-| Schneller laufen | Fünf Läufe, davon zwei mit Tempoanteil, zwei Gym-Einheiten |
-| Muskeln aufbauen | Vier Krafteinheiten, Laufen nur locker |
-| Beides halten | Vier Läufe, drei Gym-Einheiten, ein langer Lauf |
-| Ruhiger werden | Deutlich weniger, alles locker |
+| Gym an Mo/Mi/Fr | Drei Krafteinheiten, jede mit dem Schwerpunkt, der gerade am ehesten dran ist |
+| Laufen an Di/Do | Zwei Läufe — welche Art, entscheidet, was zuletzt gefehlt hat |
+| Langer Lauf möglichst am | Liegt auf diesem Tag, wenn es ein Lauftag ist, sonst auf dem letzten |
+| Abend-Yoga | Jeden Abend zwölf Minuten, oder gar nicht |
 
-Dazu: an welchen Tagen du kannst, wie lange eine Einheit dauern darf, wann der
-lange Lauf liegen soll, und ein Freitextfeld für Wünsche.
+Trägst du keine Tage ein, verteilt der Coach selbst — dann zählt nur der
+Schwerpunkt. Und wenn die Erholung kippt, fällt ein Tag weg; das steht dann
+sichtbar in der Vorschau, statt still zu geschehen.
 
-Den Rest legt der Planer fest — **im Code, aus deinen Zahlen**. Trainings-
-bereitschaft, HRV und Ruhepuls gegenüber deiner Basislinie, Schlaf der letzten
-Woche und das Belastungsverhältnis ergeben zusammen einen Zustand von *frisch*
-bis *erschöpft*. Der bestimmt die Dosis: bei *erschöpft* bleiben 55 % des
-gewünschten Umfangs übrig, harte Läufe fallen ganz weg. Gemeldete Beschwerden
-wirken genauso wie sonst — betroffene Muskelgruppen werden ausgelassen,
-ausgleichende Dehnung kommt dazu.
+### Trends: was gefordert werden sollte
 
-Die Vorschau zeigt die Woche mit Begründung je Einheit, bevor irgendetwas
-angelegt wird. Erst „Woche übernehmen" schreibt sie in die Planung. Das Modell
-begründet die Woche hinterher in drei bis vier Sätzen — es legt sie nicht fest,
-sonst sähe jede Woche anders aus, ohne dass sich etwas geändert hätte.
+Damit „der Coach entscheidet" nicht heißt „irgendetwas passiert", steht daneben
+die Grundlage, auf der er entscheidet — gerechnet aus deinen Sätzen und Läufen,
+vier Wochen gegen die vier davor.
+
+**Muskelgruppen.** Je Gruppe: Volumen, Anteil am Gesamtvolumen gegen einen
+ausgewogenen Zielanteil, Zahl der Einheiten, Tage seit der letzten Belastung
+und die Entwicklung der geschätzten Maximalkraft (Epley, über die Übungen
+gemittelt, die in beiden Zeiträumen vorkommen — sonst verglichte man Äpfel mit
+Birnen). Daraus ein Bedarfswert von 0 bis 100 aus vier Gründen, jeder mit
+eigener Obergrenze, damit keiner allein die Rangfolge bestimmt:
+
+* lange nicht trainiert (eine Gruppe, die vier Wochen ausblieb, springt nach oben)
+* zu kleiner Anteil am Volumen
+* Maximalkraft steht oder fällt
+* Volumen eingebrochen
+
+Die oberste Gruppe wird zum Schwerpunkt der nächsten Krafteinheit — die
+Übungsauswahl zieht sie vor, statt stur reihum zu gehen. Jede Zeile nennt ihren
+Grund, damit man widersprechen kann.
+
+**Laufen.** Der ehrlichste Fortschrittsmaßstab ist das Tempo bei gleichem
+Puls: gleiche Anstrengung, mehr Strecke. Verglichen werden nur Läufe über 2 km
+mit einem Durchschnittspuls zwischen 120 und 155 — sonst verglichte man einen
+Intervall mit einem Regenerationslauf. Dazu Wochenumfang, längste Einheit und
+wie viele Läufe im harten Bereich lagen.
+
+Daraus folgt direkt, was die Woche trägt: Fehlt seit vier Wochen jeder harte
+Lauf, kommt einer dazu — auch bei einem Schwerpunkt, der eigentlich keinen
+vorsieht. Lagen umgekehrt mehr als 40 % der Läufe im harten Bereich, fällt der
+Tempoanteil weg; der Großteil des Laufens gehört ins Lockere. Erkannt wird das
+am Puls, nicht am Namen der Einheit: Der Name sagt, was geplant war, der Puls,
+was gelaufen wurde.
+
+### Die kommende Woche
+
+Die Vorschau zeigt jeden Tag mit Begründung, bevor irgendetwas angelegt wird:
+welche Laufart und warum, welcher Kraft-Schwerpunkt und warum, welche Tage die
+Erholung gekostet hat. Erst „Übernehmen" schreibt sie in die Planung — und baut
+dabei für jede Laufart den passenden Bauplan, nicht überall denselben lockeren
+Lauf mit anderem Tempofenster.
+
+Das Modell begründet die Woche hinterher in drei bis vier Sätzen. Es legt sie
+nicht fest: Sonst sähe jede Woche anders aus, ohne dass sich etwas geändert
+hätte.
 
 ## Schlaf
 
@@ -497,7 +554,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Sechzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Siebzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
 prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
 Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.
@@ -521,6 +578,12 @@ der Seite standen leere Auswahlfelder. Kein Python-Test konnte das sehen, denn
 die Datei war syntaktisch einwandfrei und jeder Endpunkt antwortete korrekt.
 Diese Suite braucht Playwright und einen Chromium; fehlt beides, überspringt sie
 sich, damit sie auf dem Server niemanden aufhält.
+
+Eine prüft die Trends und die zusammengeführte Wochenplanung: Eine vier Wochen
+ausgelassene Muskelgruppe muss nach oben rutschen, eine gerade hart trainierte
+nach unten, und die geplanten Tage müssen exakt die eingetragenen sein — mit
+einem gelegten Effekt (40 s/km schneller bei gleichem Puls), der wiedergefunden
+werden muss.
 
 Zwei weitere kamen mit der Statistik dazu. Die eine prüft sie dort, wo sie
 wehtut: Zweihundert reine Zufallspaare müssen die Mehrfachprüfung fast
@@ -777,7 +840,7 @@ docker rm -f puls-coach puls-ollama puls-miscale 2>/dev/null
 Die Volumes bleiben dabei erhalten, deine Daten sind sicher. Dann in der App:
 
 1. *Mehr → Garmin Connect*: verbinden (MFA wird unterstützt, gespeichert werden nur Tokens).
-2. *Mehr → Wochenstruktur*: Lauf-/Gym-Tage, Dauer, Ziele prüfen.
+2. *Coach*: Ziel hineinschreiben, Gym-Tage und Lauftage anklicken, Dauer setzen.
 3. *Übungen*: deine Maschinen durchgehen — Startgewichte stehen schon drin, anpassen was
    nicht stimmt. Neue Geräte mit „+ Neu"; das passende Garmin-Übungsbild wird automatisch
    zugeordnet.

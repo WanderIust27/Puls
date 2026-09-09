@@ -51,6 +51,7 @@ from app.main import app                                    # noqa: E402
 PORT = 8899
 VIEWS = ("dashboard", "plan", "exercises", "nutrition", "mood",
          "stats", "coach", "settings")
+DAY_NAMES = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 failures: list[str] = []
 
@@ -105,43 +106,84 @@ try:
             page.wait_for_timeout(1000)
             ok(f"Ansicht {view} öffnet", page.is_visible(f"#view-{view}"))
 
-        # --- Autopilot: die Felder muessen befuellt sein ------------------
-        page.click('nav.bottom button[data-view="settings"]')
-        page.wait_for_timeout(1500)
+        # --- Coach: Ziel, Woche und Trends stehen auf einer Seite ---------
+        page.click('nav.bottom button[data-view="coach"]')
+        page.wait_for_timeout(2500)
         focus = page.eval_on_selector("#autoFocus", "el => el.options.length")
         days = page.eval_on_selector("#autoLongDay", "el => el.options.length")
-        chips = page.eval_on_selector_all("#autoDays [data-autoday]", "e => e.length")
+        gym_chips = page.eval_on_selector_all("#gymDayPick [data-gymday]", "e => e.length")
+        run_chips = page.eval_on_selector_all("#runDayPick [data-runday]", "e => e.length")
         minutes = page.eval_on_selector("#autoMinutes", "el => el.value")
         note = page.eval_on_selector("#autoFocusNote", "el => el.textContent.trim()")
-        ok("Autopilot: Schwerpunkte wählbar", focus >= 4, f"{focus} Einträge")
-        ok("Autopilot: alle Wochentage wählbar", days == 7, f"{days} Einträge")
-        ok("Autopilot: Tagesknöpfe da", chips == 7, f"{chips} Knöpfe")
-        ok("Autopilot: Dauer vorbelegt", bool(minutes), repr(minutes))
-        ok("Autopilot: Schwerpunkt erklärt", bool(note))
+        ok("Coach: Schwerpunkte wählbar", focus >= 4, f"{focus} Einträge")
+        ok("Coach: langer Lauf wählbar", days == 7, f"{days} Einträge")
+        ok("Coach: Gym-Tage wählbar", gym_chips == 7, f"{gym_chips} Knöpfe")
+        ok("Coach: Lauftage getrennt wählbar", run_chips == 7, f"{run_chips} Knöpfe")
+        ok("Coach: Dauer vorbelegt", bool(minutes), repr(minutes))
+        ok("Coach: Schwerpunkt erklärt", bool(note))
 
         # --- Auswaehlen muss auch wirken ----------------------------------
         page.select_option("#autoFocus", "build_muscle")
         page.wait_for_timeout(300)
-        ok("Autopilot: Wechsel ändert die Erklärung",
+        ok("Coach: Wechsel ändert die Erklärung",
            page.eval_on_selector("#autoFocusNote", "el => el.textContent.trim()") != note)
 
-        page.click('#autoDays [data-autoday="Mo"]')
-        page.wait_for_timeout(200)
-        active = page.eval_on_selector_all("#autoDays .chip.on", "e => e.map(x => x.textContent)")
-        ok("Autopilot: Tag lässt sich abwählen", "Mo" not in active, str(active))
+        # Genau die Tage wählen, die der Nutzer nennen würde. Erst leeren,
+        # dann setzen — sonst hinge der Test an den Vorgabewerten.
+        def set_days(picker, attr, wanted):
+            for day in DAY_NAMES:
+                on = page.eval_on_selector(
+                    f'{picker} [data-{attr}="{day}"]',
+                    "el => el.classList.contains('on')")
+                if on != (day in wanted):
+                    page.click(f'{picker} [data-{attr}="{day}"]')
+                    page.wait_for_timeout(60)
 
+        set_days("#gymDayPick", "gymday", {"Mo", "Mi", "Fr"})
+        set_days("#runDayPick", "runday", {"Di", "Do"})
+        page.wait_for_timeout(300)
+        gym_on = page.eval_on_selector_all("#gymDayPick .chip.on", "e => e.map(x => x.textContent)")
+        run_on = page.eval_on_selector_all("#runDayPick .chip.on", "e => e.map(x => x.textContent)")
+        ok("Coach: Gym auf Mo/Mi/Fr", set(gym_on) == {"Mo", "Mi", "Fr"}, str(gym_on))
+        ok("Coach: Laufen auf Di/Do", set(run_on) == {"Di", "Do"}, str(run_on))
+
+        page.fill("#goalText", "10 km unter 55 Minuten, dazu stärkere Beine")
         page.click("#btnAutoSave")
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(2000)
         page.reload(wait_until="networkidle")
-        page.click('nav.bottom button[data-view="settings"]')
-        page.wait_for_timeout(1800)
+        page.click('nav.bottom button[data-view="coach"]')
+        page.wait_for_timeout(2500)
         kept = page.eval_on_selector("#autoFocus", "el => el.value")
-        ok("Autopilot: Auswahl überlebt das Neuladen", kept == "build_muscle", kept)
+        ok("Coach: Schwerpunkt überlebt das Neuladen", kept == "build_muscle", kept)
+        kept_gym = page.eval_on_selector_all("#gymDayPick .chip.on", "e => e.map(x => x.textContent)")
+        ok("Coach: Gym-Tage überleben das Neuladen",
+           set(kept_gym) == {"Mo", "Mi", "Fr"}, str(kept_gym))
+        ok("Coach: Ziel überlebt das Neuladen",
+           "10 km" in page.eval_on_selector("#goalText", "el => el.value"))
+        ok("Coach: Ziel wird gelesen",
+           "10-km" in page.eval_on_selector("#goalRead", "el => el.textContent"),
+           page.eval_on_selector("#goalRead", "el => el.textContent")[:80])
+        ok("Coach: Muskeltrends stehen da",
+           bool(page.eval_on_selector("#trendMuscles", "el => el.textContent.trim()")))
+        ok("Coach: Lauftrends stehen da",
+           bool(page.eval_on_selector("#trendRunning", "el => el.textContent.trim()")))
 
         page.click("#btnAutoPreview")
         page.wait_for_timeout(10000)
         planned = page.eval_on_selector_all("#autoPreview .auto-day", "e => e.length")
-        ok("Autopilot: Vorschau zeigt die Woche", planned == 7, f"{planned} Tage")
+        ok("Coach: Vorschau zeigt die Woche", planned == 7, f"{planned} Tage")
+        # Die Sportart steht in der ersten Zeile jeder Einheit — im Fließtext
+        # darunter kommen "Kraft" und "Laufen" auch vor, deshalb nur die Zeile.
+        placed = page.eval_on_selector_all("#autoPreview .auto-day", """els => els.map(el => ({
+            day: el.querySelector('.ad').textContent.trim(),
+            sports: [...el.querySelectorAll('.as')].map(s => s.textContent.trim().split(' ·')[0])
+        }))""")
+        gym_days_shown = {d["day"] for d in placed if "Kraft" in d["sports"]}
+        run_days_shown = {d["day"] for d in placed if "Laufen" in d["sports"]}
+        ok("Coach: Kraft liegt auf den gewählten Tagen",
+           gym_days_shown == {"Mo", "Mi", "Fr"}, str(sorted(gym_days_shown)))
+        ok("Coach: Laufen liegt auf den gewählten Tagen",
+           run_days_shown == {"Di", "Do"}, str(sorted(run_days_shown)))
 
         # --- Statistik: Empfehlungen muessen erscheinen -------------------
         page.click('nav.bottom button[data-view="stats"]')

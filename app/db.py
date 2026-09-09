@@ -317,7 +317,7 @@ DEFAULT_SETTINGS = {
     "font_scale": "100",
     "ollama_model": "",
     # Wochenstruktur (vom Nutzer einstellbar)
-    "run_days": json.dumps(["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]),
+    "run_days": json.dumps(["Di", "Do", "Sa"]),
     "run_minutes": "25",
     "gym_days": json.dumps(["Mo", "Mi", "Fr"]),
     "gym_minutes": "75",
@@ -463,6 +463,42 @@ def _migrate(db: sqlite3.Connection) -> None:
         logging.getLogger("puls.db").info("%d fehlende Spalte(n) ergänzt.", added)
 
 
+def _fix_run_days(db: sqlite3.Connection) -> None:
+    """Einmalige Bedeutungsaenderung nachziehen.
+
+    Frueher hiess run_days "an diesen Tagen koennte ich laufen" — alle sieben
+    Tage waren die Vorgabe und bedeuteten schlicht "keine Einschraenkung".
+    Seit der Coach die Woche daraus plant, heisst es "an diesen Tagen laufe
+    ich". Alle sieben Tage stehen zu lassen hiesse: sieben Laeufe pro Woche,
+    zusaetzlich zum Gym. Das hat so niemand gemeint.
+    """
+    row = db.execute("SELECT value FROM settings WHERE key='run_days'").fetchone()
+    done = db.execute("SELECT value FROM settings WHERE key='run_days_migrated'"
+                      ).fetchone()
+    if done and done["value"] == "1":
+        return
+    if row and row["value"]:
+        try:
+            days = json.loads(row["value"])
+        except ValueError:
+            days = []
+        if isinstance(days, list) and len(days) >= 7:
+            gym = db.execute("SELECT value FROM settings WHERE key='gym_days'"
+                             ).fetchone()
+            try:
+                gym_days = set(json.loads(gym["value"])) if gym else set()
+            except ValueError:
+                gym_days = set()
+            # Laufen an die Tage legen, an denen kein Gym steht
+            free = [d for d in ["Di", "Do", "Sa", "Mo", "Mi", "Fr", "So"]
+                    if d not in gym_days][:3] or ["Di", "Do", "Sa"]
+            order = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+            db.execute("UPDATE settings SET value=? WHERE key='run_days'",
+                       (json.dumps(sorted(free, key=order.index)),))
+    db.execute("INSERT OR REPLACE INTO settings(key, value) "
+               "VALUES('run_days_migrated', '1')")
+
+
 def init_db() -> None:
     ensure_dirs()
     with get_db() as db:
@@ -471,6 +507,7 @@ def init_db() -> None:
         _migrate(db)
         for k, v in DEFAULT_SETTINGS.items():
             db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?, ?)", (k, v))
+        _fix_run_days(db)
         # Token für den Waagen-Webhook einmalig erzeugen
         row = db.execute("SELECT value FROM settings WHERE key='api_token'").fetchone()
         if not row or not row["value"]:

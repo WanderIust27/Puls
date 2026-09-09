@@ -31,6 +31,7 @@ run "Lernen & Gedächtnis" python3 tests/test_learning.py
 run "Zusammenhänge"    python3 tests/test_insights.py
 run "Coach-Vorschläge" python3 tests/test_suggestions.py
 run "Statistik & Autopilot" python3 tests/test_stats.py
+run "Trends & Wochenplan" python3 tests/test_trends.py
 run "Workout an die Uhr" python3 tests/test_workout_push.py
 run "Garmin-Sync"     python3 tests/test_garmin_sync.py
 run "API"             python3 tests/test_api.py

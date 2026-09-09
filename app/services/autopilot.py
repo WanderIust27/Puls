@@ -59,16 +59,28 @@ def settings() -> dict[str, Any]:
     """Die Wuensche, die der Autopilot bekommt."""
     def _get(key: str, fallback: str) -> str:
         return get_setting(key, fallback) or fallback
-    try:
-        available = json.loads(_get("auto_days", json.dumps(WEEKDAYS)))
-    except ValueError:
-        available = list(WEEKDAYS)
+    def _days(key: str) -> list[str]:
+        try:
+            value = json.loads(_get(key, "[]"))
+        except ValueError:
+            return []
+        return [d for d in value if d in WEEKDAYS] if isinstance(value, list) else []
+
+    # Die Wochenstruktur ist dieselbe, die auch sonst gilt — der Autopilot
+    # erfindet keine zweite. Wer Mo/Mi/Fr ins Gym will, traegt das einmal ein.
+    run_days, gym_days = _days("run_days"), _days("gym_days")
+    available = sorted(set(run_days) | set(gym_days) or set(_days("auto_days")),
+                       key=WEEKDAYS.index)
     return {
         "enabled": _get("autopilot", "0") == "1",
         "focus": _get("auto_focus", "balanced"),
-        "available_days": available if isinstance(available, list) else list(WEEKDAYS),
+        "run_days": run_days,
+        "gym_days": gym_days,
+        "available_days": available or list(WEEKDAYS),
         "session_minutes": int(float(_get("auto_session_minutes", "60"))),
+        "gym_minutes": int(float(_get("gym_minutes", "75"))),
         "long_run_day": _get("auto_long_run_day", "So"),
+        "evening_mobility": _get("evening_mobility", "1") == "1",
         "wishes": _get("auto_wishes", ""),
         "presets": {k: {"label": v["label"], "note": v["note"]}
                     for k, v in FOCUS_PRESETS.items()},
@@ -80,9 +92,16 @@ def save_settings(data: dict[str, Any]) -> dict[str, Any]:
         set_setting("autopilot", "1" if data["enabled"] else "0")
     if data.get("focus") in FOCUS_PRESETS:
         set_setting("auto_focus", data["focus"])
-    if isinstance(data.get("available_days"), list):
-        days = [d for d in data["available_days"] if d in WEEKDAYS]
-        set_setting("auto_days", json.dumps(days or WEEKDAYS))
+    for field, key in (("run_days", "run_days"), ("gym_days", "gym_days"),
+                       ("available_days", "auto_days")):
+        if isinstance(data.get(field), list):
+            days = sorted({d for d in data[field] if d in WEEKDAYS},
+                          key=WEEKDAYS.index)
+            set_setting(key, json.dumps(days))
+    if data.get("gym_minutes"):
+        set_setting("gym_minutes", str(max(20, min(180, int(data["gym_minutes"])))))
+    if "evening_mobility" in data:
+        set_setting("evening_mobility", "1" if data["evening_mobility"] else "0")
     if data.get("session_minutes"):
         set_setting("auto_session_minutes",
                     str(max(20, min(180, int(data["session_minutes"])))))
@@ -136,70 +155,124 @@ def _condition() -> dict[str, Any]:
              "penalty": penalty}
 
 
+def _run_kinds(count: int, quality: int, long_run: bool,
+               trend: dict[str, Any], goal: dict[str, Any]) -> list[str]:
+    """Welche Laufarten die Woche traegt — nach dem, was gerade fehlt.
+
+    Die Reihenfolge ist die Rangfolge: Der lange Lauf zuerst, weil er am
+    schwersten nachzuholen ist, dann die harten Reize, dann die lockeren.
+    """
+    kinds: list[str] = []
+    if long_run:
+        kinds.append("long")
+
+    # Fehlt seit vier Wochen jeder harte Lauf, kommt einer dazu — auch bei
+    # einem Schwerpunkt, der eigentlich keinen vorsieht. Umgekehrt faellt
+    # Tempo weg, wenn ohnehin zu viel hart gelaufen wurde.
+    hard_missing = trend.get("runs_recent") and not trend.get("hard_runs")
+    too_hard = (trend.get("hard_runs") or 0) > (trend.get("runs_recent") or 0) * 0.4
+    if hard_missing and not quality:
+        quality = 1
+    if too_hard:
+        quality = 0
+
+    wants_tempo = "tempo" in goal.get("runs", [])
+    for i in range(quality):
+        # Intervalle sind der haertere Reiz; hoechstens einer pro Woche.
+        kinds.append("tempo" if (i == 0 or not wants_tempo) else "interval")
+
+    while len(kinds) < count:
+        kinds.append("easy")
+    return kinds[:count]
+
+
 def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]:
     """Die kommende Woche zusammenstellen."""
-    from . import mood, planner, running
+    from . import mood, planner, running, trends
     cfg = settings()
     preset = FOCUS_PRESETS.get(cfg["focus"], FOCUS_PRESETS["balanced"])
     cond = _condition()
     adapt = mood.adaptations()
+    trend = trends.summary()
+    goal = trend["goal"]
 
     start = start or (dt.date.today() + dt.timedelta(days=1))
-    available = [d for d in WEEKDAYS if d in cfg["available_days"]]
-    if not available:
-        available = list(WEEKDAYS)
 
-    # Dosis wirkt auf Umfang und Dauer, nicht nur auf eine der beiden Groessen
-    runs = max(2, round(preset["runs"] * cond["dose"]))
-    gyms = max(1, round(preset["gyms"] * cond["dose"]))
+    # 1. Wo darf was liegen? Ausdrueckliche Tage schlagen jede Verteilung.
+    run_days = list(cfg["run_days"])
+    gym_days = list(cfg["gym_days"])
+    available = [d for d in WEEKDAYS if d in (set(run_days) | set(gym_days))] \
+        or [d for d in WEEKDAYS if d in cfg["available_days"]] or list(WEEKDAYS)
+
+    # 2. Wie viel? Die Dosis wirkt auf Umfang UND Dauer, nicht nur auf eines.
     minutes = max(25, round(cfg["session_minutes"] * cond["dose"]))
+    gym_minutes = max(25, round(cfg["gym_minutes"] * cond["dose"]))
+    if run_days or gym_days:
+        # Deine Tage sind die Vorgabe. Nur wenn die Erholung kippt, wird
+        # gekuerzt — und dann sichtbar, nicht stillschweigend.
+        runs = len(run_days) if run_days else max(2, round(preset["runs"] * cond["dose"]))
+        gyms = len(gym_days) if gym_days else max(1, round(preset["gyms"] * cond["dose"]))
+        dropped: list[str] = []
+        if cond["state"] == "erschoepft" and len(run_days) > 2:
+            dropped = run_days[len(run_days) - 1:]
+            run_days, runs = run_days[:-1], runs - 1
+        if cond["state"] == "erschoepft" and len(gym_days) > 1:
+            dropped += gym_days[len(gym_days) - 1:]
+            gym_days, gyms = gym_days[:-1], gyms - 1
+    else:
+        runs = max(2, round(preset["runs"] * cond["dose"]))
+        gyms = max(1, round(preset["gyms"] * cond["dose"]))
+        dropped = []
+        step = max(1, len(available) // max(1, gyms))
+        gym_days = list(dict.fromkeys(
+            available[min(i * step, len(available) - 1)] for i in range(gyms)))
+        run_days = [d for d in available if d not in gym_days][:runs] or available[:runs]
+
     quality = preset["quality_runs"] if cond["state"] in ("frisch", "normal") else 0
     long_run = preset["long_run"] and cond["state"] != "erschoepft"
+    long_day = cfg["long_run_day"] if cfg["long_run_day"] in run_days else \
+        (run_days[-1] if run_days else None)
 
-    # Gym-Tage moeglichst gleichmaessig verteilen, damit zwischen zwei
-    # Einheiten ein Tag liegt
-    gym_days: list[str] = []
-    if gyms:
-        step = max(1, len(available) // gyms)
-        gym_days = [available[min(i * step, len(available) - 1)] for i in range(gyms)]
-        gym_days = list(dict.fromkeys(gym_days))
-
-    long_day = cfg["long_run_day"] if cfg["long_run_day"] in available else \
-        (available[-1] if available else "So")
+    # 3. Was genau? Die Laufarten nach dem, was dem Training fehlt; die
+    #    Muskelgruppen nach dem gerechneten Bedarf.
+    kinds = _run_kinds(len(run_days), quality, long_run, trend["running"], goal)
+    ordered_runs = ([long_day] if long_day and long_day in run_days else []) + \
+        [d for d in run_days if d != long_day]
+    kind_for = {}
+    for day, kind in zip(ordered_runs, kinds):
+        kind_for[day] = kind
+    emphasis = trend["muscles"]["focus"]
+    emphasis_labels = [g["label"] for g in trend["muscles"]["groups"]
+                       if g["key"] in emphasis]
 
     days: list[dict[str, Any]] = []
-    run_left, quality_left = runs, quality
     for offset in range(7):
         date = start + dt.timedelta(days=offset)
         name = WEEKDAYS[date.weekday()]
         entry: dict[str, Any] = {"date": date.isoformat(), "weekday": name,
                                  "sessions": []}
 
-        if name in available and run_left > 0:
-            if long_run and name == long_day:
-                entry["sessions"].append({
-                    "sport": "running", "kind": "long",
-                    "minutes": min(90, round(minutes * 1.5)),
-                    "why": "Die lange Einheit macht die Grundlage breit."})
-                long_run = False
-            elif quality_left > 0 and name not in gym_days:
-                entry["sessions"].append({
-                    "sport": "running", "kind": "tempo", "minutes": minutes,
-                    "why": "Tempoanteil — ohne harten Reiz bleibt das Tempo stehen."})
-                quality_left -= 1
-            else:
-                entry["sessions"].append({
-                    "sport": "running", "kind": "easy",
-                    "minutes": max(20, round(minutes * 0.7)),
-                    "why": "Locker. Der Großteil des Laufens gehört hierhin."})
-            run_left -= 1
+        if name in kind_for:
+            kind = kind_for[name]
+            entry["sessions"].append({
+                "sport": "running", "kind": kind,
+                "minutes": (min(95, round(minutes * 1.5)) if kind == "long"
+                            else minutes if kind in ("tempo", "interval")
+                            else max(20, round(minutes * 0.7))),
+                "why": _run_why(kind, trend["running"], goal)})
 
         if name in gym_days:
             entry["sessions"].append({
-                "sport": "strength", "kind": "gym", "minutes": minutes,
-                "why": "Krafteinheit nach deiner Übungsbibliothek."})
+                "sport": "strength", "kind": "gym", "minutes": gym_minutes,
+                "emphasis": emphasis,
+                "why": (f"Schwerpunkt {', '.join(emphasis_labels)} — "
+                        + "; ".join(
+                            r for g in trend["muscles"]["groups"]
+                            if g["key"] in emphasis for r in g["reasons"][:1])
+                        if emphasis_labels
+                        else "Krafteinheit nach deiner Übungsbibliothek.")})
 
-        if get_setting("evening_mobility", "1") == "1":
+        if cfg["evening_mobility"]:
             entry["sessions"].append({
                 "sport": "mobility", "kind": "yoga", "minutes": 12,
                 "why": "Abends zum Runterkommen."})
@@ -209,13 +282,7 @@ def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]
     if apply_it:
         for entry in days:
             for session in entry["sessions"]:
-                workout = None
-                if session["sport"] == "running":
-                    workout = running.build_easy_run(session["minutes"], session["kind"])
-                elif session["sport"] == "strength":
-                    workout = planner.build_gym_session(session["minutes"])
-                elif session["sport"] == "mobility":
-                    workout = planner.build_evening_yoga(session["minutes"])
+                workout = _build(session, planner, running)
                 if not workout:
                     continue
                 with get_db() as db:
@@ -237,13 +304,61 @@ def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]
         "focus_note": preset["note"],
         "condition": cond,
         "days": days,
-        "runs": runs, "gyms": gyms, "minutes_per_session": minutes,
+        "run_days": run_days, "gym_days": gym_days, "dropped_days": dropped,
+        "runs": len(kind_for), "gyms": len(gym_days),
+        "minutes_per_session": minutes, "gym_minutes": gym_minutes,
         "total_minutes": total_minutes,
+        "emphasis": emphasis, "emphasis_labels": emphasis_labels,
+        "run_needs": trend["running"]["needs"],
+        "goal": goal,
         "adapted": adapt["summary"] if adapt["complaints"] else [],
         "applied": bool(apply_it),
         "created": created,
         "wishes": cfg["wishes"],
     }
+
+
+RUN_WHY = {
+    "long": "Die lange Einheit macht die Grundlage breit.",
+    "tempo": "Tempoblock an der Schwelle — ohne harten Reiz bleibt das Tempo stehen.",
+    "interval": "Kurze harte Abschnitte — der stärkste Reiz für die Ausdauer.",
+    "easy": "Locker. Der Großteil des Laufens gehört hierhin.",
+}
+
+
+def _run_why(kind: str, trend: dict[str, Any], goal: dict[str, Any]) -> str:
+    """Begruendung aus den Zahlen, nicht aus einer festen Liste allein."""
+    why = RUN_WHY.get(kind, RUN_WHY["easy"])
+    if kind == "long" and trend.get("longest_recent") is not None:
+        why += f" Deine längste der letzten vier Wochen: {trend['longest_recent']} km."
+    elif kind in ("tempo", "interval") and not trend.get("hard_runs"):
+        why += " In vier Wochen lag kein Lauf im harten Bereich."
+    elif kind == "easy" and trend.get("hard_runs"):
+        why += (f" Von {trend.get('runs_recent', 0)} Läufen waren "
+                f"{trend['hard_runs']} hart.")
+    if goal.get("recognised"):
+        why += f" Ziel: {', '.join(goal['recognised'][:2])}."
+    return why
+
+
+def _build(session: dict[str, Any], planner: Any, running: Any) -> dict[str, Any] | None:
+    """Aus einer geplanten Einheit das fertige Workout bauen."""
+    kind, minutes = session["kind"], session["minutes"]
+    if session["sport"] == "running":
+        # Jede Laufart hat einen eigenen Bauplan. Sie alle als lockeren Lauf
+        # zu bauen und nur das Tempofenster zu wechseln, waere kein Tempolauf.
+        if kind == "long":
+            return running.build_long_run(minutes)
+        if kind == "tempo":
+            return running.build_tempo_run(minutes)
+        if kind == "interval":
+            return running.build_interval_run(minutes)
+        return running.build_easy_run(minutes, "easy")
+    if session["sport"] == "strength":
+        return planner.build_gym_session(minutes, emphasis=session.get("emphasis"))
+    if session["sport"] == "mobility":
+        return planner.build_evening_yoga(minutes)
+    return None
 
 
 def explain(week: dict[str, Any]) -> str:

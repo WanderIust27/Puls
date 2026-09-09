@@ -58,6 +58,36 @@ def _context_block() -> str:
             ctx["was_ich_ueber_dich_weiss"] = facts
     except Exception as e:
         log.debug("Merkposten nicht im Kontext: %s", e)
+    # Entwicklung je Muskelgruppe und beim Laufen: Ohne die antwortet der Coach
+    # auf "bin ich auf Kurs" mit allgemeinen Weisheiten statt mit deinen Zahlen.
+    try:
+        from . import trends as trends_svc
+        tr = trends_svc.summary()
+        top = [g for g in tr["muscles"]["groups"] if g["need"] >= 20][:3]
+        if top:
+            ctx["kraft_am_ehesten_dran"] = [
+                f"{g['label']}: {'; '.join(g['reasons'][:2])}" for g in top]
+        rising = [g["label"] for g in tr["muscles"]["groups"]
+                  if g["direction"] == "steigt"]
+        if rising:
+            ctx["kraft_steigt_bei"] = rising
+        run = tr["running"]
+        if run.get("runs_recent"):
+            ctx["laufen_vier_wochen"] = {
+                "kilometer": run["km_recent"],
+                "pro_woche": run["km_per_week"],
+                "laengster_lauf_km": run["longest_recent"],
+                "harte_laeufe": run["hard_runs"],
+                "tempo_bei_gleichem_puls": (
+                    f"{run['pace_gain_s']:+d} s/km gegenüber den vier Wochen davor"
+                    if run.get("pace_gain_s") is not None else None),
+            }
+        if run.get("needs"):
+            ctx["beim_laufen_fehlt"] = run["needs"]
+        if tr["goal"].get("recognised"):
+            ctx["dein_ziel"] = tr["goal"]["recognised"]
+    except Exception as e:
+        log.debug("Trends nicht im Kontext: %s", e)
     try:
         from . import boosters
         works = boosters.what_works()

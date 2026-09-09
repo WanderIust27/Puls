@@ -90,17 +90,20 @@ def _pick(pool: list[dict[str, Any]], count: int, seed_key: str) -> list[dict[st
     return chosen
 
 
-def _balance_main(pool: list[dict[str, Any]], count: int) -> list[dict[str, Any]]:
+def _balance_main(pool: list[dict[str, Any]], count: int,
+                  emphasis: list[str] | None = None) -> list[dict[str, Any]]:
     """Hauptteil so wählen, dass die Muskelgruppen über die Woche abgedeckt sind."""
     prefer_machines = get_setting("prefer_machines", "1") == "1"
     order = ["legs", "chest", "back", "shoulders", "arms", "core"]
-    # Hat der Coach eine vernachlässigte Gruppe vorgeschlagen und du hast den
-    # Vorschlag übernommen, kommt sie hier zuerst dran.
+    # Zuerst, was gerade am ehesten dran ist: der gerechnete Bedarf aus den
+    # Trends, danach eine übernommene Empfehlung des Coaches.
+    focus = [g for g in (emphasis or []) if g in order]
     try:
         from . import suggestions
-        focus = [g for g in suggestions.active_focus() if g in order]
+        focus += [g for g in suggestions.active_focus()
+                  if g in order and g not in focus]
     except Exception:
-        focus = []
+        pass
     if focus:
         order = focus + [g for g in order if g not in focus]
     by_group: dict[str, list[dict[str, Any]]] = {g: [] for g in order}
@@ -125,9 +128,14 @@ def _balance_main(pool: list[dict[str, Any]], count: int) -> list[dict[str, Any]
     return chosen[:count]
 
 
-def build_gym_session(minutes: int | None = None, name: str | None = None
-                      ) -> dict[str, Any]:
-    """Eine komplette Gym-Einheit nach Thomas' Aufbau."""
+def build_gym_session(minutes: int | None = None, name: str | None = None,
+                      emphasis: list[str] | None = None) -> dict[str, Any]:
+    """Eine komplette Gym-Einheit nach Thomas' Aufbau.
+
+    emphasis nennt die Muskelgruppen, die zuerst drankommen sollen — der
+    Autopilot leitet sie aus den Trends ab. Ohne Angabe bleibt es bei der
+    ausgewogenen Reihum-Verteilung.
+    """
     minutes = minutes or int(get_setting("gym_minutes", "75") or 75)
     sizes = _block_sizes(minutes)
     lib = ex_lib.list_exercises(only_active=True)
@@ -178,7 +186,7 @@ def build_gym_session(minutes: int | None = None, name: str | None = None
         used.append(e)
 
     # 4. Hauptteil an den Maschinen
-    for e in _balance_main(by_slot.get("main", []), sizes["main"]):
+    for e in _balance_main(by_slot.get("main", []), sizes["main"], emphasis):
         steps.extend(_exercise_to_steps(e))
         used.append(e)
 
@@ -192,6 +200,7 @@ def build_gym_session(minutes: int | None = None, name: str | None = None
 
     groups = sorted({ex_lib.MUSCLE_LABELS.get(e["muscle_group"], e["muscle_group"])
                      for e in used if e.get("slot") == "main"})
+    emphasis_labels = [ex_lib.MUSCLE_LABELS.get(g, g) for g in (emphasis or [])]
 
     # Ausgleichende Dehnung fuer die betroffene Stelle ans Ende
     if adapt["relief_poses"]:
@@ -220,10 +229,14 @@ def build_gym_session(minutes: int | None = None, name: str | None = None
 
     return {
         "adapted": adapted,
-        "name": name or f"Gym Ganzkörper {minutes} min",
+        "name": name or (f"Gym {'/'.join(emphasis_labels)} {minutes} min"
+                         if emphasis_labels else f"Gym Ganzkörper {minutes} min"),
         "sport": "strength",
+        "emphasis": emphasis_labels,
         "description": (f"Kettlebell-Auftakt, Klimmzug-Arbeit, dann Maschinen "
-                        f"({', '.join(groups)}) und Dehnen zum Abschluss."),
+                        f"({', '.join(groups)}) und Dehnen zum Abschluss."
+                        + (f" Schwerpunkt: {', '.join(emphasis_labels)}."
+                           if emphasis_labels else "")),
         "steps": steps,
         "exercise_ids": [e["id"] for e in used],
     }

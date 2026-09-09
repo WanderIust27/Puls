@@ -20,7 +20,7 @@ from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
 from ..services import activity_details as activity_details_svc
 from ..services import (autopilot, boosters, feedback, gym_analysis,
                         insights, memory, mood, nutrition, recipes, score,
-                        stats, suggestions, supplements)
+                        stats, suggestions, supplements, trends)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -913,6 +913,12 @@ def stats_explain(days: int = 365, limit: int = 6) -> dict[str, str]:
 
 # ------------------------------------------------------------- Autopilot
 
+@router.get("/trends")
+def trends_summary() -> dict[str, Any]:
+    """Was sich entwickelt, was steht — und was daraus fuers Training folgt."""
+    return trends.summary()
+
+
 @router.get("/autopilot")
 def autopilot_get() -> dict[str, Any]:
     return autopilot.settings()
@@ -921,9 +927,13 @@ def autopilot_get() -> dict[str, Any]:
 class AutopilotIn(BaseModel):
     enabled: bool | None = None
     focus: str | None = None
+    run_days: list[str] | None = None
+    gym_days: list[str] | None = None
     available_days: list[str] | None = None
     session_minutes: int | None = None
+    gym_minutes: int | None = None
     long_run_day: str | None = None
+    evening_mobility: bool | None = None
     wishes: str | None = None
 
 

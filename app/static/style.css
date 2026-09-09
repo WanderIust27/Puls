@@ -795,3 +795,22 @@ ol.plain li, ul.plain li { margin-bottom: 5px; }
   background: color-mix(in srgb, var(--good) 12%, transparent);
   border-radius: 999px; padding: 1px 8px; }
 .rec .rm { margin-top: 3px; font-size: 0.76em; color: var(--ink-3); }
+
+/* Trends im Coach-Tab */
+.trend { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.trend:last-child { border-bottom: 0; }
+.trend.hot .th { color: var(--ink); font-weight: 600; }
+.trend .th { display: flex; align-items: baseline; gap: 6px; font-size: 0.95em; }
+.trend .tn { margin-left: auto; font-variant-numeric: tabular-nums;
+  font-size: 0.86em; color: var(--ink-3); }
+.trend .tbar { height: 4px; border-radius: 999px; background: var(--line);
+  margin: 5px 0 4px; overflow: hidden; }
+.trend .tbar i { display: block; height: 100%; border-radius: 999px;
+  background: var(--accent); }
+.trend.hot .tbar i { background: var(--warn, var(--accent)); }
+.trend .tm { font-size: 0.79em; color: var(--ink-3); }
+.trend .tr { font-size: 0.79em; color: var(--ink-2); margin-top: 2px; }
+.ta { font-size: 0.72em; }
+.ta.up { color: var(--good); }
+.ta.down { color: var(--bad); }
+.ta.flat { color: var(--ink-3); }
