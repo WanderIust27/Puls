@@ -36,40 +36,91 @@ c_info "Aktualisiere PULS in $PULS_TARGET"
 c_info "Quelle: $REPO ($BRANCH)"
 
 command -v unzip >/dev/null || { c_err "unzip nicht gefunden."; exit 1; }
-if command -v wget >/dev/null; then
-    fetch() { wget -q -O "$2" "$1"; }
-elif command -v curl >/dev/null; then
-    fetch() { curl -fsSL -o "$2" "$1"; }
-else
-    c_err "Weder wget noch curl gefunden."; exit 1
-fi
 
 work=$(mktemp -d /tmp/puls-src.XXXXXX) || exit 1
 trap 'rm -rf "$work"' EXIT
 
-# codeload ist das Ziel, auf das github.com beim Archiv-Download ohnehin
-# weiterleitet. Erst direkt dorthin, dann der uebliche Weg als Rueckfallebene —
-# je nach Netz und Proxy ist mal der eine, mal der andere erreichbar.
+# Bei einem privaten Repository antwortet GitHub ohne Anmeldung mit 404 —
+# ununterscheidbar von "gibt es nicht". Deshalb wird ein Token mitgeschickt,
+# sobald eines vorliegt, und die Fehlermeldung unten sagt genau das.
+#
+# Token anlegen: github.com → Settings → Developer settings →
+# Personal access tokens → Fine-grained tokens, Zugriff nur auf dieses
+# Repository, Berechtigung "Contents: Read-only". Dann in die .env:
+#   GITHUB_TOKEN=github_pat_...
+TOKEN="${GITHUB_TOKEN:-${PULS_GITHUB_TOKEN:-}}"
+
+if command -v wget >/dev/null; then
+    fetch() {
+        if [ -n "$TOKEN" ]; then
+            wget -q --header="Authorization: Bearer $TOKEN" -O "$2" "$1"
+        else
+            wget -q -O "$2" "$1"
+        fi
+    }
+elif command -v curl >/dev/null; then
+    fetch() {
+        if [ -n "$TOKEN" ]; then
+            curl -fsSL -H "Authorization: Bearer $TOKEN" -o "$2" "$1"
+        else
+            curl -fsSL -o "$2" "$1"
+        fi
+    }
+else
+    c_err "Weder wget noch curl gefunden."; exit 1
+fi
+
+[ -n "$TOKEN" ] && c_ok "Token aus der .env wird verwendet" \
+    || c_info "Kein GITHUB_TOKEN gesetzt — das geht nur bei einem öffentlichen Repository."
+
 got=""
-for url in "https://codeload.github.com/$REPO/zip/refs/heads/$BRANCH" \
+for url in "https://api.github.com/repos/$REPO/zipball/$BRANCH" \
+           "https://codeload.github.com/$REPO/zip/refs/heads/$BRANCH" \
            "https://github.com/$REPO/archive/refs/heads/$BRANCH.zip"; do
-    c_info "Lade $url"
-    if fetch "$url" "$work/puls.zip" && [ -s "$work/puls.zip" ]; then
+    c_info "Lade $(echo "$url" | cut -c1-60)…"
+    if fetch "$url" "$work/puls.zip" && [ -s "$work/puls.zip" ] \
+       && unzip -tq "$work/puls.zip" >/dev/null 2>&1; then
         got=1; break
     fi
     c_info "Nicht erreichbar, versuche den nächsten Weg …"
 done
+
 if [ -z "$got" ]; then
-    c_err "Download fehlgeschlagen. Stimmen Repo und Branch?"
-    c_err "  Repo:   $REPO"
-    c_err "  Branch: $BRANCH"
-    c_err "Anderer Branch:  PULS_BRANCH=main ./update.sh"
+    echo
+    c_err "Download fehlgeschlagen."
+    if [ -z "$TOKEN" ]; then
+        c_err "Es ist kein GITHUB_TOKEN gesetzt. Bei einem privaten Repository"
+        c_err "antwortet GitHub dann mit 404 — genau das ist hier passiert."
+        c_err ""
+        c_err "Zwei Wege:"
+        c_err "  1. Token anlegen (github.com → Settings → Developer settings →"
+        c_err "     Personal access tokens → Fine-grained, nur dieses Repo,"
+        c_err "     Contents: Read-only) und in die .env eintragen:"
+        c_err "         GITHUB_TOKEN=github_pat_..."
+        c_err "  2. Oder das Repository öffentlich schalten."
+    else
+        c_err "Das Token wurde mitgeschickt, GitHub hat trotzdem abgelehnt."
+        c_err "Prüfen: Ist es abgelaufen? Hat es Zugriff auf $REPO?"
+        c_err "Test:  curl -I -H \"Authorization: Bearer \$GITHUB_TOKEN\" \\"
+        c_err "         https://api.github.com/repos/$REPO"
+    fi
+    c_err ""
+    c_err "Repo: $REPO   Branch: $BRANCH"
     exit 1
 fi
+
 unzip -q "$work/puls.zip" -d "$work/x" || { c_err "Archiv beschädigt."; exit 1; }
 
+# Der Ordnername im Archiv haengt vom Weg ab: GitHub nennt ihn nach Repo und
+# Branch, die API nach Repo und Commit. Deshalb wird der einzige Unterordner
+# gesucht statt ein Name geraten — und geprueft, dass app/ wirklich drin ist.
 src=$(find "$work/x" -mindepth 1 -maxdepth 1 -type d | head -1)
-[ -d "$src/app" ] || { c_err "Im Archiv fehlt der Ordner app/ — falscher Branch?"; exit 1; }
+if [ -z "$src" ] || [ ! -d "$src/app" ]; then
+    c_err "Im Archiv fehlt der Ordner app/ — falscher Branch oder leeres Paket?"
+    c_err "Entpackt nach: ${src:-<nichts gefunden>}"
+    exit 1
+fi
+c_ok "Paket entpackt ($(find "$src" -type f | wc -l) Dateien)"
 
 # Datenbank sichern, solange sie noch unberuehrt ist. Kostet Sekunden und
 # erspart im Zweifel den Abend.

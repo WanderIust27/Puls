@@ -371,34 +371,45 @@ Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync
 samt Verlaufs-Import gegen einen nachgebauten Client, die komplette API gegen
 die echte Anwendung, und die Frontend-Struktur.
 
-## Installieren und aktualisieren — ein Befehl
+## Installieren und aktualisieren
 
-Einmalig einrichten:
+Das Repository ist **privat**. GitHub antwortet auf einen Download ohne
+Anmeldung deshalb mit 404 — ununterscheidbar von „gibt es nicht". Für
+`./update.sh` gibt es zwei Wege:
 
-```bash
-mkdir -p /mnt/user/appdata/puls-coach && cd /mnt/user/appdata/puls-coach && \
-  wget -qO update.sh https://raw.githubusercontent.com/WanderIust27/Puls/main/update.sh && \
-  chmod +x update.sh && ./update.sh
+### Weg A — mit Token (Repository bleibt privat)
+
+Einmalig ein Token anlegen: github.com → *Settings* → *Developer settings* →
+*Personal access tokens* → **Fine-grained tokens**. Zugriff auf genau dieses
+Repository, Berechtigung *Contents: Read-only*. Dann in die `.env`:
+
+```
+GITHUB_TOKEN=github_pat_...
 ```
 
-Ab dann genügt jedes Mal:
+Ab dann genügt:
 
 ```bash
 cd /mnt/user/appdata/puls-coach && ./update.sh
 ```
 
-Sollte `raw.githubusercontent.com` in deinem Netz nicht erreichbar sein, geht
-es auch über das Archiv:
+### Weg B — Repository öffentlich schalten
 
-```bash
-mkdir -p /mnt/user/appdata/puls-coach && cd /mnt/user/appdata/puls-coach && \
-  wget -qO /tmp/p.zip https://codeload.github.com/WanderIust27/Puls/zip/refs/heads/main && \
-  unzip -qjo /tmp/p.zip "*/update.sh" -d . && chmod +x update.sh && ./update.sh
-```
+Im Repository unter *Settings* → *General* → ganz unten *Change repository
+visibility*. Danach funktioniert `./update.sh` ohne Token. Im Paket stehen
+keine Geheimnisse: Deine `.env` ist per `.gitignore` ausgeschlossen, und
+`.env.example` enthält nur leere Platzhalter.
 
-Das Skript lädt den aktuellen Stand, sichert vorher die Datenbank als
-`puls-backup-<Datum>.db` in den Ordner, tauscht nur die Programmdateien aus und
-startet über `deploy.sh` neu. Deine `.env` bleibt stehen, die Volumes
+### Wenn beides nicht geht
+
+Auf GitHub *Code → Download ZIP* (im Browser bist du angemeldet), entpacken
+und den Inhalt in `/mnt/user/appdata/puls-coach/` spiegeln, dann `./deploy.sh`.
+
+### Was das Skript tut
+
+Es lädt den aktuellen Stand, sichert vorher die Datenbank als
+`puls-backup-<Datum>.db` in den Ordner, tauscht **nur die Programmdateien**
+aus und startet über `deploy.sh` neu. Deine `.env` bleibt stehen, die Volumes
 `puls-data` und `ollama-data` werden nicht angefasst.
 
 | Aufruf | Wirkung |
@@ -407,8 +418,7 @@ startet über `deploy.sh` neu. Deine `.env` bleibt stehen, die Volumes
 | `./update.sh --no-deploy` | nur die Dateien austauschen |
 | `PULS_BRANCH=xyz ./update.sh` | einen anderen Branch nehmen |
 
-Wenn etwas klemmt, zeigt `sh -x update.sh` jeden Schritt einzeln — daran ist
-meist sofort zu sehen, woran es hängt.
+Wenn etwas klemmt, zeigt `sh -x update.sh` jeden Schritt einzeln.
 
 ## System aktualisieren (von Hand)
 
