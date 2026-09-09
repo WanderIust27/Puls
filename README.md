@@ -520,6 +520,8 @@ Weitere Befehle:
 | Befehl | Wirkung |
 |---|---|
 | `./deploy.sh` | Images bauen und alles starten — auch nach jedem Update |
+| `./deploy.sh version` | prüft, ob der laufende Container dem Ordner entspricht |
+| `./deploy.sh restart` | Container neu starten (bringt **keinen** neuen Code) |
 | `./deploy.sh --no-build` | nur neu starten, ohne zu bauen |
 | `./deploy.sh status` | laufende Container und Erreichbarkeit prüfen |
 | `./deploy.sh logs` | Logs verfolgen |

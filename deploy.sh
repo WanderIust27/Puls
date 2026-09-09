@@ -64,6 +64,17 @@ case "$cmd" in
       echo
       c_info "Die Volumes puls-data und ollama-data sind unberührt."
       exit 0 ;;
+  restart)
+      # Reiner Neustart ohne Bauen. Achtung: Bringt KEINEN neuen Code in die
+      # Oberflaeche — die steckt im Image. Nach einem Update ist ./deploy.sh
+      # das Richtige.
+      for c in puls-coach puls-ollama puls-miscale; do
+          docker restart "$c" >/dev/null 2>&1 && c_ok "$c neu gestartet" \
+              || c_info "$c läuft nicht"
+      done
+      echo
+      c_info "Das startet nur neu. Neuen Code bringt erst:  ./deploy.sh"
+      exit 0 ;;
   logs)
       exec docker logs -f --tail 50 puls-coach ;;
   status|version)
@@ -79,15 +90,31 @@ case "$cmd" in
       # ab, laeuft der Container noch auf altem Code — das ist der haeufigste
       # Grund dafuer, dass ein Update "nicht ankommt".
       running=$(echo "$health" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
-      c_ok "Läuft: Kennung ${running:-unbekannt}"
+      ondisk=""
       if command -v python3 >/dev/null && [ -f app/version.py ]; then
           ondisk=$(python3 -c "import sys; sys.path.insert(0,'.'); \
               from app.version import VERSION; print(VERSION)" 2>/dev/null)
-          if [ -n "$ondisk" ] && [ -n "$running" ] && [ "$ondisk" != "$running" ]; then
+      fi
+
+      if [ -z "$running" ]; then
+          # Kennungen gibt es erst seit dem Versionsstempel. Meldet der
+          # laufende Container keine, ist er aelter als diese Aenderung —
+          # der klarste Beleg, dass nicht neu gebaut wurde.
+          c_warn "Der laufende Container meldet keine Kennung."
+          c_warn "Er stammt also aus der Zeit vor dem Versionsstempel — die"
+          c_warn "neuen Dateien liegen im Ordner, sind aber nicht gebaut."
+          echo
+          c_warn "Beheben mit:    ./deploy.sh"
+          [ -n "$ondisk" ] && c_info "Im Ordner liegt Kennung $ondisk."
+      else
+          c_ok "Läuft: Kennung $running"
+          if [ -n "$ondisk" ] && [ "$ondisk" != "$running" ]; then
               echo
               c_warn "Im Ordner liegt Kennung $ondisk — der Container läuft auf $running."
               c_warn "Das Update ist also da, aber noch nicht gebaut. Beheben mit:"
               c_warn "    ./deploy.sh"
+          elif [ -n "$ondisk" ]; then
+              c_ok "Ordner und Container sind auf demselben Stand."
           fi
       fi
       exit 0 ;;
@@ -175,7 +202,7 @@ case "$cmd" in
       exit 0 ;;
   deploy|--no-build) : ;;
   *) c_err "Unbekannter Befehl: $cmd"
-     c_info "Bekannt: deploy, --no-build, status, version, logs, stop, gpu"
+     c_info "Bekannt: deploy, --no-build, status, version, restart, logs, stop, gpu"
      exit 1 ;;
 esac
 
