@@ -605,6 +605,14 @@ ein Aufruf, der beim Bearbeiten in einen fremden Klick-Handler gerutscht war:
 Der Autopilot wurde dadurch nur noch beim Löschen eines Supplements befüllt, auf
 der Seite standen leere Auswahlfelder. Kein Python-Test konnte das sehen, denn
 die Datei war syntaktisch einwandfrei und jeder Endpunkt antwortete korrekt.
+Sie prüft dabei nicht nur, ob ein Klick ankommt, sondern ob man ihn **sieht**:
+Größe und Form der Knöpfe, und ob sich ein ausgewählter Wert farblich abhebt.
+Anlass war die Bewertung nach einer Einheit — die Regel für die Zahlenknöpfe
+hing an einem Elternteil, den diese Karte nicht hat. Der Klick kam an, der Wert
+wurde gespeichert, sichtbar passierte nichts. Für den Nutzer war das Bewerten
+damit schlicht kaputt, und kein Test, der nur Zustände prüft, hätte das je
+bemerkt.
+
 Diese Suite braucht Playwright und einen Chromium; fehlt beides, überspringt sie
 sich, damit sie auf dem Server niemanden aufhält.
 

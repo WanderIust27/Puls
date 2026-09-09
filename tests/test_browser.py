@@ -46,7 +46,18 @@ for name, attrs in (("garminconnect", {"Garmin": type("Garmin", (), {})}),
                 setattr(mod, k, v)
             sys.modules[name] = mod
 
+from app.db import get_db, init_db                          # noqa: E402
 from app.main import app                                    # noqa: E402
+
+# Eine frische Einheit anlegen, zu der noch nichts gesagt wurde — sonst gibt es
+# nichts zu bewerten und der Test prüfte eine leere Karte.
+init_db()
+with get_db() as _db:
+    import datetime as _dt
+    _db.execute("""INSERT INTO activities(sport, start_time, duration_s,
+                       distance_m, avg_hr, source, name)
+                   VALUES('running', ?, 2400, 7000, 142, 'manual', 'Testlauf')""",
+                (f"{_dt.date.today().isoformat()}T07:00:00",))
 
 PORT = 8899
 VIEWS = ("dashboard", "plan", "exercises", "nutrition", "mood",
@@ -100,11 +111,75 @@ try:
         page.goto(f"http://127.0.0.1:{PORT}/", wait_until="networkidle")
         page.wait_for_timeout(1500)
 
+        # --- Bewerten: die Zahlen müssen anklickbar UND sichtbar sein -----
+        # Die Regel für die Zahlenknöpfe hing einmal an einem Elternteil, den
+        # die Rückmeldungskarte nicht hat. Der Klick kam an, sichtbar passierte
+        # nichts — für den Nutzer war das Bewerten schlicht kaputt.
+        page.click('nav.bottom button[data-view="dashboard"]')
+        page.wait_for_timeout(2000)
+        ok("Rückmeldung wird abgefragt", page.is_visible("#feedbackCard"))
+        dots = page.eval_on_selector_all('#feedbackBody [data-fb]', "e => e.length")
+        ok("Zehn Zahlen zum Anklicken", dots == 10, f"{dots} Knöpfe")
+        size = page.eval_on_selector(
+            '#feedbackBody [data-fb]',
+            "el => { const r = el.getBoundingClientRect();"
+            "        return { w: r.width, h: r.height,"
+            "                 round: getComputedStyle(el).borderRadius }; }")
+        ok("Die Zahlen sind als Knöpfe erkennbar",
+           size["w"] >= 24 and size["h"] >= 24 and size["round"] != "0px", str(size))
+
+        page.click('#feedbackBody [data-fb][data-field="rating"][data-value="4"]')
+        page.wait_for_timeout(200)
+        marked = page.eval_on_selector_all(
+            '#feedbackBody [data-field="rating"].on', "e => e.map(x => x.textContent.trim())")
+        ok("Die geklickte Zahl wird markiert", marked == ["4"], str(marked))
+        highlighted = page.eval_on_selector(
+            '#feedbackBody [data-field="rating"].on',
+            "el => getComputedStyle(el).backgroundColor")
+        plain = page.eval_on_selector(
+            '#feedbackBody [data-field="rating"]:not(.on)',
+            "el => getComputedStyle(el).backgroundColor")
+        ok("… und hebt sich sichtbar ab", highlighted != plain,
+           f"{highlighted} vs {plain}")
+
+        page.click('#feedbackBody [data-fb][data-field="effort"][data-value="2"]')
+        page.wait_for_timeout(200)
+        ok("Beide Skalen lassen sich getrennt setzen",
+           page.eval_on_selector_all('#feedbackBody .dot.on', "e => e.length") == 2)
+        page.click('#feedbackBody [data-fb][data-field="rating"][data-value="2"]')
+        page.wait_for_timeout(200)
+        again = page.eval_on_selector_all(
+            '#feedbackBody [data-field="rating"].on', "e => e.map(x => x.textContent.trim())")
+        ok("Umwählen ersetzt die Wahl, statt sie zu ergänzen", again == ["2"], str(again))
+
+        page.click("#feedbackBody [data-fbsave]")
+        page.wait_for_timeout(2500)
+        ok("Die Bewertung ist gespeichert",
+           not page.is_visible("#feedbackCard")
+           or page.eval_on_selector_all("#feedbackBody .fb-item", "e => e.length") == 0,
+           "Karte verschwindet nach dem Speichern")
+
         # --- Jede Ansicht muss sich oeffnen lassen ------------------------
         for view in VIEWS:
             page.click(f'nav.bottom button[data-view="{view}"]')
             page.wait_for_timeout(1000)
             ok(f"Ansicht {view} öffnet", page.is_visible(f"#view-{view}"))
+
+        # --- Gemüt: dieselben Zahlenknöpfe, gleiche Erwartung -------------
+        page.click('nav.bottom button[data-view="mood"]')
+        page.wait_for_timeout(1500)
+        mood_dots = page.eval_on_selector_all(
+            '#view-mood [data-scale-set]', "e => e.length")
+        ok("Gemüt: Regler haben Zahlen", mood_dots >= 15, f"{mood_dots} Knöpfe")
+        page.click('#view-mood [data-scale-set="mood"][data-value="4"]')
+        page.wait_for_timeout(200)
+        ok("Gemüt: die Zahl lässt sich wählen",
+           page.eval_on_selector_all(
+               '#view-mood [data-scale-set="mood"].on', "e => e.length") == 1)
+        mood_size = page.eval_on_selector(
+            '#view-mood [data-scale-set]',
+            "el => el.getBoundingClientRect().width")
+        ok("Gemüt: die Knöpfe haben Größe", mood_size >= 24, f"{mood_size} px")
 
         # --- Coach: Ziel, Woche und Trends stehen auf einer Seite ---------
         page.click('nav.bottom button[data-view="coach"]')

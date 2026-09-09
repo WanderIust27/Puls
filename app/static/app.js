@@ -1923,14 +1923,19 @@ function renderBoosters(d) {
   }));
 }
 
+const fbDraft = {};
+
 function scaleRow(label, name, id) {
+  // Eine schon getroffene Wahl muss ein Neuzeichnen überstehen — das Dashboard
+  // lädt sich nebenbei nach, und eine verschwundene Auswahl sieht kaputt aus.
+  const chosen = (fbDraft[id] || {})[name];
   return `<div class="fb-scale"><span class="lb">${label}</span>
     ${[1, 2, 3, 4, 5].map((n) =>
-      `<button class="dot" data-fb="${id}" data-field="${name}" data-value="${n}">${n}</button>`
+      `<button class="dot${chosen === n ? " on" : ""}" data-fb="${id}"
+        data-field="${name}" data-value="${n}" aria-label="${label} ${n} von 5"
+        >${n}</button>`
     ).join("")}</div>`;
 }
-
-const fbDraft = {};
 
 function renderFeedback(list) {
   const card = $("#feedbackCard");
