@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from typing import Any
 
 from ..db import get_db, get_setting, rows_to_dicts
+from . import food_table
 
 log = logging.getLogger("puls.nutrition")
 
@@ -141,6 +143,143 @@ def targets() -> dict[str, Any]:
             + f". Eiweiß mit {protein_kg} g je kg, Fett mit {FAT_PER_KG} g je kg, "
               f"der Rest Kohlenhydrate."),
     }
+
+
+def estimate_from_text(text: str) -> dict[str, Any]:
+    """Aus einer Beschreibung Nährwerte rechnen.
+
+    Arbeitsteilung wie überall hier: Das Modell zerlegt den Satz in
+    Bestandteile und Mengen ("zwei Eier und ein Vollkornbrot" → Ei 120 g,
+    Vollkornbrot 50 g), die Nährwerte kommen aus der Tabelle. Ein lokales
+    Modell auf der CPU schätzt Kalorien jedes Mal anders; eine Tabelle schätzt
+    auch, aber gleichbleibend und nachschlagbar.
+
+    Ohne laufendes Modell wird der Text selbst zerlegt — gröber, aber besser
+    als gar nichts.
+    """
+    text = (text or "").strip()
+    if not text:
+        return {"items": [], "total": _empty_total(), "unknown": [],
+                "hint": "Schreib auf, was du gegessen hast."}
+
+    parts = _model_split(text) or _plain_split(text)
+    items, unknown = [], []
+    for part in parts:
+        name = str(part.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            grams = float(part.get("grams") or 0)
+        except (TypeError, ValueError):
+            grams = 0.0
+        if grams <= 0:
+            try:
+                pieces = float(part.get("pieces") or 1)
+            except (TypeError, ValueError):
+                pieces = 1.0
+            grams = food_table.piece_grams(name) * max(0.25, min(20.0, pieces))
+        grams = max(1.0, min(2000.0, grams))
+        found = food_table.nutrients(name, grams)
+        if found:
+            found["name"] = name
+            items.append(found)
+        else:
+            unknown.append(name)
+
+    total = _empty_total()
+    for i in items:
+        for key in total:
+            total[key] = round(total[key] + i[key], 1)
+    total["kcal"] = round(total["kcal"])
+
+    # Gegenprobe: Eiweiß und Kohlenhydrate 4 kcal/g, Fett 9. Weicht die Summe
+    # stark ab, stimmt etwas nicht — dann lieber sagen als still ausliefern.
+    from_macros = total["protein_g"] * 4 + total["carbs_g"] * 4 + total["fat_g"] * 9
+    plausible = (not total["kcal"]) or abs(from_macros - total["kcal"]) <= \
+        max(60.0, total["kcal"] * 0.25)
+
+    hint = None
+    if not items:
+        hint = ("Daraus konnte nichts berechnet werden. Nenne die Lebensmittel "
+                "einzeln, gern mit Menge — etwa „150 g Hähnchen, 80 g Reis“.")
+    elif unknown:
+        hint = ("Nicht gefunden: " + ", ".join(unknown[:4])
+                + ". Diese Anteile fehlen in der Summe.")
+    elif not plausible:
+        hint = "Die Summe wirkt unstimmig — bitte vor dem Speichern prüfen."
+
+    return {"text": text, "items": items, "total": total, "unknown": unknown,
+            "plausible": plausible, "hint": hint,
+            "name": _short_name(text)}
+
+
+def _empty_total() -> dict[str, float]:
+    return {"kcal": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
+
+
+def _short_name(text: str) -> str:
+    first = text.strip().splitlines()[0]
+    return (first[:57] + "…") if len(first) > 58 else first
+
+
+def _model_split(text: str) -> list[dict[str, Any]]:
+    """Das Modell den Satz zerlegen lassen — Mengen ja, Nährwerte nein."""
+    try:
+        from .ollama_client import generate_json
+        data = generate_json(
+            prompt=(
+                "Zerlege die folgende Mahlzeitenbeschreibung in einzelne "
+                "Lebensmittel mit Mengen. Antworte als JSON-Objekt mit dem "
+                "Schlüssel \"items\": eine Liste aus Objekten mit \"name\" "
+                "(das Lebensmittel, einzelnes deutsches Wort wenn möglich), "
+                "\"grams\" (geschätzte Menge in Gramm, Zahl) und optional "
+                "\"pieces\" (Stückzahl). Schätze Mengen realistisch, wenn "
+                "keine dabeisteht. Nenne KEINE Kalorien oder Nährwerte — die "
+                "werden woanders berechnet. Erfinde keine Zutaten, die nicht "
+                "genannt sind.\n\n"
+                f"Beschreibung: {text[:500]}"),
+            system="Du extrahierst Daten. Du antwortest ausschliesslich mit JSON.")
+        items = (data or {}).get("items")
+        return items if isinstance(items, list) else []
+    except Exception as e:                                      # noqa: BLE001
+        log.debug("Mahlzeit ohne Modell zerlegt: %s", e)
+        return []
+
+
+# "150 g Reis", "2 Eier", "eine Banane"
+_AMOUNT = re.compile(
+    r"(?P<num>\d+(?:[.,]\d+)?)\s*(?P<unit>g|gramm|kg|ml|l|stück|stk|x)?\s*"
+    r"(?P<name>[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß\s-]{2,40})", re.I)
+_WORDS = {"ein": 1, "eine": 1, "einen": 1, "zwei": 2, "drei": 3, "vier": 4,
+          "fünf": 5, "sechs": 6, "halbe": 0.5, "halber": 0.5}
+
+
+def _plain_split(text: str) -> list[dict[str, Any]]:
+    """Notnagel ohne Modell: Mengen und Namen aus dem Text klauben."""
+    out: list[dict[str, Any]] = []
+    # Nicht an einem Komma trennen, das in einer Zahl steht: "0,5 kg" ist eine
+    # Menge, keine zwei Bestandteile.
+    for chunk in re.split(r"(?<!\d),(?!\d)|[;\n]| und | mit ", text):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        m = _AMOUNT.search(chunk)
+        if m:
+            num = float(m.group("num").replace(",", "."))
+            unit = (m.group("unit") or "").lower()
+            name = m.group("name").strip()
+            if unit in ("g", "gramm", "ml"):
+                out.append({"name": name, "grams": num})
+            elif unit in ("kg", "l"):
+                out.append({"name": name, "grams": num * 1000})
+            else:
+                out.append({"name": name, "pieces": num})
+            continue
+        words = chunk.split()
+        count = _WORDS.get(words[0].lower()) if words else None
+        name = " ".join(words[1:]) if count else chunk
+        out.append({"name": name, "pieces": count or 1})
+    return out
 
 
 def add_meal(data: dict[str, Any]) -> dict[str, Any]:

@@ -23,12 +23,16 @@ echo "PULS — Testlauf"
 (cd miscale && python3 test_parser.py >/dev/null 2>&1) \
     && printf '  %-22s %s\n' "Waagen-Parser" "bestanden" \
     || { printf '  %-22s FEHLGESCHLAGEN\n' "Waagen-Parser"; failed="$failed Waagen-Parser"; }
+(cd miscale && python3 test_flow.py >/dev/null 2>&1) \
+    && printf '  %-22s %s\n' "Waagen-Ablauf" "bestanden" \
+    || { printf '  %-22s FEHLGESCHLAGEN\n' "Waagen-Ablauf"; failed="$failed Waagen-Ablauf"; }
 run "Körperdaten"     python3 tests/test_body.py
 run "Detaildaten"     python3 tests/test_activity_details.py
 run "Gym-Auswertung"  python3 tests/test_gym_analysis.py
 run "Gemüt & Supplements" python3 tests/test_mood.py
 run "Lernen & Gedächtnis" python3 tests/test_learning.py
 run "Zusammenhänge"    python3 tests/test_insights.py
+run "Essen & Nährwerte" python3 tests/test_food.py
 run "Coach-Vorschläge" python3 tests/test_suggestions.py
 run "Statistik & Autopilot" python3 tests/test_stats.py
 run "Trends & Wochenplan" python3 tests/test_trends.py

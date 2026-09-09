@@ -37,7 +37,15 @@ COOLDOWN_S = int(os.environ.get("COOLDOWN_S", "300"))
 SETTLE_S = float(os.environ.get("SETTLE_S", "3"))
 # Wie lange auf die Impedanz gewartet wird, bevor nur das Gewicht gemeldet wird.
 # Die Mi Scale misst sie erst, wenn man barfuß ein paar Sekunden stillsteht.
-IMPEDANCE_WAIT_S = float(os.environ.get("IMPEDANCE_WAIT_S", "12"))
+IMPEDANCE_WAIT_S = float(os.environ.get("IMPEDANCE_WAIT_S", "20"))
+# Nur Messungen uebernehmen, zu denen auch die Impedanz kam.
+#
+# Die Waage meldet das Gewicht schon, waehrend man sich noch daraufstellt und
+# das Gewicht verlagert — diese fruehen Werte sind zwar "stabil" im Sinne des
+# Protokolls, aber nicht das, was man wiegt. Die Impedanz misst sie erst, wenn
+# man wirklich ruhig barfuss steht. Ein Wert MIT Impedanz ist deshalb nicht nur
+# vollstaendiger, er ist auch das verlaesslichere Gewicht.
+REQUIRE_IMPEDANCE = os.environ.get("REQUIRE_IMPEDANCE", "1") not in ("0", "false", "no")
 STATUS_INTERVAL_S = int(os.environ.get("STATUS_INTERVAL_S", "10"))
 # Takt, in dem geprüft wird, ob eine Messung reif zum Senden ist.
 # Nur für Tests interessant — dort wird er heruntergesetzt.
@@ -184,6 +192,11 @@ def _detection_callback(device, advertisement_data) -> None:
             log.info("Impedanz empfangen (%s) — Körperwerte können berechnet werden.",
                      reading["impedance"])
         _pending["weight_kg"] = reading["weight_kg"]
+        # Das Gewicht aus dem Moment festhalten, in dem die Impedanz vorlag:
+        # Dann stand man ruhig. Spaetere Frames koennen wieder wackeln, weil
+        # man sich schon zum Absteigen bewegt.
+        if reading.get("impedance"):
+            _pending["weight_at_impedance"] = reading["weight_kg"]
 
 
 async def flusher() -> None:
@@ -214,11 +227,29 @@ async def flusher() -> None:
             # Noch keine Impedanz: Geduld haben, sie kommt oft erst spät.
             if age < IMPEDANCE_WAIT_S:
                 continue
+            if REQUIRE_IMPEDANCE:
+                log.info("Keine Impedanz nach %.0f s — Messung (%s kg) verworfen. "
+                         "Barfuß und ein paar Sekunden ruhig stehen; erst dann "
+                         "misst die Waage Fettanteil und Co. — und erst dann "
+                         "steht auch das Gewicht wirklich fest. "
+                         "(REQUIRE_IMPEDANCE=0 nimmt das Gewicht auch ohne.)",
+                         IMPEDANCE_WAIT_S, _pending.get("weight_kg"))
+                _pending = None
+                _stats["discarded_no_impedance"] = \
+                    _stats.get("discarded_no_impedance", 0) + 1
+                continue
             log.info("Keine Impedanz nach %.0f s — melde nur das Gewicht. "
                      "(Barfuß und stillstehen liefert die Körperwerte.)",
                      IMPEDANCE_WAIT_S)
 
         reading, _pending = _pending, None
+        # Das Gewicht aus dem Impedanz-Moment schlaegt jeden spaeteren Frame:
+        # Da stand man ruhig, danach bewegt man sich schon zum Absteigen.
+        settled = reading.pop("weight_at_impedance", None)
+        if settled is not None and settled != reading["weight_kg"]:
+            log.info("Gewicht aus dem Impedanz-Moment genommen: %s kg statt %s kg.",
+                     settled, reading["weight_kg"])
+            reading["weight_kg"] = settled
 
         # Nachreichen erlauben: Wenn wir eben ohne Impedanz gemeldet haben und
         # jetzt eine MIT Impedanz vorliegt, ist das eine Ergänzung, keine neue

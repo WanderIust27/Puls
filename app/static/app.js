@@ -195,6 +195,82 @@ function lineChart(container, points, { color = "var(--teal)", unit = "" } = {})
   hover.addEventListener("pointerleave", hideTip);
 }
 
+/* ------------------------------------------- Zeitraum-Umschalter je Diagramm */
+
+/* Tag / Woche / Monat über jedem Verlaufsdiagramm. Die Wahl bleibt je
+   Diagramm gespeichert — wer sich den Monat ansieht, will nach dem Neuladen
+   nicht wieder auf der Woche stehen. */
+
+const RANGE_DAYS = { day: 1, week: 7, month: 30, quarter: 91, year: 365 };
+const RANGE_TITLE = { day: "Tag", week: "Woche", month: "Monat",
+                      quarter: "3 Monate", year: "Jahr" };
+
+function rangeOf(key, fallback = "month") {
+  try { return localStorage.getItem("puls.range." + key) || fallback; }
+  catch (e) { return fallback; }
+}
+
+function setRange(key, value) {
+  try { localStorage.setItem("puls.range." + key, value); } catch (e) { /* egal */ }
+}
+
+/* Hängt den Umschalter in ein Element und ruft draw(range) bei jedem Wechsel. */
+function rangeTabs(host, key, options, draw, fallback) {
+  if (!host) return;
+  const current = () => {
+    const r = rangeOf(key, fallback || options[options.length - 1]);
+    return options.includes(r) ? r : options[options.length - 1];
+  };
+  const paint = () => {
+    host.className = "range-tabs";
+    host.innerHTML = options.map((o) =>
+      `<button data-range="${o}"${o === current() ? ' class="on"' : ""}>${
+        RANGE_TITLE[o]}</button>`).join("");
+    host.querySelectorAll("[data-range]").forEach((b) =>
+      b.addEventListener("click", () => {
+        setRange(key, b.dataset.range);
+        paint();
+        draw(b.dataset.range, RANGE_DAYS[b.dataset.range]);
+      }));
+  };
+  paint();
+  draw(current(), RANGE_DAYS[current()]);
+}
+
+/* Reihen mit einem Wert je Tag bekommen KEINEN Tages-Umschalter: Ein Tag wäre
+   ein einzelner Punkt, und einen Umschalter anzubieten, der nichts zeigen kann,
+   ist ein Versprechen, das die Daten nicht halten. */
+const DAILY_RANGES = ["week", "month", "quarter", "year"];
+
+/* Zeilen mit einem Feld `day` (YYYY-MM-DD) auf den Zeitraum beschneiden. */
+function daysBack(rows, days, field = "day") {
+  const from = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+  return rows.filter((r) => (r[field] || "") >= from);
+}
+
+/* Achsenbeschriftung passend zur Spanne: Bei einer Woche der Wochentag, bei
+   einem Monat Tag und Monat, bei einem Jahr nur noch der Monat. */
+const MONTH_SHORT = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
+                     "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+const DAY_SHORT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+function dayLabelFor(range) {
+  return (iso) => {
+    const d = new Date(iso + "T12:00:00");
+    if (isNaN(d)) return iso.slice(5);
+    if (range === "week") return `${DAY_SHORT[d.getDay()]} ${d.getDate()}.`;
+    if (range === "year") return MONTH_SHORT[d.getMonth()];
+    return `${d.getDate()}.${d.getMonth() + 1}.`;
+  };
+}
+
+/* Punkte auf den gewählten Zeitraum beschneiden. */
+function withinRange(points, range) {
+  const days = RANGE_DAYS[range] || 30;
+  const from = Date.now() - days * 864e5;
+  return points.filter((p) => p.t >= from);
+}
+
 function ringChart(svg, count, target) {
   const r = 42, c = 2 * Math.PI * r;
   const frac = Math.min(1, target ? count / target : 0);
@@ -306,15 +382,25 @@ async function loadDashboard() {
     $("#researchTip").innerHTML = `<b>${esc(d.research_tip.topic || "")}</b><br>${esc(d.research_tip.content)}`;
   }
 
-  barChart($("#loadChart"), d.load_series.map((p, i) => ({
-    value: Math.round(p.load), tip: `${p.day} · ${p.count} Training(s)`,
-    label: i % 7 === 0 ? p.day.slice(8) + "." + p.day.slice(5, 7) : "",
-  })));
+  rangeTabs($("#loadRange"), "load", DAILY_RANGES, (range, days) => {
+    const rows = daysBack(d.load_series, days);
+    const label = dayLabelFor(range);
+    const every = Math.max(1, Math.ceil(rows.length / 7));
+    barChart($("#loadChart"), rows.map((p, i) => ({
+      value: Math.round(p.load), tip: `${p.day} · ${p.count} Training(s)`,
+      label: i % every === 0 ? label(p.day) : "",
+    })));
+  }, "month");
 
   renderComposition(d.body_composition);
 
-  const ws = d.weight_series.map((p) => ({ value: p.weight_kg, label: p.day.slice(5), tip: p.day }));
-  lineChart($("#weightChart"), ws, { unit: " kg" });
+  const ws = d.weight_series.map((p) => ({ ...p, value: p.weight_kg }));
+  rangeTabs($("#weightRange"), "weight", DAILY_RANGES, (range, days) => {
+    const label = dayLabelFor(range);
+    lineChart($("#weightChart"), daysBack(ws, days)
+      .map((p) => ({ value: p.value, label: label(p.day), tip: p.day })),
+      { unit: " kg" });
+  }, "quarter");
   if (ws.length >= 2) {
     const diff = (ws[ws.length - 1].value - ws[0].value).toFixed(1);
     $("#weightDelta").textContent =
@@ -468,8 +554,11 @@ async function loadPlan() {
 }
 
 function renderPlanned(open) {
+  // Die Reihenfolge kommt vom Server (nächstes Datum zuerst). data-date macht
+  // sie prüfbar, ohne dass ein Test die Anzeigetexte parsen müsste.
   $("#plannedList").innerHTML = open.length ? open.map((w) => `
-    <div class="list-item" style="align-items:flex-start">
+    <div class="list-item" style="align-items:flex-start"
+         data-date="${esc(w.planned_date || "9999-12-31")}">
       ${kindTag(w.sport)}
       <div class="grow">
         <div class="title">${esc(w.name)}
@@ -1057,11 +1146,14 @@ async function loadBody() {
     </div>`).join("") || '<p class="muted">Noch keine Messung.</p>';
 
   /* Trendlinie aus den Referenzmessungen */
-  const points = (summary.points || [])
-    .filter((p) => p.smooth_kg != null)
-    .map((p) => ({ value: p.smooth_kg, label: p.day.slice(5),
-                   tip: `${p.day}${p.measured ? "" : " (umgerechnet)"}` }));
-  lineChart($("#bodyChart"), points, { unit: " kg" });
+  const bodyPoints = (summary.points || []).filter((p) => p.smooth_kg != null);
+  rangeTabs($("#bodyRange"), "body", DAILY_RANGES, (range, days) => {
+    const label = dayLabelFor(range);
+    lineChart($("#bodyChart"), daysBack(bodyPoints, days)
+      .map((p) => ({ value: p.smooth_kg, label: label(p.day),
+                     tip: `${p.day}${p.measured ? "" : " (umgerechnet)"}` })),
+      { unit: " kg" });
+  }, "quarter");
 
   const disc = summary.discipline || {};
   const deltas = [
@@ -1305,15 +1397,51 @@ function watchNote() {
   }, 900);
 }
 
+/* Jeder Eintrag steht an seiner Uhrzeit, nicht auf einem Tagesraster: Drei
+   Einträge um 7, 13 und 22 Uhr sind kein Drittel-Drittel-Drittel, und zwei
+   Tage ohne Eintrag sind eine Lücke, kein nahtloser Strich. */
+function renderMoodChart(entries) {
+  const clean = entries
+    .filter((e) => e.recorded_at)
+    .map((e) => ({ t: new Date(e.recorded_at.replace(" ", "T")).getTime(), e }))
+    .filter((p) => !isNaN(p.t));
+
+  rangeTabs($("#moodRange"), "mood", ["day", "week", "month", "quarter"],
+    (range, days) => {
+      const from = Date.now() - days * 864e5;
+      const inRange = clean.filter((p) => p.t >= from);
+      const series = [
+        { key: "mood", label: "Stimmung", color: "var(--chart-1)" },
+        { key: "energy", label: "Energie", color: "var(--chart-2)" },
+        { key: "stress", label: "Stress", color: "var(--chart-4)" },
+      ].map((s) => ({ ...s, points: inRange
+        .filter((p) => p.e[s.key] != null)
+        .map((p) => ({ t: p.t, value: p.e[s.key] })) }))
+       .filter((s) => s.points.length);
+
+      $("#moodChartInfo").textContent = inRange.length
+        ? `${inRange.length} ${inRange.length === 1 ? "Eintrag" : "Einträge"}`
+        : "";
+      timeChart($("#moodChart"), series, {
+        from, to: Date.now(), min: 1, max: 5, unit: " von 5",
+        // Über einen Tag hinweg soll eine Nacht ohne Eintrag als Lücke
+        // sichtbar bleiben; über ein Vierteljahr wäre das nur Konfetti.
+        maxGapMs: days <= 1 ? 4 * 3600e3 : days <= 7 ? 36 * 3600e3 : 5 * 864e5,
+        empty: days <= 1
+          ? "Heute noch nichts eingetragen."
+          : "In diesem Zeitraum liegt noch nichts vor.",
+        label: "Gemütsverlauf",
+      });
+    }, "week");
+}
+
 async function loadMood() {
   loadRecovery();
-  const d = await api("/mood?days=30");
+  const d = await api("/mood?days=120");
   moodMeta = { regions: d.regions, kinds: d.kinds };
   renderScales(); renderComplaintPicker(); renderChosen();
 
-  const pts = (d.trend.points || []);
-  lineChart($("#moodChart"), pts.filter((p) => p.mood != null)
-    .map((p) => ({ value: p.mood, label: p.day.slice(5), tip: p.day })), { unit: "/5" });
+  renderMoodChart(d.entries || []);
 
   $("#moodList").innerHTML = d.entries.length ? d.entries.slice(0, 20).map((e) => `
     <div class="mood-row">
@@ -1482,10 +1610,19 @@ async function loadRecovery() {
   const pick = (key) => series.filter((r) => r[key] != null)
     .map((r) => ({ value: r[key], label: r.day.slice(5), tip: r.day }));
 
-  lineChart($("#hrvChart"), pick("hrv_avg"), { unit: " ms" });
-  lineChart($("#sleepChart"), series.filter((r) => r.sleep_seconds)
-    .map((r) => ({ value: +(r.sleep_seconds / 3600).toFixed(2),
-                   label: r.day.slice(5), tip: r.day })), { unit: " h" });
+  const dailyChart = (host, rangeHost, key, draw, fallback) =>
+    rangeTabs($(rangeHost), key, DAILY_RANGES,
+      (range, days) => draw($(host), daysBack(series, days), dayLabelFor(range)),
+      fallback || "month");
+
+  dailyChart("#hrvChart", "#hrvRange", "hrvRec", (el, rows, label) =>
+    lineChart(el, rows.filter((r) => r.hrv_avg != null)
+      .map((r) => ({ value: r.hrv_avg, label: label(r.day), tip: r.day })),
+      { unit: " ms" }));
+  dailyChart("#sleepChart", "#sleepRange", "sleepRec", (el, rows, label) =>
+    lineChart(el, rows.filter((r) => r.sleep_seconds)
+      .map((r) => ({ value: +(r.sleep_seconds / 3600).toFixed(2),
+                     label: label(r.day), tip: r.day })), { unit: " h" }));
 
   /* Schlafphasen der letzten Nacht als Anteilsbalken */
   const stages = [["sleep_deep_s", "Tief", "z4"], ["sleep_rem_s", "REM", "z3"],
@@ -1499,10 +1636,14 @@ async function loadRecovery() {
     <div class="zone-legend">${stages.map(([k, label]) =>
       l[k] ? `<span>${label}: ${fmtSleep(l[k])}</span>` : "").join("")}</div>` : "";
 
-  barChart($("#stressChart"), series.filter((r) => r.stress_avg != null)
-    .map((r) => ({ value: Math.round(r.stress_avg), label: r.day.slice(8),
-                   tip: `${r.day} — Stress Ø` })), { color: "var(--warn)" });
-  lineChart($("#batteryChart"), pick("body_battery_max"), { color: "var(--good)" });
+  dailyChart("#stressChart", "#stressRange", "stress", (el, rows, label) =>
+    barChart(el, rows.filter((r) => r.stress_avg != null)
+      .map((r) => ({ value: Math.round(r.stress_avg), label: label(r.day),
+                     tip: `${r.day} — Stress Ø` })), { color: "var(--warn)" }));
+  dailyChart("#batteryChart", "#batteryRange", "battery", (el, rows, label) =>
+    lineChart(el, rows.filter((r) => r.body_battery_max != null)
+      .map((r) => ({ value: r.body_battery_max, label: label(r.day), tip: r.day })),
+      { color: "var(--good)" }));
 }
 
 /* ------------------------------------------------------------ Rezepte */
@@ -1797,24 +1938,25 @@ function renderSleepAndHeart(rec) {
 
   /* Verlauf vor dem Normalband: erst dadurch ist zu sehen, ob ein Wert
      auffällig war oder im üblichen Rahmen lag. */
-  const dayLabel = (r) => r.day.slice(5);
-  baselineChart($("#rhrChart"),
-    series.filter((r) => r.resting_hr != null)
-      .map((r) => ({ value: r.resting_hr, label: dayLabel(r) })),
+  const banded = (host, rangeHost, key, field, opts) =>
+    rangeTabs($(rangeHost), key, DAILY_RANGES, (range, days) => {
+      const label = dayLabelFor(range);
+      baselineChart($(host),
+        daysBack(series, days).filter((r) => r[field] != null)
+          .map((r) => ({ value: opts.map ? opts.map(r) : r[field], label: label(r.day) })),
+        opts);
+    }, "month");
+
+  banded("#rhrChart", "#rhrRange", "rhr", "resting_hr",
     { baseline: b.resting_hr?.baseline, spread: 2, color: "var(--bad)",
       lowerIsBetter: true, label: "Ruhepuls", empty: "Noch zu wenige Ruhepuls-Werte." });
-  baselineChart($("#hrvDashChart"),
-    series.filter((r) => r.hrv_avg != null)
-      .map((r) => ({ value: r.hrv_avg, label: dayLabel(r) })),
+  banded("#hrvDashChart", "#hrvDashRange", "hrvDash", "hrv_avg",
     { baseline: b.hrv_avg?.baseline, spread: 5, color: "var(--good)",
       label: "HRV", empty: "Noch zu wenige HRV-Werte." });
-
-  /* Schlafverlauf auf dem Dashboard */
-  baselineChart($("#sleepChartDash"),
-    series.filter((r) => r.sleep_seconds)
-      .map((r) => ({ value: +(r.sleep_seconds / 3600).toFixed(2), label: dayLabel(r) })),
+  banded("#sleepChartDash", "#sleepDashRange", "sleepDash", "sleep_seconds",
     { baseline: b.sleep_seconds?.baseline ? b.sleep_seconds.baseline / 3600 : null,
       spread: 0.5, color: "var(--teal)", fmt: (v) => v.toFixed(1) + " h",
+      map: (r) => +(r.sleep_seconds / 3600).toFixed(2),
       label: "Schlafdauer", empty: "Noch zu wenige Nächte aufgezeichnet." });
 }
 
@@ -2110,6 +2252,56 @@ async function loadMeals() {
   }));
 }
 
+/* Freitext-Mahlzeit: erst rechnen und zeigen, dann auf Wunsch buchen. Was aus
+   einem Satz gelesen wurde, will man vorher sehen — geschätzt bleibt es
+   ohnehin, aber eine sichtbare Schätzung kann man korrigieren. */
+let mealEstimateText = "";
+
+async function estimateMeal(save) {
+  const text = $("#mealText").value.trim();
+  if (!text) { toast("Schreib auf, was du gegessen hast.", true); return; }
+  const box = $("#mealEstimate");
+  const r = await api("/nutrition/meals/estimate", { method: "POST",
+    body: JSON.stringify({ text, slot: $("#mealTextSlot").value, save }) });
+
+  if (save && r.meal) {
+    box.hidden = true;
+    $("#mealText").value = "";
+    toast("Eingetragen");
+    loadNutrition();
+    return;
+  }
+
+  mealEstimateText = text;
+  box.hidden = false;
+  const t = r.total;
+  box.innerHTML = `
+    <div class="est-box">
+      ${r.items.length ? `<table class="est-t"><tbody>${r.items.map((i) => `
+        <tr><td>${esc(i.matched)}</td><td class="n">${i.grams} g</td>
+            <td class="n">${i.kcal} kcal</td>
+            <td class="n muted">E ${i.protein_g} · K ${i.carbs_g} · F ${i.fat_g}</td></tr>
+        `).join("")}</tbody></table>` : ""}
+      <div class="est-sum"><b>${t.kcal} kcal</b> ·
+        ${t.protein_g} g Eiweiß · ${t.carbs_g} g Kohlenhydrate · ${t.fat_g} g Fett</div>
+      ${r.hint ? `<p class="muted">${esc(r.hint)}</p>` : ""}
+      <p class="muted">Geschätzt aus Durchschnittswerten je 100 g — keine
+        Packungsangabe. Wenn es genau sein muss, trag die Zahlen unten ein.</p>
+      ${r.items.length ? '<button class="btn" id="btnMealSave">So eintragen</button>' : ""}
+    </div>`;
+  const save_btn = $("#btnMealSave");
+  if (save_btn) {
+    save_btn.addEventListener("click", (e) =>
+      withSpinner(e.currentTarget, () => estimateMeal(true)));
+  }
+}
+
+$("#btnMealEstimate").addEventListener("click", (e) =>
+  withSpinner(e.currentTarget, () => estimateMeal(false)));
+$("#mealText").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") { ev.preventDefault(); $("#btnMealEstimate").click(); }
+});
+
 $("#btnAddMeal").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   const name = $("#mealName").value.trim();
   if (!name) { toast("Wie heißt die Mahlzeit?", true); return; }
@@ -2221,8 +2413,12 @@ $("#statsMetric").addEventListener("change", async () => {
   let d;
   try { d = await api(`/stats/metric/${key}?days=${$("#statsDays").value || 365}`); }
   catch (e) { toast(e.message, true); return; }
-  lineChart($("#statsMetricChart"), d.series.map((p) => ({
-    value: p.value, label: p.day.slice(5), tip: p.day })), { unit: d.unit });
+  rangeTabs($("#statsMetricRange"), "statsMetric", DAILY_RANGES, (range, days) => {
+    const label = dayLabelFor(range);
+    lineChart($("#statsMetricChart"), daysBack(d.series, days)
+      .map((p) => ({ value: p.value, label: label(p.day), tip: p.day })),
+      { unit: d.unit });
+  }, "quarter");
   $("#statsMetricRelated").innerHTML = d.related.length
     ? '<h4 class="ins-h">Hängt zusammen mit</h4>' + d.related.map((p) => `
         <div class="corr-row${p.robust ? "" : " weak"}">
@@ -2361,17 +2557,28 @@ async function loadTrends() {
        : "Noch kein Ziel hinterlegt.");
 
   const m = d.muscles;
+  const seit = (d) => d === null ? "in vier Wochen nicht"
+    : d === 0 ? "heute" : d === 1 ? "gestern" : `vor ${d} Tagen`;
+
   $("#trendMuscles").innerHTML = m.hint
     ? `<p class="muted">${esc(m.hint)}</p>`
-    : m.groups.map((g) => `
+    : `<p class="muted" style="margin-bottom:8px">Der Balken zeigt, wie
+        <b>dringend</b> eine Gruppe dran wäre — nicht, wie viel du trainiert
+        hast. Was du gerade trainiert hast, sinkt hier also, und das ist so
+        gewollt: Oben steht, was als Nächstes drankommen sollte.</p>` +
+      m.groups.map((g) => `
       <div class="trend${g.need >= 40 ? " hot" : ""}">
         <div class="th">${trendArrow(g.direction)} ${esc(g.label)}
-          <span class="tn">${g.need} von 100</span></div>
+          <span class="tn">${g.need >= 40 ? "dringend" : g.need >= 20 ? "bald"
+            : "versorgt"} · Bedarf ${g.need}/100</span></div>
         <div class="tbar"><i style="width:${g.need}%"></i></div>
-        <div class="tm">${g.sets_recent} Sätze in ${g.sessions} Einheiten ·
+        <div class="tm">zuletzt ${seit(g.days_since)} ·
+          ${g.sets_recent} Sätze in ${g.sessions} Einheiten ·
           ${g.share} % vom Volumen (ausgewogen wären ${g.target_share} %) ·
           Kraft ${signed(g.strength_change, " %")}</div>
-        ${g.reasons.length ? `<div class="tr">${g.reasons.map(esc).join(" · ")}</div>` : ""}
+        ${g.reasons.length
+          ? `<div class="tr">${g.reasons.map(esc).join(" · ")}</div>`
+          : '<div class="tr">Gut versorgt — nichts, was gerade fehlt.</div>'}
       </div>`).join("");
 
   const r = d.running;

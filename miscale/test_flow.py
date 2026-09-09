@@ -66,12 +66,15 @@ def reset(now):
     sent.clear()
 
 
-async def scenario(name, events, expect_sends, expect_last_has_fat):
+async def scenario(name, events, expect_sends, expect_last_has_fat,
+                   expect_weight=None, require_impedance=None):
     """events: Liste aus (Zeitpunkt in s, service_data)"""
     print(f"\n--- {name} ---")
     clock = {"t": 1000.0}
     svc.time.time = lambda: clock["t"]           # Zeit kontrollieren
     reset(clock["t"])
+    if require_impedance is not None:
+        svc.REQUIRE_IMPEDANCE = require_impedance
 
     task = asyncio.create_task(svc.flusher())
     await asyncio.sleep(0.01)
@@ -102,6 +105,10 @@ async def scenario(name, events, expect_sends, expect_last_has_fat):
         check(f"{name}: Körperwerte in der letzten Meldung",
               has_fat == expect_last_has_fat,
               f"Fett={sent[-1].get('body_fat_pct')}")
+        if expect_weight is not None:
+            check(f"{name}: gemeldetes Gewicht",
+                  abs(sent[-1]["weight_kg"] - expect_weight) < 0.01,
+                  f"{sent[-1]['weight_kg']} statt {expect_weight}")
 
 
 async def main():
@@ -110,6 +117,7 @@ async def main():
     svc.POLL_S = 0.005
     svc.SETTLE_S = 3
     svc.IMPEDANCE_WAIT_S = 12
+    svc.REQUIRE_IMPEDANCE = True
     svc.COOLDOWN_S = 300
     svc.MIN_WEIGHT = 30
     svc.HEIGHT_CM, svc.AGE, svc.SEX = 184, 24, "male"
@@ -120,23 +128,49 @@ async def main():
         [(0, frame(74.8)), (2, frame(74.8)), (8, frame(74.8, impedance=505))],
         expect_sends=1, expect_last_has_fat=True)
 
-    # 2. Impedanz kommt gar nicht (Socken an) — nur Gewicht, aber es kommt an.
+    # 2. Ohne Impedanz wird nichts übernommen. Die Waage meldet schon ein
+    #    "stabiles" Gewicht, während man noch das Gewicht verlagert — nur wo
+    #    auch die Impedanz kam, stand man wirklich ruhig.
     await scenario(
-        "Ohne Impedanz",
+        "Ohne Impedanz wird verworfen",
         [(0, frame(74.8)), (3, frame(74.8)), (6, frame(74.8))],
-        expect_sends=1, expect_last_has_fat=False)
+        expect_sends=0, expect_last_has_fat=False, require_impedance=True)
 
-    # 3. Impedanz erst nach dem Melden: muss trotz Sperrfrist nachgereicht werden.
+    # 2b. Wer das nicht will, schaltet es ab — dann wie früher.
+    await scenario(
+        "Ohne Impedanz, aber ausdrücklich erlaubt",
+        [(0, frame(74.8)), (3, frame(74.8)), (6, frame(74.8))],
+        expect_sends=1, expect_last_has_fat=False, require_impedance=False)
+
+    # 2c. Der eigentliche Punkt: Beim Draufsteigen meldet die Waage zu wenig,
+    #     erst beim ruhigen Stehen stimmt es. Genommen wird der Wert aus dem
+    #     Moment der Impedanz, nicht der letzte Frame beim Absteigen.
+    await scenario(
+        "Gewicht aus dem Impedanz-Moment",
+        [(0, frame(72.1)), (2, frame(74.2)), (8, frame(74.8, impedance=505)),
+         (10, frame(71.4))],
+        expect_sends=1, expect_last_has_fat=True, expect_weight=74.8,
+        require_impedance=True)
+
+    # 3. Kommt die Impedanz erst spät, wird eben nur einmal gemeldet — mit
+    #    Körperwerten. Früher ging eine Meldung ohne Werte voraus.
+    await scenario(
+        "Späte Impedanz, eine saubere Meldung",
+        [(0, frame(74.8)), (14, frame(74.8)), (16, frame(74.8, impedance=505))],
+        expect_sends=1, expect_last_has_fat=True, require_impedance=True)
+
+    # 3b. Mit erlaubter Meldung ohne Impedanz muss das Nachreichen weiter
+    #     funktionieren — die Sperrfrist darf die Körperwerte nicht schlucken.
     await scenario(
         "Nachreichen trotz Sperrfrist",
         [(0, frame(74.8)), (14, frame(74.8)), (16, frame(74.8, impedance=505))],
-        expect_sends=2, expect_last_has_fat=True)
+        expect_sends=2, expect_last_has_fat=True, require_impedance=False)
 
     # 4. Zweite echte Messung kurz danach wird unterdrückt (Sperrfrist wirkt noch).
     await scenario(
         "Doppelmessung wird unterdrückt",
         [(0, frame(74.8, impedance=505)), (20, frame(74.9, impedance=505))],
-        expect_sends=1, expect_last_has_fat=True)
+        expect_sends=1, expect_last_has_fat=True, require_impedance=True)
 
     # 5. Wackelige Werte ohne Stabil-Bit werden ignoriert.
     await scenario(

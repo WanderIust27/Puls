@@ -58,6 +58,15 @@ with get_db() as _db:
                        distance_m, avg_hr, source, name)
                    VALUES('running', ?, 2400, 7000, 142, 'manual', 'Testlauf')""",
                 (f"{_dt.date.today().isoformat()}T07:00:00",))
+    # Gemütseinträge zu verschiedenen Uhrzeiten — der Verlauf soll sie an
+    # ihrer Uhrzeit zeigen, nicht auf einem Tagesraster.
+    for _d in range(0, 20):
+        _day = (_dt.date.today() - _dt.timedelta(days=_d)).isoformat()
+        for _h, _m in ((7, 2), (13, 4), (21, 3)):
+            _db.execute("""INSERT INTO mood_entries(day, recorded_at, mood,
+                               energy, stress)
+                           VALUES(?,?,?,?,?)""",
+                        (_day, f"{_day}T{_h:02d}:15:00", _m, _m, 3))
 
 PORT = 8899
 VIEWS = ("dashboard", "plan", "exercises", "nutrition", "mood",
@@ -165,6 +174,63 @@ try:
             page.wait_for_timeout(1000)
             ok(f"Ansicht {view} öffnet", page.is_visible(f"#view-{view}"))
 
+        # --- Diagramme: Zeitraum umschaltbar, Beschriftung passt sich an ---
+        page.click('nav.bottom button[data-view="mood"]')
+        page.wait_for_timeout(2000)
+        tabs = page.eval_on_selector_all("#moodRange [data-range]",
+                                         "e => e.map(x => x.textContent.trim())")
+        ok("Gemütsverlauf: Zeitraum wählbar",
+           tabs == ["Tag", "Woche", "Monat", "3 Monate"], str(tabs))
+
+        def axis_labels():
+            return page.eval_on_selector_all(
+                "#moodChart svg text",
+                "e => e.map(x => x.textContent.trim()).filter(t => t)")
+
+        page.click('#moodRange [data-range="week"]')
+        page.wait_for_timeout(600)
+        week_labels = axis_labels()
+        ok("Woche: Wochentage an der Achse",
+           any(l[:2] in ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So") for l in week_labels),
+           str(week_labels[:6]))
+
+        page.click('#moodRange [data-range="day"]')
+        page.wait_for_timeout(600)
+        day_labels = axis_labels()
+        ok("Tag: Uhrzeiten an der Achse",
+           any(":" in l and l.endswith(":00") for l in day_labels), str(day_labels[:6]))
+        ok("Die Beschriftung wechselt mit dem Zeitraum",
+           day_labels != week_labels)
+
+        page.click('#moodRange [data-range="month"]')
+        page.wait_for_timeout(600)
+        ok("Monat: Datumsangaben an der Achse",
+           any(l.count(".") == 2 for l in axis_labels()), str(axis_labels()[:6]))
+        ok("Der Verlauf zeigt drei Kurven",
+           page.eval_on_selector_all("#moodChart svg path", "e => e.length") == 3,
+           str(page.eval_on_selector_all("#moodChart svg path", "e => e.length")))
+        ok("… mit Legende",
+           "Stimmung" in " ".join(axis_labels()) and "Energie" in " ".join(axis_labels()))
+
+        # Punkte müssen an der Uhrzeit sitzen: Drei Einträge um 7, 13 und 21 Uhr
+        # dürfen im Tagesbild nicht gleichmäßig verteilt liegen.
+        page.click('#moodRange [data-range="day"]')
+        page.wait_for_timeout(600)
+        xs = sorted(page.eval_on_selector_all(
+            "#moodChart svg circle", "e => e.map(c => +c.getAttribute('cx'))"))
+        if len(xs) >= 6:
+            gaps = [round(xs[i + 1] - xs[i], 1) for i in range(len(xs) - 1)]
+            ok("Punkte sitzen an ihrer Uhrzeit, nicht auf einem Raster",
+               len({g for g in gaps if g > 1}) > 1, str(gaps[:6]))
+
+        # Die Wahl muss das Neuladen überleben
+        page.reload(wait_until="networkidle")
+        page.click('nav.bottom button[data-view="mood"]')
+        page.wait_for_timeout(2000)
+        ok("Der gewählte Zeitraum bleibt gespeichert",
+           page.eval_on_selector("#moodRange .on", "el => el.textContent.trim()") == "Tag",
+           page.eval_on_selector("#moodRange .on", "el => el.textContent.trim()"))
+
         # --- Gemüt: dieselben Zahlenknöpfe, gleiche Erwartung -------------
         page.click('nav.bottom button[data-view="mood"]')
         page.wait_for_timeout(1500)
@@ -180,6 +246,15 @@ try:
             '#view-mood [data-scale-set]',
             "el => el.getBoundingClientRect().width")
         ok("Gemüt: die Knöpfe haben Größe", mood_size >= 24, f"{mood_size} px")
+
+        # --- Plan: das Nächste steht oben ---------------------------------
+        page.click('nav.bottom button[data-view="plan"]')
+        page.wait_for_timeout(1800)
+        dates = page.eval_on_selector_all(
+            "#plannedList [data-date]", "e => e.map(x => x.dataset.date)")
+        if len(dates) >= 2:
+            ok("Plan: nach Datum sortiert, das Nächste oben",
+               dates == sorted(dates), str(dates[:5]))
 
         # --- Coach: Ziel, Woche und Trends stehen auf einer Seite ---------
         page.click('nav.bottom button[data-view="coach"]')
@@ -259,6 +334,28 @@ try:
            gym_days_shown == {"Mo", "Mi", "Fr"}, str(sorted(gym_days_shown)))
         ok("Coach: Laufen liegt auf den gewählten Tagen",
            run_days_shown == {"Di", "Do"}, str(sorted(run_days_shown)))
+
+        # --- Essen: Beschreibung wird zu Nährwerten -----------------------
+        page.click('nav.bottom button[data-view="nutrition"]')
+        page.wait_for_timeout(1800)
+        page.fill("#mealText", "150 g Hähnchenbrust, 80 g Reis und Gemüse")
+        page.click("#btnMealEstimate")
+        page.wait_for_timeout(3000)
+        est = page.eval_on_selector("#mealEstimate", "el => el.textContent")
+        ok("Essen: die Aufstellung erscheint", "kcal" in est, est[:90])
+        rows = page.eval_on_selector_all("#mealEstimate .est-t tr", "e => e.length")
+        ok("Essen: jeder Bestandteil einzeln", rows == 3, f"{rows} Zeilen")
+        ok("Essen: als Schätzung gekennzeichnet", "Geschätzt" in est)
+        before = page.eval_on_selector_all("#mealList [data-del-meal]", "e => e.length")
+        page.click("#btnMealSave")
+        page.wait_for_timeout(3000)
+        after = page.eval_on_selector_all("#mealList [data-del-meal]", "e => e.length")
+        ok("Essen: die Mahlzeit wird eingetragen", after > before,
+           f"{before} -> {after}")
+        ok("Essen: die Aufstellung verschwindet nach dem Buchen",
+           not page.is_visible("#mealEstimate"))
+        listed = page.eval_on_selector("#mealList", "el => el.textContent")
+        ok("Essen: mit Kalorien in der Liste", "kcal" in listed, listed[:80])
 
         # --- Statistik: Empfehlungen muessen erscheinen -------------------
         page.click('nav.bottom button[data-view="stats"]')

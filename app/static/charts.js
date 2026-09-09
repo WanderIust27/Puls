@@ -522,3 +522,176 @@ function correlationBars(container, pairs, opts = {}) {
     aria-label="Zusammenhänge zwischen Messwerten">${body}</svg>`;
 }
 
+
+/* ------------------------------------------------- Zeitachse mit Bereichen */
+
+/* Diagramme über einer echten Zeitachse: Ein Punkt liegt dort, wo er zeitlich
+   hingehört, nicht auf einem gleichmäßigen Raster. Für den Gemütsverlauf ist
+   das der ganze Unterschied — drei Einträge um 7, 13 und 22 Uhr sind kein
+   Drittel-Drittel-Drittel, und zwei Tage ohne Eintrag sind eine Lücke, kein
+   nahtloser Strich.
+
+   Die Beschriftung richtet sich nach der Spanne: Stunden bei einem Tag,
+   Wochentage bei einer Woche, Datum bei einem Monat oder mehr. */
+
+const RANGE_MS = {
+  day: 24 * 3600e3,
+  week: 7 * 24 * 3600e3,
+  month: 30 * 24 * 3600e3,
+  quarter: 91 * 24 * 3600e3,
+  year: 365 * 24 * 3600e3,
+};
+
+const RANGE_LABEL = { day: "Tag", week: "Woche", month: "Monat",
+                      quarter: "3 Monate", year: "Jahr" };
+
+const WEEKDAY_SHORT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+/* Wie die Achse bei dieser Spanne beschriftet wird — und wie ein einzelner
+   Punkt im Tooltip heißt. */
+function timeAxis(spanMs) {
+  const hours = spanMs / 3600e3;
+  if (hours <= 36) {
+    return {
+      stepMs: hours <= 8 ? 3600e3 : hours <= 14 ? 2 * 3600e3 : 4 * 3600e3,
+      tick: (d) => `${String(d.getHours()).padStart(2, "0")}:00`,
+      point: (d) => `${WEEKDAY_SHORT[d.getDay()]} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+      unitName: "Stunden",
+    };
+  }
+  if (hours <= 24 * 10) {
+    return {
+      stepMs: 24 * 3600e3,
+      tick: (d) => `${WEEKDAY_SHORT[d.getDay()]} ${d.getDate()}.`,
+      point: (d) => `${WEEKDAY_SHORT[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}. ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+      unitName: "Tage",
+    };
+  }
+  if (hours <= 24 * 75) {
+    return {
+      stepMs: 7 * 24 * 3600e3,
+      tick: (d) => `${d.getDate()}.${d.getMonth() + 1}.`,
+      point: (d) => `${WEEKDAY_SHORT[d.getDay()]}, ${d.getDate()}.${d.getMonth() + 1}.`,
+      unitName: "Wochen",
+    };
+  }
+  const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
+                  "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+  return {
+    stepMs: 30 * 24 * 3600e3,
+    tick: (d) => MONTHS[d.getMonth()],
+    point: (d) => `${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
+    unitName: "Monate",
+  };
+}
+
+/* Rasterlinien auf runde Zeitpunkte legen: volle Stunden bzw. Mitternacht.
+   Sonst stünde "13:47" an der Achse, und niemand liest daran etwas ab. */
+function timeTicks(from, to, axis) {
+  const out = [];
+  const start = new Date(from);
+  if (axis.stepMs >= 24 * 3600e3) start.setHours(0, 0, 0, 0);
+  else start.setMinutes(0, 0, 0);
+  for (let t = start.getTime(); t <= to; t += axis.stepMs) {
+    if (t >= from) out.push(t);
+    if (out.length > 14) break;
+  }
+  return out;
+}
+
+/* points: [{ t: Millisekunden, value, label?, tip? }]
+   series: mehrere Linien als [{ key, label, color, points }] */
+function timeChart(container, series, opts = {}) {
+  const lines = (series || []).filter((s) => s.points && s.points.length);
+  if (!lines.length) {
+    container.innerHTML = `<p class="muted">${esc(opts.empty || "Für diesen Zeitraum liegt nichts vor.")}</p>`;
+    return;
+  }
+  const W = 720, H = opts.height || 190;
+  const padL = 40, padR = 12, padT = 12, padB = opts.legend === false ? 22 : 34;
+
+  const all = lines.flatMap((s) => s.points);
+  const from = opts.from ?? Math.min(...all.map((p) => p.t));
+  const to = opts.to ?? Math.max(...all.map((p) => p.t));
+  const span = Math.max(60e3, to - from);
+
+  let min = opts.min ?? Math.min(...all.map((p) => p.value));
+  let max = opts.max ?? Math.max(...all.map((p) => p.value));
+  if (max - min < 1e-9) { min -= 1; max += 1; }
+  const pad = (max - min) * 0.12;
+  min -= pad; max += pad;
+
+  const X = (t) => padL + ((t - from) / span) * (W - padL - padR);
+  const Y = (v) => H - padB - ((v - min) * (H - padB - padT)) / (max - min);
+
+  const axis = timeAxis(span);
+  const ticks = timeTicks(from, to, axis).map((t) =>
+    `<line x1="${X(t).toFixed(1)}" y1="${padT}" x2="${X(t).toFixed(1)}"
+       y2="${H - padB}" stroke="var(--border)" stroke-dasharray="2 4"></line>
+     <text x="${X(t).toFixed(1)}" y="${H - padB + 13}" font-size="10"
+       fill="var(--ink-3)" text-anchor="middle">${esc(axis.tick(new Date(t)))}</text>`
+  ).join("");
+
+  const gridY = [min + (max - min) * 0.5, max - (max - min) * 0.12].map((v) =>
+    `<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${W - padR}" y2="${Y(v).toFixed(1)}"
+       stroke="var(--border)"></line>
+     <text x="2" y="${(Y(v) + 3).toFixed(1)}" font-size="10"
+       fill="var(--ink-3)">${v.toFixed(Math.abs(max - min) < 5 ? 1 : 0)}</text>`).join("");
+
+  const body = lines.map((s, si) => {
+    const color = s.color || `var(--chart-${(si % 4) + 1}, var(--teal))`;
+    const pts = [...s.points].sort((a, b) => a.t - b.t);
+    // Eine Lücke bleibt eine Lücke: Zwischen zwei Punkten, die weiter
+    // auseinanderliegen als der übliche Abstand, wird nicht durchgezogen.
+    const gapMs = opts.maxGapMs || span / 4;
+    let d = "", open = false;
+    pts.forEach((p, i) => {
+      const jump = i && p.t - pts[i - 1].t > gapMs;
+      d += `${!open || jump ? "M" : "L"}${X(p.t).toFixed(1)},${Y(p.value).toFixed(1)} `;
+      open = true;
+    });
+    const dots = pts.length <= 60
+      ? pts.map((p) => `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.value).toFixed(1)}"
+          r="2.6" fill="${color}"></circle>`).join("")
+      : "";
+    return `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="1.7"
+      stroke-linejoin="round" stroke-linecap="round"></path>${dots}`;
+  }).join("");
+
+  const legend = opts.legend === false ? "" : lines.map((s, si) => {
+    const color = s.color || `var(--chart-${(si % 4) + 1}, var(--teal))`;
+    const x = padL + si * 108;
+    return `<circle cx="${x}" cy="${H - 5}" r="3.5" fill="${color}"></circle>
+      <text x="${x + 8}" y="${H - 2}" font-size="10" fill="var(--ink-3)"
+        >${esc(s.label || s.key || "")}</text>`;
+  }).join("");
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="${esc(opts.label || "Verlauf")}">
+    ${gridY}${ticks}${body}${legend}
+    <rect class="tc-hit" x="${padL}" y="${padT}" width="${W - padL - padR}"
+      height="${H - padB - padT}" fill="transparent"></rect>
+  </svg>`;
+
+  const svg = container.querySelector("svg");
+  const hit = svg.querySelector(".tc-hit");
+  const unit = opts.unit || "";
+  hit.addEventListener("pointermove", (ev) => {
+    const box = svg.getBoundingClientRect();
+    const t = from + (((ev.clientX - box.left) / box.width * W) - padL)
+      / (W - padL - padR) * span;
+    let best = null;
+    lines.forEach((s, si) => {
+      s.points.forEach((p) => {
+        const dist = Math.abs(p.t - t);
+        if (!best || dist < best.dist) best = { dist, p, s, si };
+      });
+    });
+    if (!best || best.dist > span / 20) { hideTip(); return; }
+    const when = axis.point(new Date(best.p.t));
+    showTip(ev.clientX, box.top + (Y(best.p.value) / H) * box.height,
+      `<span class="t-label">${esc(best.p.tip || when)}</span><br>` +
+      `${lines.length > 1 ? esc(best.s.label) + ": " : ""}<b>${best.p.value}${unit}</b>`);
+  });
+  hit.addEventListener("pointerleave", hideTip);
+}

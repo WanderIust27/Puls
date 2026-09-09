@@ -301,6 +301,12 @@ Die oberste Gruppe wird zum Schwerpunkt der nächsten Krafteinheit — die
 Übungsauswahl zieht sie vor, statt stur reihum zu gehen. Jede Zeile nennt ihren
 Grund, damit man widersprechen kann.
 
+**Der Balken zeigt den Bedarf, nicht die Leistung.** Ein hoher Wert heißt: Diese
+Gruppe kommt zu kurz. Was gerade trainiert wurde, *sinkt* hier also — wer heute
+Beinpresse gemacht hat, sieht die Beine bei „versorgt · Bedarf 0/100" und nicht
+bei 100. Das ist so gewollt, und es steht seit dieser Version auch so über der
+Liste; vorher las sich „0 von 100" wie eine schlechte Note.
+
 **Laufen.** Der ehrlichste Fortschrittsmaßstab ist das Tempo bei gleichem
 Puls: gleiche Anstrengung, mehr Strecke. Verglichen werden nur Läufe über 2 km
 mit einem Durchschnittspuls zwischen 120 und 155 — sonst verglichte man einen
@@ -315,6 +321,9 @@ am Puls, nicht am Namen der Einheit: Der Name sagt, was geplant war, der Puls,
 was gelaufen wurde.
 
 ### Die kommende Woche
+
+Der Plan steht **nach Datum sortiert, das Nächste oben** — was morgen ansteht,
+sucht man nicht unten.
 
 **Übernehmen ersetzt die Woche, es legt sie nicht dazu.** Vorher hat jeder
 Klick eine weitere komplette Woche obendrauf gelegt — nach dreimal Ausprobieren
@@ -373,6 +382,28 @@ Zustand — der von heute ist teils dessen Folge.
 
 Zusammenhang ist keine Ursache. Die Texte sagen deshalb, was miteinander
 einherging, nicht was wovon kommt.
+
+## Essen beschreiben statt Zahlen suchen
+
+„150 g Hähnchen mit Reis und Gemüse, dazu ein Skyr" — eintippen, *Berechnen*,
+fertig. Was dabei herauskommt, steht als Aufstellung da, bevor irgendetwas
+gebucht wird: jeder Bestandteil einzeln mit Menge und Kalorien, darunter die
+Summe.
+
+Die Arbeitsteilung ist dieselbe wie überall hier. Das Modell **zerlegt** den
+Satz in Bestandteile und Mengen („zwei Eier" → Ei, 120 g). Die Nährwerte kommen
+aus einer Tabelle im Code, nicht aus dem Modell: Ein lokales 8B-Modell auf der
+CPU rechnet Kalorien nicht zuverlässig — es schätzt sie, und zwar jedes Mal
+anders. Eine Tabelle schätzt auch, aber gleichbleibend und nachschlagbar.
+
+Läuft kein Modell, zerlegt PULS den Text selbst — gröber, aber es funktioniert:
+„150 g Hähnchenbrust, 80 g Reis und Gemüse" wird auch ohne Ollama richtig
+aufgelöst. Was die Tabelle nicht kennt, wird **benannt und weggelassen**, nicht
+geraten: „Nicht gefunden: Mondgestein. Diese Anteile fehlen in der Summe."
+
+Alle rund fünfzig Tabelleneinträge werden von einem Test gegengeprüft — Eiweiß
+und Kohlenhydrate 4 kcal/g, Fett 9 —, damit ein Tippfehler in einer Spalte
+auffällt statt still in die Tagesbilanz zu wandern.
 
 ## Nährwerte und was du erreichen solltest
 
@@ -465,6 +496,29 @@ lang nicht wieder.
 Der Unterschied zu Beschwerden ist Absicht: Auf gemeldete Schmerzen reagiert
 PULS sofort und ohne Rückfrage, weil das keine Geschmacksfrage ist. Ein
 zusätzlicher Sonntagslauf dagegen ist deine Entscheidung.
+
+## Diagramme: Zeitraum und Beschriftung
+
+Über jedem Verlaufsdiagramm steht ein Umschalter. Die Wahl bleibt **je
+Diagramm** gespeichert — wer sich den Gewichtsverlauf über ein Vierteljahr
+ansieht, steht nach dem Neuladen nicht wieder auf der Woche.
+
+Die Achsenbeschriftung richtet sich nach der Spanne, nicht nach einer festen
+Regel: Stunden bei einem Tag (`08:00`), Wochentage bei einer Woche (`Do 3.`),
+Datum bei einem Monat (`17.8.`), Monatsnamen bei einem Jahr. Dasselbe gilt für
+den Tooltip.
+
+Der **Gemütsverlauf** liegt auf einer echten Zeitachse: Jeder Eintrag steht an
+seiner Uhrzeit. Drei Einträge um 7, 13 und 21 Uhr sind kein
+Drittel-Drittel-Drittel, und zwei Tage ohne Eintrag sind eine Lücke — die
+Linie bricht dort ab, statt nahtlos durchzulaufen und eine Messung
+vorzutäuschen, die es nicht gab. Stimmung, Energie und Stress liegen als drei
+Kurven übereinander, mit Legende.
+
+Diagramme mit **einem Wert je Tag** (Gewicht, Schlafdauer, Ruhepuls, HRV,
+Belastung) bieten bewusst *keine* Tagesansicht an: Ein Tag wäre ein einzelner
+Punkt. Einen Umschalter anzubieten, der nichts zeigen kann, wäre ein
+Versprechen, das die Daten nicht halten. Sie beginnen bei der Woche.
 
 ## Gemütszustand und Beschwerden
 
@@ -564,6 +618,22 @@ Knochenmasse und Viszeralfett sind daraus **geschätzt** und in der Oberfläche
 mit einem ≈ markiert. Gut für den Trend, nicht als medizinische Aussage.
 Jede Messung ist einzeln löschbar.
 
+## Wann die Waage eine Messung übernimmt
+
+Die Mi Scale meldet ein „stabiles" Gewicht schon, während man noch aufsteigt und
+das Gewicht verlagert — stabil im Sinne des Protokolls, aber nicht das, was man
+wiegt. Die Impedanz misst sie erst, wenn man wirklich ruhig barfuß steht. Ein
+Wert **mit** Impedanz ist deshalb nicht nur vollständiger, er ist auch das
+verlässlichere Gewicht.
+
+PULS übernimmt darum nur Messungen, zu denen auch die Impedanz kam — und nimmt
+das Gewicht **aus dem Moment, in dem sie kam**, nicht den letzten Frame vor dem
+Absteigen. Kommt binnen zwanzig Sekunden keine Impedanz, wird die Messung
+verworfen und im Protokoll gesagt, warum.
+
+Wer das nicht will, setzt `REQUIRE_IMPEDANCE=0` — dann kommt das Gewicht auch
+allein an, wie früher.
+
 ## Wenn keine Daten ankommen
 
 Unter *Mehr → Garmin → „Es kommen keine Daten an?" → Prüfen*. Das geht der
@@ -583,7 +653,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Siebzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Neunzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
 prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
 Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.

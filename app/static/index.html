@@ -152,7 +152,7 @@
       <h3>Schlaf</h3>
       <div class="tiles wide-tiles" id="sleepTiles"></div>
       <div id="sleepStagesMini" style="margin-top:12px"></div>
-      <div class="chart-wrap" id="sleepChartDash"></div>
+      <div id="sleepDashRange"></div><div class="chart-wrap" id="sleepChartDash"></div>
       <div class="coach-msg" id="sleepAdvice" hidden></div>
       <div class="row" style="margin-top:8px">
         <button class="btn small ghost" id="btnSleepAdvice">Wie schlafe ich besser?</button>
@@ -164,9 +164,9 @@
       <h3>Herz</h3>
       <div class="tiles" id="heartTiles"></div>
       <div class="detail-section"><h4>Ruhepuls gegen deinen Schnitt</h4>
-        <div class="chart-wrap" id="rhrChart"></div></div>
+        <div id="rhrRange"></div><div class="chart-wrap" id="rhrChart"></div></div>
       <div class="detail-section"><h4>HRV gegen deinen Schnitt</h4>
-        <div class="chart-wrap" id="hrvDashChart"></div></div>
+        <div id="hrvDashRange"></div><div class="chart-wrap" id="hrvDashChart"></div></div>
       <p class="muted">Das graue Band ist dein Normalbereich. Punkte darüber
         oder darunter sind die Tage, auf die es ankommt.</p>
     </div>
@@ -195,13 +195,13 @@
     <div class="card">
         <h3>Körper</h3>
         <div class="comp-row" id="compRow"></div>
-        <div class="chart-wrap" id="weightChart"></div>
+        <div id="weightRange"></div><div class="chart-wrap" id="weightChart"></div>
         <p class="muted" id="weightDelta"></p>
       </div>
 
     <div class="card span2">
         <h3>Trainingslast — letzte 6 Wochen</h3>
-        <div class="chart-wrap" id="loadChart"></div>
+        <div id="loadRange"></div><div class="chart-wrap" id="loadChart"></div>
       </div>
 
     <div class="card">
@@ -464,8 +464,25 @@
     <h3>Heute gegessen</h3>
     <div id="mealTargets" class="tiles wide-tiles"></div>
     <div id="mealList" style="margin-top:12px"></div>
+    <div style="margin-top:14px">
+      <label class="field">Beschreib einfach, was du gegessen hast</label>
+      <div class="row">
+        <input id="mealText" class="grow"
+          placeholder="z. B. 150 g Hähnchen mit Reis und Gemüse, dazu ein Skyr">
+        <select id="mealTextSlot" class="small">
+          <option value="breakfast">Frühstück</option>
+          <option value="lunch">Mittag</option>
+          <option value="dinner">Abend</option>
+          <option value="snack">Snack</option>
+          <option value="other" selected>Sonstiges</option>
+        </select>
+        <button class="btn ghost" id="btnMealEstimate">Berechnen</button>
+      </div>
+      <div id="mealEstimate" hidden></div>
+    </div>
+
     <details style="margin-top:12px">
-      <summary class="field" style="cursor:pointer">Mahlzeit eintragen</summary>
+      <summary class="field" style="cursor:pointer">Mahlzeit mit eigenen Zahlen eintragen</summary>
       <div class="grid3" style="margin-top:8px">
         <div><label class="field">Was</label><input id="mealName" placeholder="z. B. Skyr mit Beeren"></div>
         <div><label class="field">Wann</label>
@@ -673,17 +690,21 @@
     <div id="recoveryFacts" class="body-facts"></div>
     <div id="recoveryNotes"></div>
     <div class="detail-section"><h4>HRV und Ruhepuls</h4>
-      <div class="chart-wrap" id="hrvChart"></div></div>
+      <div id="hrvRange"></div><div class="chart-wrap" id="hrvChart"></div></div>
     <div class="detail-section"><h4>Schlaf</h4>
-      <div class="chart-wrap" id="sleepChart"></div>
+      <div id="sleepRange"></div><div class="chart-wrap" id="sleepChart"></div>
       <div id="sleepStages"></div></div>
     <div class="detail-section"><h4>Stress und Body Battery</h4>
-      <div class="chart-wrap" id="stressChart"></div>
-      <div class="chart-wrap" id="batteryChart"></div></div>
+      <div id="stressRange"></div><div class="chart-wrap" id="stressChart"></div>
+      <div id="batteryRange"></div><div class="chart-wrap" id="batteryChart"></div></div>
   </div>
 
-  <div class="card">
-    <h3>Verlauf</h3>
+  <div class="card span2">
+    <div class="chart-head">
+      <h3 style="margin:0">Verlauf</h3>
+      <span class="ch-t" id="moodChartInfo"></span>
+      <div id="moodRange"></div>
+    </div>
     <div class="chart-wrap" id="moodChart"></div>
     <div id="moodList"></div>
   </div>
@@ -733,7 +754,7 @@
   <div class="card">
     <h3>Einzelne Größe ansehen</h3>
     <select id="statsMetric" class="small"></select>
-    <div class="chart-wrap" id="statsMetricChart"></div>
+    <div id="statsMetricRange"></div><div class="chart-wrap" id="statsMetricChart"></div>
     <div id="statsMetricRelated"></div>
   </div>
 </section>
@@ -836,7 +857,7 @@
   <div class="card">
     <h3>Körperdaten</h3>
     <div id="bodyFacts" class="body-facts"></div>
-    <div class="chart-wrap" id="bodyChart" style="margin-top:12px"></div>
+    <div id="bodyRange"></div><div class="chart-wrap" id="bodyChart" style="margin-top:12px"></div>
     <div id="bodyDiscipline" class="muted" style="margin-top:4px"></div>
 
     <details style="margin-top:14px">

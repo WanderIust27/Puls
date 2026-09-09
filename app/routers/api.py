@@ -356,9 +356,13 @@ def list_workouts(limit: int = 50, upcoming: bool = False) -> list[dict[str, Any
     today = dt.date.today().isoformat()
     where = ("WHERE planned_date IS NULL OR planned_date >= ?") if upcoming else ""
     params: tuple[Any, ...] = (today, limit) if upcoming else (limit,)
+    # Nach Datum aufsteigend: Was als Nächstes ansteht, steht oben. Einheiten
+    # ohne Datum landen am Ende — sie drängeln sich sonst vor den morgigen Lauf.
+    order = ("ORDER BY planned_date IS NULL, planned_date ASC, id ASC"
+             if upcoming else "ORDER BY planned_date IS NULL, planned_date DESC, id DESC")
     with get_db() as db:
         rows = rows_to_dicts(db.execute(
-            f"SELECT * FROM planned_workouts {where} ORDER BY id DESC LIMIT ?",
+            f"SELECT * FROM planned_workouts {where} {order} LIMIT ?",
             params).fetchall())
     for r in rows:
         r["steps"] = json.loads(r.pop("steps_json") or "{}").get("steps", [])
@@ -1020,6 +1024,29 @@ class MealIn(BaseModel):
 @router.post("/nutrition/meals")
 def meal_add(m: MealIn) -> dict[str, Any]:
     return nutrition.add_meal(m.model_dump())
+
+
+class MealTextIn(BaseModel):
+    text: str
+    slot: str = "other"
+    eaten_at: str | None = None
+    save: bool = False
+
+
+@router.post("/nutrition/meals/estimate")
+def meal_estimate(m: MealTextIn) -> dict[str, Any]:
+    """Aus einer Beschreibung die Nährwerte rechnen — auf Wunsch gleich buchen.
+
+    Ohne save=true wird nur gerechnet und angezeigt. Erst der zweite Aufruf
+    trägt ein: Was das Modell aus einem Satz liest, will man vorher sehen.
+    """
+    result = nutrition.estimate_from_text(m.text)
+    if m.save and result["items"]:
+        result["meal"] = nutrition.add_meal({
+            "name": result["name"], "slot": m.slot, "eaten_at": m.eaten_at,
+            **{k: result["total"][k]
+               for k in ("kcal", "protein_g", "carbs_g", "fat_g")}})
+    return result
 
 
 class RecipeMealIn(BaseModel):
