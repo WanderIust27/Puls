@@ -140,8 +140,8 @@ for item in app miscale tests Dockerfile docker-compose.yml requirements.txt \
     cp -R "$src/$item" "./$item"
 done
 chmod +x deploy.sh puls.sh update.sh 2>/dev/null
-[ -f miscale/entrypoint.sh ] && chmod +x miscale/entrypoint.sh
-[ -f tests/run_all.sh ] && chmod +x tests/run_all.sh
+[ -f miscale/entrypoint.sh ] && chmod +x miscale/entrypoint.sh || true
+[ -f tests/run_all.sh ] && chmod +x tests/run_all.sh || true
 c_ok "Programmdateien aktualisiert"
 
 if [ ! -f .env ]; then

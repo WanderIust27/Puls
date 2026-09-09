@@ -15,6 +15,10 @@
 # außer einem ausdrücklichen "docker volume rm".
 
 set -euo pipefail
+# Achtung bei "set -e": Eine Zeile der Form  [ Bedingung ] && Aktion  liefert 1,
+# wenn die Bedingung nicht zutrifft — und beendet damit das ganze Skript. Genau
+# so brach der Deploy einmal nach dem Ollama-Schritt ab, ohne die App neu zu
+# starten. Deshalb entweder ein richtiges "if" verwenden oder "|| true" anhängen.
 cd "$(dirname "$0")"
 
 NET=puls-net
@@ -89,7 +93,7 @@ case "$cmd" in
       # Kennung des laufenden Stands gegen den im Ordner halten. Weichen sie
       # ab, laeuft der Container noch auf altem Code — das ist der haeufigste
       # Grund dafuer, dass ein Update "nicht ankommt".
-      running=$(echo "$health" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+      running=$(echo "$health" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)
       ondisk=""
       if command -v python3 >/dev/null && [ -f app/version.py ]; then
           ondisk=$(python3 -c "import sys; sys.path.insert(0,'.'); \
@@ -105,7 +109,7 @@ case "$cmd" in
           c_warn "neuen Dateien liegen im Ordner, sind aber nicht gebaut."
           echo
           c_warn "Beheben mit:    ./deploy.sh"
-          [ -n "$ondisk" ] && c_info "Im Ordner liegt Kennung $ondisk."
+          [ -n "$ondisk" ] && c_info "Im Ordner liegt Kennung $ondisk." || true
       else
           c_ok "Läuft: Kennung $running"
           if [ -n "$ondisk" ] && [ "$ondisk" != "$running" ]; then
@@ -135,8 +139,8 @@ case "$cmd" in
             c_info "Jetzt übernehmen mit:  ./deploy.sh"
             exit 0 ;;
         off|aus)
-            [ -f .env ] && sed -i 's|^OLLAMA_GPU=.*|OLLAMA_GPU=|' .env
-            [ -f .env ] && sed -i 's|^OLLAMA_RUNTIME=.*|OLLAMA_RUNTIME=runc|' .env
+            [ -f .env ] && sed -i 's|^OLLAMA_GPU=.*|OLLAMA_GPU=|' .env || true
+            [ -f .env ] && sed -i 's|^OLLAMA_RUNTIME=.*|OLLAMA_RUNTIME=runc|' .env || true
             c_ok "Grafikkarte abgeschaltet — PULS rechnet wieder auf der CPU"
             c_info "Jetzt übernehmen mit:  ./deploy.sh"
             exit 0 ;;
@@ -301,8 +305,14 @@ if [ -n "$GPU_ARGS" ]; then
     # bringt die Binary nicht mit. /dev/nvidia0 ist der verlässliche Beleg.
     if docker exec puls-ollama sh -c 'ls /dev/nvidia0' >/dev/null 2>&1; then
         c_ok "puls-ollama läuft mit Grafikkarte"
-        compute=$(docker logs puls-ollama 2>&1 | grep -i "inference compute" | tail -1)
-        [ -n "$compute" ] && c_info "$(echo "$compute" | sed 's/.*inference compute/Rechenwerk:/')"
+        # "|| true" ist hier Pflicht: unter "set -o pipefail" liefert die
+        # Pipe den Fehlercode des grep, wenn es nichts findet — und die
+        # Zuweisung erbt ihn. Mit "set -e" endet das Skript an dieser Stelle,
+        # mitten im Deploy und ohne Fehlermeldung.
+        compute=$(docker logs puls-ollama 2>&1 | grep -i "inference compute" | tail -1 || true)
+        if [ -n "$compute" ]; then
+            c_info "$(echo "$compute" | sed 's/.*inference compute/Rechenwerk:/')"
+        fi
     else
         c_warn "Der Container startet, sieht die Karte aber nicht."
         c_warn "Diagnose mit:  ./deploy.sh gpu"
@@ -366,10 +376,14 @@ for i in $(seq 1 30); do
         break
     fi
     sleep 2
-    [ "$i" = 30 ] && c_warn "PULS antwortet noch nicht — schau in die Logs: ./deploy.sh logs"
+    if [ "$i" = 30 ]; then
+        c_warn "PULS antwortet noch nicht — schau in die Logs: ./deploy.sh logs"
+    fi
 done
 
-IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')"
+# Auch hier "|| true": fehlt der Befehl "ip", waere der Deploy sonst auf der
+# Zielgeraden gescheitert — wegen einer Anzeige.
+IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}' || true)"
 echo
 echo "──────────────────────────────────────────────"
 echo "  PULS läuft:  http://${IP:-DEINE-SERVER-IP}:${PULS_PORT}"

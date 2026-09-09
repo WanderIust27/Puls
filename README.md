@@ -359,8 +359,12 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Zwölf Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
-nicht angefasst. Eine davon prüft Eigenschaften, die für die ganze API gelten sollen: dass alle
+Dreizehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
+prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
+Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.
+
+Eine weitere prüft Eigenschaften, die für die ganze API gelten sollen: dass alle
 39 GET-Endpunkte fehlerfrei antworten, dass keiner davon Daten verändert, und
 dass zweimal dieselbe Abfrage dasselbe ergibt. Genau dort ist ein Fehler
 aufgefallen, den keine einzelne Prüfung gefunden hätte.
