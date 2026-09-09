@@ -446,6 +446,19 @@ try:
         ok("Kraft: Anpassungen werden erklärt",
            bool(page.eval_on_selector("#changeList", "el => el.textContent.trim()")))
 
+        # --- Zuhause: Einheit ohne Geräte ---------------------------------
+        page.click('nav.bottom button[data-view="plan"]')
+        page.wait_for_timeout(1800)
+        chips = page.eval_on_selector_all("#homeGroups [data-homegroup]", "e => e.length")
+        ok("Zuhause: Muskelgruppen wählbar", chips == 5, f"{chips} Knöpfe")
+        page.select_option("#homeMinutes", "30")
+        page.click("#btnHomeSession")
+        page.wait_for_timeout(3000)
+        text = page.eval_on_selector("#homePreview", "el => el.textContent")
+        ok("Zuhause: eine Einheit entsteht", "Zuhause" in text, text[:70])
+        ok("Zuhause: mit der gewünschten Dauer", "30 min" in text or "29 min" in text
+           or "31 min" in text, text[:70])
+
         # --- Schritte: Ziel und Tagesverlauf -------------------------------
         page.click('nav.bottom button[data-view="start"]')
         page.wait_for_timeout(2500)

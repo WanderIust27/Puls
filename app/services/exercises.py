@@ -182,6 +182,92 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          slot="stretch", priority=3, garmin_category="WARM_UP",
          garmin_exercise="GLUTES_STRETCH", sort_order=207, aliases=["glutes stretch"],
          notes="Pro Seite"),
+
+    # ---------------------------------------------------------- Zuhause
+    # Alles hier braucht nichts als eine Matte und eine kleine Hantel. Der
+    # Block "home" taucht in der Gym-Einheit nicht auf — er ist die Grundlage
+    # fuer die Einheit, die man abends im Wohnzimmer macht, wenn das Studio
+    # nicht in Frage kommt.
+    dict(name="Unterarmstütz", muscle_group="core", equipment="bodyweight",
+         mode="time", target_duration_s=45, weight_increment=0, sets=3, rest_s=45,
+         slot="home", garmin_category="PLANK", garmin_exercise="FRONT_PLANK",
+         sort_order=300, notes="Becken bewusst nicht durchhängen lassen",
+         aliases=["plank", "planke", "unterarmstuetz"]),
+    dict(name="Seitstütz", muscle_group="core", equipment="bodyweight",
+         mode="time", target_duration_s=30, weight_increment=0, sets=4, rest_s=30,
+         slot="home", garmin_category="PLANK", garmin_exercise="SIDE_PLANK",
+         sort_order=305, notes="Je Seite zwei Sätze",
+         aliases=["side plank", "seitstuetz", "seitliche planke"]),
+    dict(name="Käfer", muscle_group="core", equipment="bodyweight",
+         target_reps=12, rep_min=8, rep_max=20, weight_increment=0, sets=3, rest_s=45,
+         slot="home", garmin_category="CORE", garmin_exercise="DEAD_BUG",
+         sort_order=310, notes="Langsam, der untere Rücken bleibt am Boden",
+         aliases=["dead bug", "kaefer", "totenkaefer"]),
+    dict(name="Vierfüßlerstand diagonal", muscle_group="core", equipment="bodyweight",
+         target_reps=10, rep_min=8, rep_max=16, weight_increment=0, sets=3, rest_s=40,
+         slot="home", garmin_category="CORE", garmin_exercise="BIRD_DOG",
+         sort_order=315, notes="Arm und gegenüberliegendes Bein, kurz halten",
+         aliases=["bird dog", "vierfuesslerstand", "birddog"]),
+    dict(name="Beckenheben", muscle_group="core", equipment="bodyweight",
+         target_reps=15, rep_min=10, rep_max=25, weight_increment=0, sets=3, rest_s=45,
+         slot="home", garmin_category="HIP_RAISE", garmin_exercise="GLUTE_BRIDGE",
+         sort_order=320, notes="Oben eine Sekunde halten",
+         aliases=["glute bridge", "brücke", "beckenheben", "hip raise"]),
+    dict(name="Rückenstrecken am Boden", muscle_group="back", equipment="bodyweight",
+         target_reps=12, rep_min=8, rep_max=20, weight_increment=0, sets=3, rest_s=45,
+         slot="home", garmin_category="HYPEREXTENSION",
+         garmin_exercise="BACK_EXTENSION_WITH_OPPOSITE_ARM_AND_LEG_REACH",
+         sort_order=325, notes="Aus dem Rücken heben, nicht aus dem Nacken",
+         aliases=["superman", "rueckenstrecken", "back extension"]),
+    dict(name="Schwimmer", muscle_group="back", equipment="bodyweight",
+         mode="time", target_duration_s=40, weight_increment=0, sets=3, rest_s=40,
+         slot="home", garmin_category="HYPEREXTENSION",
+         garmin_exercise="SUPERMAN_ON_SWISS_BALL", sort_order=330,
+         notes="Arme und Beine wechselseitig, klein und schnell",
+         aliases=["swimmer", "schwimmer"]),
+    dict(name="Kurzhantel-Rudern einarmig", muscle_group="back", equipment="dumbbell",
+         weight_kg=10, weight_increment=2, target_reps=12, rep_min=8, rep_max=15,
+         sets=3, rest_s=60, slot="home", garmin_category="ROW",
+         garmin_exercise="SINGLE_ARM_BENT_OVER_ROW", sort_order=335,
+         notes="Rücken flach, Ellbogen eng am Körper",
+         aliases=["one arm row", "kurzhantelrudern", "rudern einarmig"]),
+    dict(name="Kurzhantel-Kreuzheben", muscle_group="back", equipment="dumbbell",
+         weight_kg=10, weight_increment=2, target_reps=12, rep_min=8, rep_max=15,
+         sets=3, rest_s=60, slot="home", garmin_category="DEADLIFT",
+         garmin_exercise="DUMBBELL_DEADLIFT", sort_order=340,
+         notes="Beine fast gestreckt, Bewegung aus der Hüfte",
+         aliases=["romanian deadlift", "kreuzheben kurzhantel"]),
+    dict(name="Kurzhantel-Seitheben", muscle_group="shoulders", equipment="dumbbell",
+         weight_kg=6, weight_increment=2, target_reps=12, rep_min=10, rep_max=18,
+         sets=3, rest_s=45, slot="home", garmin_category="LATERAL_RAISE",
+         garmin_exercise="LATERAL_RAISE", sort_order=345,
+         aliases=["lateral raise", "seitheben"]),
+    dict(name="Kurzhantel-Überzüge", muscle_group="back", equipment="dumbbell",
+         weight_kg=8, weight_increment=2, target_reps=12, rep_min=10, rep_max=16,
+         sets=3, rest_s=45, slot="home", garmin_category="CHOP",
+         garmin_exercise="DUMBBELL_PULLOVER", sort_order=350,
+         notes="Nur so weit, wie der untere Rücken flach bleibt",
+         aliases=["pullover", "ueberzuege"]),
+    dict(name="Russischer Twist mit Hantel", muscle_group="core", equipment="dumbbell",
+         weight_kg=6, weight_increment=2, target_reps=16, rep_min=10, rep_max=24,
+         sets=3, rest_s=45, slot="home", garmin_category="CHOP",
+         garmin_exercise="WEIGHTED_RUSSIAN_TWIST_ON_SWISS_BALL", sort_order=355,
+         notes="Aus dem Rumpf drehen, nicht aus den Armen",
+         aliases=["russian twist", "russischer twist"]),
+    dict(name="Liegestütz", muscle_group="chest", equipment="bodyweight",
+         target_reps=12, rep_min=6, rep_max=25, weight_increment=0, sets=3, rest_s=60,
+         slot="home", garmin_category="PUSH_UP", garmin_exercise="PUSH_UP",
+         sort_order=360, aliases=["push up", "liegestuetz", "liegestütze"]),
+    dict(name="Ausfallschritte", muscle_group="legs", equipment="bodyweight",
+         target_reps=12, rep_min=8, rep_max=20, weight_increment=0, sets=3, rest_s=50,
+         slot="home", garmin_category="LUNGE", garmin_exercise="WALKING_LUNGE",
+         sort_order=365, notes="Je Seite; das hintere Knie sinkt tief",
+         aliases=["lunge", "ausfallschritt"]),
+    dict(name="Katze-Kuh zum Abschluss", muscle_group="back", equipment="bodyweight",
+         mode="time", target_duration_s=60, weight_increment=0, sets=1, rest_s=0,
+         slot="home", garmin_category="UNKNOWN", garmin_exercise="UNKNOWN",
+         sort_order=370, notes="Ruhig atmen, Wirbel für Wirbel",
+         aliases=["cat cow"])
 ]
 
 # Abend-Yoga: eigene Liste, weil es als Yoga-Workout auf die Uhr geht (nicht als
@@ -747,15 +833,46 @@ def _best_set(sets: list[dict[str, Any]]) -> dict[str, Any] | None:
     return max(at_top, key=lambda s: s["reps"])
 
 
+# Das Schema, nach dem die Vorgabe nach jeder Einheit gesetzt wird.
+#
+#   Schafft der schwerste Satz MEHR als SCHWELLE Wiederholungen, war das
+#   Gewicht nicht die Grenze — dann gilt ab sofort dieses Gewicht, angesetzt
+#   auf OBEN Wiederholungen.
+#   Schafft er weniger, war es zu schwer — dann RUNTER Kilo weniger und
+#   UNTEN Wiederholungen.
+#
+# Bewusst als Zahlen und nicht als Formel: Das ist eine Trainingsentscheidung,
+# keine Rechnung, und sie soll nachlesbar und aenderbar sein.
+PROG = {"schwelle": 10, "oben": 10, "unten": 15, "runter_kg": 5.0}
+
+
+def _scheme() -> dict[str, float]:
+    def num(key: str, fallback: float) -> float:
+        try:
+            return float(get_setting(f"prog_{key}", str(fallback)) or fallback)
+        except (TypeError, ValueError):
+            return fallback
+    return {
+        "schwelle": int(num("schwelle", PROG["schwelle"])),
+        "oben": int(num("oben", PROG["oben"])),
+        "unten": int(num("unten", PROG["unten"])),
+        "runter_kg": num("runter_kg", PROG["runter_kg"]),
+    }
+
+
 def propose_for_day(day: str) -> list[dict[str, Any]]:
     """Aus einem Trainingstag Vorschlaege ableiten — ohne etwas zu aendern.
 
-    Der Unterschied zur automatischen Fortschreibung ist nicht technisch,
-    sondern eine Frage der Zustaendigkeit: Wer 35 kg statt der geplanten 20
-    bewegt, hat eine Entscheidung getroffen, die PULS nachvollziehen, aber
-    nicht stillschweigend uebernehmen sollte. Der Vorschlag steht da, mit dem
-    Beleg daneben, und ein Tippen macht ihn zur neuen Vorgabe.
+    Massgeblich ist der schwerste Satz des Tages. Wer sich innerhalb einer
+    Einheit hocharbeitet (25, dann 30, dann 35 kg), hat mit dem letzten Satz
+    gezeigt, was geht — und nicht mit dem ersten. Der Durchschnitt waere hier
+    die falsche Zusammenfassung: Er beschreibt eine Belastung, die so nie
+    stattgefunden hat.
+
+    Geaendert wird nichts. Der Vorschlag steht mit seinem Beleg da, und ein
+    Tippen macht ihn zur neuen Vorgabe.
     """
+    cfg = _scheme()
     with get_db() as db:
         ids = [r["exercise_id"] for r in db.execute(
             "SELECT DISTINCT exercise_id FROM exercise_sets WHERE day=?",
@@ -767,105 +884,73 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
         if not ex or ex["mode"] == "time":
             continue
         sets = sets_for_day(ex_id, day)
+        from_weight = ex["weight_kg"] or 0.0
+        from_reps = ex["target_reps"] or cfg["unten"]
+
         best = _best_set(sets)
         if not best:
+            # Kein Zaehlwerk, aber Gewicht: Das kommt an jeder Maschine vor, an
+            # der die Uhr die Wiederholungen nicht mitbekommt.
+            lifted = [s["weight_kg"] for s in sets if (s.get("weight_kg") or 0) > 0]
+            if not lifted or abs(max(lifted) - from_weight) < 0.4:
+                continue
+            top = max(lifted)
+            made.append(_store_proposal(
+                ex, day, from_weight, from_reps, top, from_reps,
+                f"{top:g} kg bewegt, Wiederholungen nicht gezählt",
+                f"Die Uhr hat nichts gezählt, aber {top:g} kg lagen auf — "
+                f"die Vorgabe zieht nach."))
             continue
 
-        from_weight = ex["weight_kg"] or 0.0
-        from_reps = ex["target_reps"] or ex["rep_min"] or 8
-        lifted, reps = float(best["weight_kg"]), int(best["reps"])
-        done = [int(s["reps"]) for s in sets if (s.get("reps") or 0) > 0]
-        all_hit = bool(done) and all(r >= from_reps for r in done)
+        heaviest, reps = float(best["weight_kg"]), int(best["reps"])
+        step = ex["weight_increment"] or 2.5
 
-        # 1. Schwerer als geplant: Das Gewicht ist die neue Wahrheit. Die
-        #    Wiederholungen richten sich nach dem, was dabei ging.
-        if lifted > from_weight + 0.4:
-            to_weight = lifted
-            to_reps = max(ex["rep_min"], min(ex["rep_max"], reps))
-            evidence = f"{reps}× {lifted:g} kg geschafft (Vorgabe {from_reps}× {from_weight:g} kg)"
-            reason = (f"Du hast {lifted:g} kg bewegt, geplant waren "
-                      f"{from_weight:g} kg — das ist die neue Grundlage.")
-            # Wurde auch dabei die Obergrenze gerissen, war selbst das noch zu
-            # leicht: dann gleich eine Stufe weiter statt naechste Woche wieder.
-            if reps > ex["rep_max"]:
-                step = ex["weight_increment"] or 2.5
-                to_weight = round_to_increment(
-                    max(lifted + step,
-                        weight_for_reps(epley_1rm(lifted, reps), ex["rep_max"])), step)
-                to_reps = ex["rep_max"]
-                reason += (f" Und weil dabei {reps} Wiederholungen drin waren, "
-                           f"geht gleich noch eine Stufe auf {to_weight:g} kg.")
-        # 2. Obergrenze deutlich gerissen: Dann war das Gewicht nicht knapp,
-        #    sondern klar zu leicht. Eine Stufe waere hier zu zaghaft — das
-        #    aequivalente Gewicht kommt ueber das geschaetzte Maximalgewicht
-        #    (Epley), damit der Sprung zur Leistung passt.
-        elif done and max(done) > ex["rep_max"]:
-            step = ex["weight_increment"] or 2.5
-            to_reps = ex["rep_min"]
-            to_weight = round_to_increment(
-                max(lifted + step,
-                    weight_for_reps(epley_1rm(lifted, max(done)), to_reps)), step)
-            evidence = f"{max(done)}× {lifted:g} kg — die Obergrenze liegt bei {ex['rep_max']}"
-            reason = (f"{max(done)} Wiederholungen bei einer Obergrenze von "
-                      f"{ex['rep_max']} heißt: deutlich zu leicht. "
-                      f"{to_weight:g} kg bei {to_reps} Wiederholungen ist der "
-                      f"passende Sprung, nicht eine Stufe.")
-        # 3. Wie geplant, Obergrenze genau erreicht: Gewicht hoch, Wieder-
-        #    holungen zurueck auf den Anfang der Spanne.
-        elif all_hit and from_reps >= ex["rep_max"]:
-            step = ex["weight_increment"] or 2.5
-            to_weight = round_to_increment(lifted + step, step)
-            to_reps = ex["rep_min"]
-            evidence = f"{ex['rep_max']}× {lifted:g} kg in allen Sätzen"
-            reason = (f"Die Obergrenze von {ex['rep_max']} Wiederholungen sitzt "
-                      f"— jetzt mehr Gewicht, dafür wieder {to_reps} Wiederholungen.")
-        # 4. Etwas mehr Wiederholungen als verlangt: Das heisst nicht, dass das
-        #    Wiederholungsziel wachsen soll — es heisst, dass das Gewicht zu
-        #    leicht ist. Wer 18 statt 15 schafft, soll nicht 18 anstreben,
-        #    sondern mehr auflegen und wieder bei 15 landen. Umgerechnet wird
-        #    ueber das geschaetzte Maximalgewicht (Epley), damit der Sprung zur
-        #    Leistung passt und nicht geraten ist.
-        elif done and max(done) > from_reps:
-            step = ex["weight_increment"] or 2.5
-            equivalent = weight_for_reps(epley_1rm(lifted, max(done)), from_reps)
-            # Mindestens eine Stufe: Bei hohen Wiederholungen ist Epley
-            # vorsichtig, und ein Vorschlag ueber null Komma fuenf Kilo waere
-            # keiner.
-            to_weight = round_to_increment(max(lifted + step, equivalent), step)
-            to_reps = from_reps
-            evidence = f"{max(done)}× {lifted:g} kg statt der geplanten {from_reps}"
-            reason = (f"{max(done)} statt {from_reps} Wiederholungen heißt: Das "
-                      f"Gewicht ist zu leicht. Mit {to_weight:g} kg sind "
-                      f"{from_reps} Wiederholungen wieder ein Reiz.")
-        # 5. Alles wie geplant: eine Wiederholung mehr als naechster Schritt.
-        elif all_hit and from_reps < ex["rep_max"]:
-            to_weight = lifted or from_weight
-            to_reps = from_reps + 1
-            evidence = f"alle Sätze mit {from_reps}× {lifted:g} kg"
-            reason = "Sauber durchgezogen — der nächste kleine Schritt."
+        if reps > cfg["schwelle"]:
+            # Das Gewicht war nicht die Grenze: Es gilt ab jetzt.
+            to_weight = heaviest
+            to_reps = cfg["oben"]
+            evidence = (f"schwerster Satz: {reps}× {heaviest:g} kg "
+                        f"(mehr als {cfg['schwelle']} Wiederholungen)")
+            reason = (f"{reps} Wiederholungen bei {heaviest:g} kg — das Gewicht "
+                      f"war nicht die Grenze. Ab jetzt {heaviest:g} kg bei "
+                      f"{to_reps} Wiederholungen.")
         else:
-            continue
+            # Zu schwer: einen festen Schritt zurueck, dafuer mehr Wiederholungen.
+            to_weight = max(0.0, round_to_increment(heaviest - cfg["runter_kg"], step))
+            to_reps = cfg["unten"]
+            evidence = (f"schwerster Satz: {reps}× {heaviest:g} kg "
+                        f"(höchstens {cfg['schwelle']} Wiederholungen)")
+            reason = (f"Nur {reps} Wiederholungen bei {heaviest:g} kg — zu schwer. "
+                      f"{to_weight:g} kg bei {to_reps} Wiederholungen bringt dich "
+                      f"sauber durch die Sätze.")
 
         if abs(to_weight - from_weight) < 0.4 and to_reps == from_reps:
             continue
-
-        with get_db() as db:
-            db.execute(
-                """INSERT INTO progression_proposals
-                   (exercise_id, day, from_weight, to_weight, from_reps, to_reps,
-                    evidence, reason)
-                   VALUES(?,?,?,?,?,?,?,?)
-                   ON CONFLICT(exercise_id, day) DO UPDATE SET
-                     to_weight=excluded.to_weight, to_reps=excluded.to_reps,
-                     evidence=excluded.evidence, reason=excluded.reason
-                   WHERE progression_proposals.status='open'""",
-                (ex_id, day, from_weight, round(to_weight, 1), from_reps,
-                 int(to_reps), evidence, reason))
-        made.append({"exercise_id": ex_id, "name": ex["name"],
-                     "from_weight": from_weight, "to_weight": round(to_weight, 1),
-                     "from_reps": from_reps, "to_reps": int(to_reps),
-                     "evidence": evidence, "reason": reason})
+        made.append(_store_proposal(ex, day, from_weight, from_reps,
+                                    round(to_weight, 1), int(to_reps),
+                                    evidence, reason))
     return made
+
+
+def _store_proposal(ex: dict[str, Any], day: str, from_weight: float,
+                    from_reps: int, to_weight: float, to_reps: int,
+                    evidence: str, reason: str) -> dict[str, Any]:
+    with get_db() as db:
+        db.execute(
+            """INSERT INTO progression_proposals
+               (exercise_id, day, from_weight, to_weight, from_reps, to_reps,
+                evidence, reason)
+               VALUES(?,?,?,?,?,?,?,?)
+               ON CONFLICT(exercise_id, day) DO UPDATE SET
+                 to_weight=excluded.to_weight, to_reps=excluded.to_reps,
+                 evidence=excluded.evidence, reason=excluded.reason
+               WHERE progression_proposals.status='open'""",
+            (ex["id"], day, from_weight, to_weight, from_reps, to_reps,
+             evidence, reason))
+    return {"exercise_id": ex["id"], "name": ex["name"],
+            "from_weight": from_weight, "to_weight": to_weight,
+            "from_reps": from_reps, "to_reps": to_reps,
+            "evidence": evidence, "reason": reason}
 
 
 def open_proposals(limit: int = 20) -> list[dict[str, Any]]:
@@ -888,9 +973,15 @@ def decide_proposal(proposal_id: int, accept: bool) -> dict[str, Any] | None:
         db.execute("UPDATE progression_proposals SET status=?, decided_at=datetime('now') "
                    "WHERE id=?", ("accepted" if accept else "declined", proposal_id))
         if accept:
+            # Die Spanne mitziehen, falls das neue Ziel ausserhalb liegt: Sonst
+            # stuende "10 Wiederholungen" bei einer Spanne von 12 bis 18, und
+            # die naechste Fortschreibung rechnete gegen die eigene Vorgabe.
             db.execute(
-                "UPDATE exercises SET weight_kg=?, target_reps=?, fail_streak=0 "
-                "WHERE id=?", (row["to_weight"], row["to_reps"], row["exercise_id"]))
+                """UPDATE exercises SET weight_kg=?, target_reps=?, fail_streak=0,
+                       rep_min=MIN(rep_min, ?), rep_max=MAX(rep_max, ?)
+                   WHERE id=?""",
+                (row["to_weight"], row["to_reps"], row["to_reps"],
+                 row["to_reps"], row["exercise_id"]))
             db.execute(
                 """INSERT INTO progression_log(exercise_id, action, from_weight,
                        to_weight, from_reps, to_reps, reason)

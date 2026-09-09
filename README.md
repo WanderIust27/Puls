@@ -129,6 +129,21 @@ Bewertet wird dann:
 - **Fortschritt.** Schneller bei gleichem Puls als im Schnitt der letzten Wochen — das
   ist der Vergleich, auf den es ankommt.
 
+## Zuhause trainieren
+
+Nicht jede Einheit braucht ein Studio. Unter *Plan → Zuhause trainieren* wählst
+du Dauer und Muskelgruppen, und PULS baut eine Einheit aus Übungen, die nichts
+als eine Matte und höchstens eine kleine Hantel brauchen: Unterarmstütz,
+Seitstütz, Käfer, Vierfüßlerstand, Beckenheben, Rückenstrecken, Schwimmer,
+einarmiges Rudern, Kurzhantel-Kreuzheben, Seitheben, Überzüge, russischer
+Twist, Liegestütz, Ausfallschritte.
+
+Die Gruppen wechseln sich ab, statt sechsmal Bauch zu bringen. Die Dauer wird
+eingehalten — Übungen kommen dazu oder fallen weg, bis sie passt. Gemeldete
+Beschwerden gelten auch hier: Bei Rückenschmerzen bleibt der Rücken draußen,
+und das steht dann auch da. Ohne Hantel geht es ebenfalls, dann bleiben die
+Körpergewichtsübungen.
+
 ## Yoga-Stellungen
 
 Die Abendeinheit geht als echtes Yoga-Workout auf die Uhr: Jede Stellung wird mit
@@ -724,19 +739,27 @@ kommt:
 Vier Fälle werden unterschieden, und der erste ist der, an dem die alte
 Automatik scheiterte:
 
-| Was passiert ist | Was vorgeschlagen wird |
-|---|---|
-| Schwerer als geplant | Das bewegte Gewicht wird die neue Vorgabe |
-| Obergrenze deutlich gerissen | Ein **richtiger** Sprung, nicht eine Stufe — über das geschätzte Maximalgewicht gerechnet |
-| Obergrenze genau erreicht | Gewicht eine Stufe hoch, Wiederholungen zurück an den Anfang der Spanne |
-| Etwas mehr Wiederholungen | Das **Gewicht** steigt, nicht das Wiederholungsziel |
-| Alles wie geplant | Eine Wiederholung mehr als nächster Schritt |
+Maßgeblich ist der **schwerste Satz** des Tages, nicht der Durchschnitt. Wer
+sich innerhalb einer Einheit hocharbeitet — 25, dann 30, dann 35 kg —, hat mit
+dem letzten Satz gezeigt, was geht, und nicht mit dem ersten. Ein Mittelwert
+beschriebe hier eine Belastung, die so nie stattgefunden hat.
 
-Der zweite und der vierte Fall waren die eigentliche Schwäche: Wer 18
-Wiederholungen schafft, wo 15 die Obergrenze sind, braucht kein höheres
-Wiederholungsziel — das Gewicht ist zu leicht. Umgerechnet wird über Epley,
-damit der Sprung zur Leistung passt und nicht geraten ist: 22,5 kg × 18 werden
-zu 27,5 kg × 10, nicht zu 25 kg.
+Daraus folgt eine Regel mit zwei Fällen:
+
+| Schwerster Satz | Neue Vorgabe |
+|---|---|
+| **mehr als 10** Wiederholungen | dieses Gewicht, angesetzt auf **10** Wiederholungen |
+| **10 oder weniger** | **5 kg weniger**, dafür **15** Wiederholungen |
+
+Aus `15× 25 kg · 15× 30 kg · 15× 35 kg` wird damit **35 kg × 10** — und nicht
+ein Wiederholungsziel von 16, das an der Sache vorbeigeht. Die vier Zahlen
+(Schwelle, oberes Ziel, unteres Ziel, Abschlag) stehen unter *Mehr →
+Trainingsziele* und lassen sich ändern; sie sind eine Trainingsentscheidung,
+keine Rechnung, und sollen nachlesbar bleiben.
+
+Liegt das neue Ziel außerhalb der eingestellten Wiederholungsspanne, zieht die
+Spanne mit. Sonst stünde „10 Wiederholungen" bei einer Spanne von 12 bis 18 —
+und die nächste Fortschreibung rechnete gegen die eigene Vorgabe.
 
 Ein Tippen macht daraus die neue Vorgabe, „Alle übernehmen" erledigt die ganze
 Einheit auf einmal. Was abgelehnt wird, bleibt unverändert. Unter *Kraft* steht
@@ -797,7 +820,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Einundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Zweiundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
 prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
 Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.

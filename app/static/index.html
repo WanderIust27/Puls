@@ -351,6 +351,26 @@
 
   
 <div class="card">
+    <h3>Zuhause trainieren</h3>
+    <p class="muted">Ohne Studio, nur Matte und höchstens eine kleine Hantel.
+      Die Dauer wird eingehalten — Übungen kommen dazu oder fallen weg, bis sie
+      passt.</p>
+    <div class="row">
+      <select id="homeMinutes" class="small">
+        <option value="15">15 min</option>
+        <option value="20">20 min</option>
+        <option value="30" selected>30 min</option>
+        <option value="45">45 min</option>
+      </select>
+      <label class="row toggle" style="margin:0"><input type="checkbox"
+        id="homeDumbbell" checked> mit Kurzhantel</label>
+    </div>
+    <div id="homeGroups" class="chips" style="margin-top:8px"></div>
+    <button class="btn" id="btnHomeSession" style="margin-top:10px">Einheit anlegen</button>
+    <div id="homePreview"></div>
+  </div>
+
+  <div class="card">
     <h3>Einzelne Einheit erstellen</h3>
     <div class="quick-grid">
       <button class="btn ghost" data-run="easy">Lockerer Lauf</button>
@@ -962,6 +982,21 @@
     <label class="row toggle" style="margin-top:12px">
       <input type="checkbox" id="setPreferMachines"> Maschinen gegenüber freien Gewichten bevorzugen
     </label>
+    <label class="field" style="margin-top:14px">Wie die Gewichte fortgeschrieben werden</label>
+    <p class="muted">Schafft der schwerste Satz mehr als die Schwelle, gilt
+      dieses Gewicht ab sofort — angesetzt auf die obere Wiederholungszahl.
+      Schafft er weniger, geht das Gewicht um den Abschlag zurück und die
+      Wiederholungen hoch.</p>
+    <div class="grid3">
+      <div><label class="field">Schwelle (Wdh.)</label>
+        <input id="setProgSchwelle" type="number" min="1" max="50"></div>
+      <div><label class="field">dann Ziel (Wdh.)</label>
+        <input id="setProgOben" type="number" min="1" max="50"></div>
+      <div><label class="field">sonst Ziel (Wdh.)</label>
+        <input id="setProgUnten" type="number" min="1" max="50"></div>
+      <div><label class="field">Abschlag (kg)</label>
+        <input id="setProgRunter" type="number" step="0.5" min="0.5" max="50"></div>
+    </div>
     <button class="btn" id="btnSaveWeek" style="margin-top:12px">Speichern</button>
   </div>
 

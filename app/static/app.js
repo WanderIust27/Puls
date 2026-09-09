@@ -2932,6 +2932,11 @@ async function loadSettings() {
   $("#setProtein").value = s.protein_target;
   $("#setProfile").value = s.profile.text || "";
   $("#setStepGoal").value = s.step_goal || 10000;
+  const pr = s.progression || {};
+  $("#setProgSchwelle").value = pr.schwelle ?? 10;
+  $("#setProgOben").value = pr.oben ?? 10;
+  $("#setProgUnten").value = pr.unten ?? 15;
+  $("#setProgRunter").value = pr.runter_kg ?? 5;
   $("#setWakeTarget").value = s.wake_target || "06:30";
   $("#setPullupGoal").value = s.pullup_goal;
   $("#setRunGoalKm").value = s.run_goal_distance_km;
@@ -2964,6 +2969,10 @@ $("#btnCopyToken").addEventListener("click", async () => {
 $("#btnSaveWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   await api("/settings", { method: "POST", body: JSON.stringify({
     step_goal: +$("#setStepGoal").value || 10000,
+    prog_schwelle: +$("#setProgSchwelle").value || 10,
+    prog_oben: +$("#setProgOben").value || 10,
+    prog_unten: +$("#setProgUnten").value || 15,
+    prog_runter_kg: +$("#setProgRunter").value || 5,
     wake_target: $("#setWakeTarget").value || "06:30",
     pullup_goal: +$("#setPullupGoal").value || 10,
     run_goal_distance_km: +$("#setRunGoalKm").value || 10,
@@ -3220,6 +3229,43 @@ async function resetLayout(view) {
   try { await api(`/layout/${view}`, { method: "DELETE" }); } catch (e) { /* egal */ }
   location.reload();
 }
+
+/* ------------------------------------------------------ Einheit für zuhause */
+
+const HOME_GROUPS = [["core", "Rumpf"], ["back", "Rücken"], ["chest", "Brust"],
+                     ["shoulders", "Schultern"], ["legs", "Beine"]];
+let homeChosen = ["core", "back"];
+
+function renderHomeGroups() {
+  const host = $("#homeGroups");
+  if (!host) return;
+  host.innerHTML = HOME_GROUPS.map(([key, label]) =>
+    `<button class="chip${homeChosen.includes(key) ? " on" : ""}"
+      data-homegroup="${key}">${label}</button>`).join("");
+  $$("#homeGroups [data-homegroup]").forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.homegroup;
+    homeChosen = homeChosen.includes(k)
+      ? homeChosen.filter((x) => x !== k) : [...homeChosen, k];
+    if (!homeChosen.length) homeChosen = [k];   // ganz ohne Gruppe geht nicht
+    renderHomeGroups();
+  }));
+}
+
+$("#btnHomeSession").addEventListener("click", (e) =>
+  withSpinner(e.currentTarget, async () => {
+    const w = await api("/plan/home", { method: "POST", body: JSON.stringify({
+      minutes: +$("#homeMinutes").value || 30,
+      groups: homeChosen,
+      with_dumbbell: $("#homeDumbbell").checked }) });
+    $("#homePreview").innerHTML = `
+      <div class="detail-section">
+        <h4>${esc(w.name)}</h4>
+        <p class="muted">${esc(w.description)}</p>
+        <ul class="steps">${stepsToHtml(w.steps)}</ul>
+      </div>`;
+    toast(`${w.minutes} min für heute eingeplant`);
+    loadPlan();
+  }));
 
 /* ---------------------------------------------------------------- Schritte */
 
@@ -3621,7 +3667,7 @@ $("#btnLthrClear").addEventListener("click", (e) => withSpinner(e.currentTarget,
 const LOADERS = {
   start: loadDashboard,
   mood: loadMood,
-  plan: () => { loadCoachPlan(); loadPlan(); },
+  plan: () => { loadCoachPlan(); loadPlan(); renderHomeGroups(); },
   strength: () => { loadExercises(); loadStrengthView(); },
   running: () => { loadExercises(); loadRunningView(); },
   nutrition: loadNutrition,

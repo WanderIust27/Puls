@@ -1016,6 +1016,27 @@ def exercise_changes(days: int = 10) -> list[dict[str, Any]]:
     return ex_lib.recent_changes(days=days)
 
 
+class HomeSessionIn(BaseModel):
+    minutes: int = 30
+    groups: list[str] | None = None
+    with_dumbbell: bool = True
+    planned_date: str | None = None
+    save: bool = True
+
+
+@router.post("/plan/home")
+def plan_home(h: HomeSessionIn) -> dict[str, Any]:
+    """Eine Einheit fuer die Matte — ohne Studio, hoechstens kleine Hantel."""
+    workout = planner.build_home_session(
+        max(10, min(120, h.minutes)), h.groups, h.with_dumbbell)
+    if not workout.get("steps"):
+        raise HTTPException(400, workout.get("hint") or "Keine Übungen verfügbar.")
+    if h.save:
+        workout["planned_date"] = h.planned_date or dt.date.today().isoformat()
+        workout["id"] = _insert_workout(workout, "coach")
+    return workout
+
+
 @router.get("/layout")
 def layout_get() -> dict[str, Any]:
     """Die selbst gewaehlte Kartenreihenfolge je Ansicht."""
@@ -1469,6 +1490,10 @@ class SettingsIn(BaseModel):
     run_minutes: int | None = None
     wake_target: str | None = None
     step_goal: int | None = None
+    prog_schwelle: int | None = None
+    prog_oben: int | None = None
+    prog_unten: int | None = None
+    prog_runter_kg: float | None = None
     gym_days: list[str] | None = None
     gym_minutes: int | None = None
     evening_mobility: bool | None = None
@@ -1779,6 +1804,7 @@ def get_settings() -> dict[str, Any]:
         "run_minutes": int(get_setting("run_minutes", "45") or 45),
         "wake_target": get_setting("wake_target", "06:30"),
         "step_goal": int(get_setting("step_goal", "10000") or 10000),
+        "progression": ex_lib._scheme(),
         "gym_days": json.loads(get_setting("gym_days", "[]") or "[]"),
         "gym_minutes": int(get_setting("gym_minutes", "75") or 75),
         "evening_mobility": get_setting("evening_mobility", "1") == "1",
@@ -1807,6 +1833,11 @@ def post_settings(s: SettingsIn) -> dict[str, str]:
         set_setting("run_days", json.dumps(s.run_days))
     if s.run_minutes is not None:
         set_setting("run_minutes", str(s.run_minutes))
+    for field, low, high in (("prog_schwelle", 1, 50), ("prog_oben", 1, 50),
+                             ("prog_unten", 1, 50), ("prog_runter_kg", 0.5, 50)):
+        value = getattr(s, field)
+        if value is not None:
+            set_setting(field, str(max(low, min(high, float(value)))))
     if s.step_goal is not None:
         set_setting("step_goal", str(max(1000, min(50000, int(s.step_goal)))))
     if s.wake_target is not None:

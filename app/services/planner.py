@@ -356,6 +356,106 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
     }
 
 
+# ------------------------------------------------------------ Zuhause-Einheit
+
+def build_home_session(minutes: int = 30, groups: list[str] | None = None,
+                       with_dumbbell: bool = True) -> dict[str, Any]:
+    """Eine Einheit für die Matte — ohne Studio, höchstens mit kleiner Hantel.
+
+    Gebaut wird nach demselben Grundsatz wie die Gym-Einheit: Erst die
+    Verteilung schätzen, dann nachrechnen und Übungen zufügen oder wegnehmen,
+    bis die Dauer die Vorgabe trifft. Eine Einheit, die "30 min" heißt und
+    nach 18 vorbei ist, wäre auch hier eine Ansage, auf die kein Verlass ist.
+    """
+    wanted = [g for g in (groups or ["core", "back"]) if g in ex_lib.MUSCLE_LABELS]
+    if not wanted:
+        wanted = ["core", "back"]
+
+    lib = [e for e in ex_lib.list_exercises(only_active=True)
+           if e.get("slot") == "home"
+           and (with_dumbbell or e.get("equipment") != "dumbbell")]
+    # Beschwerden gelten auch zuhause.
+    adapt = mood.adaptations()
+    spared = set(adapt["spare_groups"])
+    focused = [e for e in lib if e["muscle_group"] in wanted
+               and e["muscle_group"] not in spared]
+    rest = [e for e in lib if e not in focused and e["muscle_group"] not in spared]
+    if len(focused) < 3:
+        focused = focused + rest              # lieber breiter als zu kurz
+
+    if not focused:
+        return {"name": "Zuhause", "sport": "strength", "steps": [],
+                "description": "Für eine Einheit ohne Geräte fehlen noch Übungen.",
+                "exercise_ids": [], "minutes": 0,
+                "hint": "Lege unter Kraft ein paar Übungen mit dem Block „Zuhause“ an."}
+
+    # Reihum durch die gewünschten Gruppen, damit nicht sechsmal Bauch kommt.
+    by_group: dict[str, list[dict[str, Any]]] = {}
+    for e in focused:
+        by_group.setdefault(e["muscle_group"], []).append(e)
+    for lst in by_group.values():
+        lst.sort(key=lambda e: (-_rest_days(e), e["sort_order"]))
+
+    order = [g for g in wanted if g in by_group] + \
+        [g for g in by_group if g not in wanted]
+    rotation: list[dict[str, Any]] = []
+    round_no = 0
+    while any(len(by_group[g]) > round_no for g in order) and round_no < 6:
+        for g in order:
+            if len(by_group[g]) > round_no:
+                rotation.append(by_group[g][round_no])
+        round_no += 1
+
+    used: list[dict[str, Any]] = []
+
+    def assemble(count: int) -> list[dict[str, Any]]:
+        used.clear()
+        out: list[dict[str, Any]] = [
+            {"type": "warmup", "name": "Aufwärmen auf der Matte", "duration_s": 180,
+             "notes": "Katze-Kuh, Schulterkreisen, ein paar Ausfallschritte"}]
+        for e in rotation[:count]:
+            out.extend(_exercise_to_steps(e))
+            used.append(e)
+        out.append({"type": "cooldown", "name": "Ausatmen und dehnen",
+                    "duration_s": 120,
+                    "notes": "Kindhaltung und liegende Drehung, je eine halbe Minute"})
+        return out
+
+    # Dauer treffen: Übungen zufügen, bis es passt.
+    target = minutes * 60
+    best = None
+    for count in range(2, min(len(rotation), 12) + 1):
+        steps = assemble(count)
+        gap = abs(step_seconds(steps) - target)
+        if best is None or gap < best[0]:
+            best = (gap, count, steps, list(used))
+        if step_seconds(steps) > target:
+            break
+    _gap, count, steps, chosen = best
+    used = chosen
+    actual = round(step_seconds(steps) / 60)
+
+    labels = sorted({ex_lib.MUSCLE_LABELS.get(e["muscle_group"], e["muscle_group"])
+                     for e in used})
+    return {
+        "name": f"Zuhause {'/'.join(labels)} {actual} min",
+        "sport": "strength",
+        "minutes": actual,
+        "minutes_requested": minutes,
+        "groups": labels,
+        "description": (f"Auf der Matte, ohne Studio"
+                        + (" (kleine Hantel)" if any(
+                            e["equipment"] == "dumbbell" for e in used) else "")
+                        + f": {', '.join(labels)}."),
+        "steps": steps,
+        "exercise_ids": [e["id"] for e in used],
+        "adapted": ({"reason": "; ".join(adapt["summary"][:2]),
+                     "changes": ["betroffene Gruppen ausgelassen"],
+                     "complaints": adapt["complaints"]} if spared and adapt["complaints"]
+                    else None),
+    }
+
+
 # ------------------------------------------------------------- Abend-Mobility
 
 def _pose_step(pose: dict[str, Any], step_type: str = "work") -> dict[str, Any]:

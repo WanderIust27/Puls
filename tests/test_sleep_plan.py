@@ -268,7 +268,9 @@ p = next((m for m in made if m["exercise_id"] == heavy), None)
 ok("Aus 35 statt 20 kg wird ein Vorschlag", p is not None)
 if p:
     check("… mit dem tatsächlich bewegten Gewicht", p["to_weight"], 35.0)
-    check("… und den dabei geschafften Wiederholungen", p["to_reps"], 15)
+    # Fünfzehn Wiederholungen sind mehr als die Schwelle — also gilt dieses
+    # Gewicht ab jetzt bei zehn Wiederholungen.
+    check("… und dem oberen Wiederholungsziel", p["to_reps"], 10)
     ok("… mit Beleg", "35 kg" in p["evidence"], p["evidence"])
     ok("… und Begründung", bool(p["reason"]))
 
@@ -291,7 +293,7 @@ with get_db() as db:
     after_accept = db.execute("SELECT weight_kg, target_reps, fail_streak "
                               "FROM exercises WHERE id=?", (heavy,)).fetchone()
 check("Nach dem Übernehmen gilt der neue Wert", after_accept["weight_kg"], 35.0)
-check("… und die neuen Wiederholungen", after_accept["target_reps"], 15)
+check("… und die neuen Wiederholungen", after_accept["target_reps"], 10)
 ok("Ein übernommener Vorschlag ist nicht mehr offen",
    not any(o["id"] == pid for o in ex_lib.open_proposals()))
 ok("Zweimal entscheiden geht nicht", ex_lib.decide_proposal(pid, True) is None)
@@ -317,8 +319,10 @@ if pid2:
     ok("… und der Vorschlag ist weg",
        not any(o["id"] == pid2 for o in ex_lib.open_proposals()))
 
-# --- Ein zu leichtes Gewicht muss ordentlich steigen --------------------
-def probe(weight, reps, target_w, target_r, rep_min, rep_max, inc=2.5):
+# --- Das Fortschreibungsschema ------------------------------------------
+# Schwerster Satz über der Schwelle → dieses Gewicht gilt, bei "oben" Wdh.
+# Darunter → um den Abschlag zurück, bei "unten" Wdh.
+def probe(saetze, target_w, target_r, rep_min=12, rep_max=18, inc=2.5):
     with get_db() as db:
         db.execute("DELETE FROM exercise_sets")
         db.execute("DELETE FROM progression_proposals")
@@ -327,43 +331,59 @@ def probe(weight, reps, target_w, target_r, rep_min, rep_max, inc=2.5):
         db.execute("""UPDATE exercises SET weight_kg=?, target_reps=?, rep_min=?,
                           rep_max=?, weight_increment=? WHERE id=?""",
                    (target_w, target_r, rep_min, rep_max, inc, eid))
-    for i in range(3):
-        ex_lib.record_set(eid, reps=reps, weight_kg=weight,
-                          day=TODAY.isoformat(), set_index=i + 1)
+    for i, (r, w) in enumerate(saetze):
+        ex_lib.record_set(eid, reps=r, weight_kg=w, day=TODAY.isoformat(),
+                          set_index=i + 1)
     made = ex_lib.propose_for_day(TODAY.isoformat())
-    return made[0] if made else None
+    return (made[0] if made else None), eid
 
-# Der gemeldete Fall: 18 Wiederholungen bei einer Obergrenze von 15.
-p = probe(22.5, 18, 22.5, 15, 10, 15)
-ok("Gerissene Obergrenze ergibt einen Vorschlag", p is not None)
+
+cfg = ex_lib._scheme()
+check("Vorgabe: Schwelle", cfg["schwelle"], 10)
+check("Vorgabe: oberes Ziel", cfg["oben"], 10)
+check("Vorgabe: unteres Ziel", cfg["unten"], 15)
+check("Vorgabe: Abschlag", cfg["runter_kg"], 5.0)
+
+# Der gemeldete Fall: 15×25, 15×30, 15×35 bei einer Vorgabe von 22,5 × 16.
+p, eid = probe([(15, 25), (15, 30), (15, 35)], 22.5, 16)
+ok("Der schwerste Satz zählt, nicht der erste", p is not None)
 if p:
-    ok("… und zwar mehr als eine Stufe", p["to_weight"] >= 22.5 + 2 * 2.5,
-       f"{p['from_weight']} → {p['to_weight']} kg")
-    ok("… mit zurückgesetzten Wiederholungen", p["to_reps"] == 10, str(p["to_reps"]))
-    ok("… und einer Begründung, die den Sprung erklärt",
-       "zu leicht" in p["reason"], p["reason"][:60])
+    check("Das Gewicht des schwersten Satzes gilt", p["to_weight"], 35.0)
+    check("… bei zehn Wiederholungen", p["to_reps"], 10)
+    ok("… mit dem Satz als Beleg", "35 kg" in p["evidence"], p["evidence"])
+    ex_lib.decide_proposal(ex_lib.open_proposals()[0]["id"], True)
+    with get_db() as db:
+        a = db.execute("SELECT weight_kg, target_reps, rep_min FROM exercises "
+                       "WHERE id=?", (eid,)).fetchone()
+    check("Übernommen steht es auch so da", a["weight_kg"], 35.0)
+    check("… mit dem neuen Ziel", a["target_reps"], 10)
+    ok("Die Spanne zieht mit, wenn das Ziel darunter liegt",
+       a["rep_min"] <= 10, f"rep_min {a['rep_min']}")
 
-# Deutlich gerissen heißt deutlich mehr.
-weit = probe(30, 25, 30, 12, 8, 12)
-ok("Weit gerissen heißt ein größerer Sprung",
-   weit and weit["to_weight"] >= 40, f"{weit['to_weight'] if weit else '–'} kg")
+# Zu schwer: zurück und mehr Wiederholungen.
+p, _ = probe([(12, 30), (8, 40)], 35, 10)
+ok("Zu schwer ergibt einen Rückschritt", p is not None)
+if p:
+    check("Fünf Kilo zurück vom schwersten Satz", p["to_weight"], 35.0)
+    check("… und fünfzehn Wiederholungen", p["to_reps"], 15)
 
-# Genau die Obergrenze bleibt die normale Steigerung.
-genau = probe(22.5, 15, 22.5, 15, 10, 15)
-ok("Genau die Obergrenze steigert nur eine Stufe",
-   genau and abs(genau["to_weight"] - 25.0) < 0.01,
-   f"{genau['to_weight'] if genau else '–'} kg")
+# Genau die Schwelle zählt noch als zu schwer ("mehr als zehn").
+p, _ = probe([(10, 40)], 40, 10)
+ok("Genau zehn ist nicht mehr als zehn", p and p["to_reps"] == 15,
+   f"{p['to_reps'] if p else '–'}")
+p, _ = probe([(11, 40)], 35, 12)
+ok("Elf ist mehr als zehn", p and p["to_weight"] == 40.0 and p["to_reps"] == 10,
+   f"{p['to_weight'] if p else '–'} kg × {p['to_reps'] if p else '–'}")
 
-# Eine Wiederholung über dem Ziel, aber unter der Obergrenze: Gewicht statt
-# Wiederholungsziel — das Ziel soll nicht davonlaufen.
-knapp = probe(25, 13, 25, 12, 10, 15)
-ok("Etwas mehr Wiederholungen heben das Gewicht, nicht das Ziel",
-   knapp and knapp["to_weight"] > 25 and knapp["to_reps"] == 12,
-   f"{knapp['to_weight'] if knapp else '–'} kg × {knapp['to_reps'] if knapp else '–'}")
+# Ohne gezählte Wiederholungen bleibt es bei der Gewichtsübernahme.
+p, _ = probe([(None, 50)], 40, 10)
+ok("Ohne Wiederholungen zählt das Gewicht",
+   p and p["to_weight"] == 50.0, f"{p['to_weight'] if p else '–'}")
 
-ok("Kein Vorschlag ist je kleiner als der Ausgangswert",
-   all(x is None or x["to_weight"] >= x["from_weight"]
-       for x in (p, weit, genau, knapp)))
+# Kein Gewicht darf unter null rutschen.
+p, _ = probe([(6, 2.5)], 5, 10, inc=2.5)
+ok("Der Rückschritt bleibt bei null stehen",
+   p is None or p["to_weight"] >= 0, str(p["to_weight"] if p else "–"))
 
 # --- Der Referenzwert muss zur Waage passen -----------------------------
 from app.services import body as body_svc                            # noqa: E402
