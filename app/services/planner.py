@@ -199,11 +199,12 @@ def build_gym_session(minutes: int | None = None, name: str | None = None
         for pose_name in adapt["relief_poses"][:2]:
             pose = pool.get(pose_name)
             if pose:
+                # Bewusst OHNE garmin_category: In einer Krafteinheit lehnt
+                # Garmin eine Yoga-Kategorie ab und verwirft das ganze
+                # Workout. Als benannter Zeitblock kommt die Dehnung an.
                 steps.append({"type": "cooldown", "name": pose["name"],
                               "duration_s": pose["duration_s"],
-                              "notes": pose.get("cue"),
-                              "garmin_category": "YOGA",
-                              "garmin_exercise": pose["garmin_exercise"]})
+                              "notes": pose.get("cue")})
 
     adapted = None
     if skipped or adapt["relief_poses"]:

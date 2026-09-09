@@ -111,6 +111,11 @@ BOOSTERS: list[dict[str, Any]] = [
 # nach der Standardreihenfolge.
 MIN_RATINGS = 2
 
+# Wie lange ein Vorschlag stehen bleibt. Ein Tag ist zu lang — abends hilft
+# etwas anderes als morgens. Zwei Stunden sind kurz genug, dass es mitgeht,
+# und lang genug, dass die Karte nicht bei jedem Blick springt.
+SLOT_HOURS = 2
+
 
 def _by_id(tip_id: str) -> dict[str, Any] | None:
     return next((b for b in BOOSTERS if b["id"] == tip_id), None)
@@ -192,25 +197,39 @@ def effectiveness() -> dict[str, dict[str, Any]]:
     return out
 
 
-def suggest(count: int = 3, as_of: str | None = None) -> dict[str, Any]:
+def _slot(now: dt.datetime | None = None) -> str:
+    """Kennung des aktuellen Zwei-Stunden-Fensters."""
+    now = now or dt.datetime.now()
+    return f"{now.date().isoformat()}#{now.hour // SLOT_HOURS:02d}"
+
+
+def suggest(count: int = 3, as_of: str | None = None,
+            now: dt.datetime | None = None) -> dict[str, Any]:
     """Passende Massnahmen — bewaehrte zuerst.
 
-    Die Auswahl eines Tages steht fest, sobald sie einmal getroffen wurde.
-    Zwei Gruende: Die Karte soll beim Neuladen nicht springen, und jede
-    Anzeige wird protokolliert — waere die Auswahl jedes Mal neu, waeren nach
-    ein paar Aufrufen alle Massnahmen als "gezeigt" vermerkt, obwohl nur drei
-    zu sehen waren. Das wuerde die Lernstatistik verwaessern.
+    Die Auswahl steht fuer zwei Stunden fest. Kuerzer waere unruhig (die Karte
+    spraenge bei jedem Blick), laenger unpassend (abends hilft etwas anderes
+    als morgens). Ausserdem wird jede Anzeige protokolliert: Waere die Auswahl
+    jedes Mal neu, waeren nach ein paar Aufrufen alle Massnahmen als "gezeigt"
+    vermerkt, obwohl nur drei zu sehen waren — das wuerde die Lernstatistik
+    verwaessern.
     """
     ctx = situation(as_of)
     stats = effectiveness()
-    day = as_of or dt.date.today().isoformat()
+    now = now or dt.datetime.now()
+    day = as_of or now.date().isoformat()
+    slot = _slot(now)
 
-    # Steht die Auswahl fuer heute schon? Dann genau die zurueckgeben.
+    # Steht die Auswahl fuer dieses Fenster schon? Dann genau die zurueckgeben.
     with get_db() as db:
-        today_ids = [r["tip_id"] for r in db.execute(
-            "SELECT tip_id FROM tip_log WHERE day = ? ORDER BY id",
-            (day,)).fetchall()]
-    chosen = [b for b in (_by_id(i) for i in today_ids) if b][:count]
+        slot_ids = [r["tip_id"] for r in db.execute(
+            "SELECT tip_id FROM tip_log WHERE slot = ? ORDER BY id",
+            (slot,)).fetchall()]
+        # Was in den letzten Fenstern des Tages schon dran war, nicht erneut
+        recent_ids = {r["tip_id"] for r in db.execute(
+            "SELECT tip_id FROM tip_log WHERE day = ? AND slot != ?",
+            (day, slot)).fetchall()}
+    chosen = [b for b in (_by_id(i) for i in slot_ids) if b][:count]
 
     if len(chosen) < count:
         def score(b: dict[str, Any]) -> float:
@@ -222,22 +241,29 @@ def suggest(count: int = 3, as_of: str | None = None) -> dict[str, Any]:
             return hits + (stat.get("score", 0.5) - 0.5) * 4
 
         taken = {b["id"] for b in chosen}
-        ranked = sorted((b for b in BOOSTERS
-                         if b["id"] not in taken and score(b) > -1),
-                        key=lambda b: -score(b))
+        pool = [b for b in BOOSTERS if b["id"] not in taken and score(b) > -1]
+        # Erst das, was heute noch nicht dran war; reicht das nicht, darf
+        # auch Wiederholtes kommen.
+        unused = [b for b in pool if b["id"] not in recent_ids]
+        ranked = sorted(unused or pool, key=lambda b: -score(b))
         fresh = ranked[:count - len(chosen)]
         if fresh:
             with get_db() as db:
                 for b in fresh:
                     db.execute(
-                        "INSERT INTO tip_log(tip_id, context, day) VALUES(?,?,?)",
-                        (b["id"], ",".join(ctx["tags"]), day))
+                        "INSERT INTO tip_log(tip_id, context, day, slot) "
+                        "VALUES(?,?,?,?)",
+                        (b["id"], ",".join(ctx["tags"]), day, slot))
         chosen += fresh
 
     return {
         "situation": ctx,
         "boosters": [{**b, "stats": stats.get(b["id"])} for b in chosen],
         "learned": sum(1 for v in stats.values() if v["bewertet"] >= MIN_RATINGS),
+        "slot": slot,
+        "next_change": (now.replace(minute=0, second=0, microsecond=0)
+                        + dt.timedelta(hours=SLOT_HOURS - now.hour % SLOT_HOURS)
+                        ).strftime("%H:%M"),
     }
 
 

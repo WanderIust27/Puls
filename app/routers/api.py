@@ -18,9 +18,9 @@ from ..version import BUILT_AT, VERSION
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
 from ..services import activity_details as activity_details_svc
-from ..services import (boosters, feedback, gym_analysis, insights,
-                        memory, mood, nutrition, recipes, score, suggestions,
-                        supplements)
+from ..services import (autopilot, boosters, feedback, gym_analysis,
+                        insights, memory, mood, nutrition, recipes, score,
+                        stats, suggestions, supplements)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -78,6 +78,7 @@ def dashboard() -> dict[str, Any]:
         "boosters": boosters.suggest(3),
         "insights": insights.analyse(120),
         "pending_feedback": feedback.pending(2),
+        "today": score.today(),
         "goal_progress": _goal_progress(),
     }
 
@@ -870,6 +871,95 @@ def suggestion_dismiss(sid: int) -> dict[str, str]:
     if not suggestions.dismiss(sid):
         raise HTTPException(404, "Diesen offenen Vorschlag gibt es nicht.")
     return {"status": "ok"}
+
+
+# ------------------------------------------------------------- Statistik
+
+@router.get("/stats/matrix")
+def stats_matrix(days: int = 365, min_r: float = 0.0) -> dict[str, Any]:
+    """Jede Groesse gegen jede — belastbare Funde zuerst."""
+    return stats.matrix(days, min_r)
+
+
+@router.get("/stats/metrics")
+def stats_metrics() -> list[dict[str, Any]]:
+    """Welche Groessen es gibt, nach Gruppen."""
+    return [{"key": k, "label": label, "group": group, "unit": unit,
+             "higher_is_better": better}
+            for k, label, group, unit, better in stats.METRICS]
+
+
+@router.get("/stats/metric/{key}")
+def stats_metric(key: str, days: int = 365) -> dict[str, Any]:
+    try:
+        data = stats.for_metric(key, days)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    data["series"] = stats.series(key, min(days, 180))
+    return data
+
+
+@router.post("/stats/explain")
+def stats_explain(days: int = 365, limit: int = 6) -> dict[str, str]:
+    """Einschaetzung des Coaches zu den staerksten Zusammenhaengen."""
+    return {"message": coach_ai.stats_readout(days, limit)}
+
+
+# ------------------------------------------------------------- Autopilot
+
+@router.get("/autopilot")
+def autopilot_get() -> dict[str, Any]:
+    return autopilot.settings()
+
+
+class AutopilotIn(BaseModel):
+    enabled: bool | None = None
+    focus: str | None = None
+    available_days: list[str] | None = None
+    session_minutes: int | None = None
+    long_run_day: str | None = None
+    wishes: str | None = None
+
+
+@router.post("/autopilot")
+def autopilot_save(a: AutopilotIn) -> dict[str, Any]:
+    return autopilot.save_settings(a.model_dump(exclude_none=True))
+
+
+@router.get("/autopilot/preview")
+def autopilot_preview() -> dict[str, Any]:
+    """Vorschau der kommenden Woche, ohne etwas anzulegen."""
+    return autopilot.plan()
+
+
+@router.post("/autopilot/apply")
+def autopilot_apply() -> dict[str, Any]:
+    """Die Woche tatsaechlich anlegen."""
+    return autopilot.plan(apply_it=True)
+
+
+@router.post("/autopilot/explain")
+def autopilot_explain() -> dict[str, str]:
+    return {"message": autopilot.explain(autopilot.plan())}
+
+
+# ---------------------------------------------------------- Tag & Schlaf
+
+@router.get("/today")
+def today_checklist() -> dict[str, Any]:
+    """Was heute noch zu einem vollstaendigen Tag fehlt."""
+    return score.today()
+
+
+@router.post("/coach/checkin")
+def coach_checkin(kind: str = "midday") -> dict[str, str]:
+    return {"message": coach_ai.checkin(kind)}
+
+
+@router.post("/coach/sleep")
+def coach_sleep() -> dict[str, str]:
+    """Was konkret den Schlaf verbessern wuerde."""
+    return {"message": coach_ai.sleep_advice()}
 
 
 # ---------------------------------------------------- Zusammenhänge & Essen

@@ -114,6 +114,19 @@ Darunter steht, **wo am meisten Potenzial liegt** — sortiert danach, was
 rechnerisch die meisten Punkte liegen lässt, mit einer konkreten Ansage statt
 einer Mängelliste.
 
+Der Zeitraum ist bewusst kurz: Beständigkeit zählt die laufende **Woche**,
+Alltagsgewohnheiten ebenfalls, nur der Fortschritt braucht vier Wochen, weil
+sich Kraft und Tempo in sieben Tagen nicht messbar ändern. Ein Monatswert
+verwischt genau das, worauf du heute noch Einfluss hast — nach einer guten
+Woche soll der Wert steigen, nicht in einem Durchschnitt untergehen.
+
+Direkt daneben steht **was heute noch offen ist**: Lauf, Gym, Abend-Yoga,
+Schritte, Supplements, Wiegen im Referenzfenster, Befinden. Jeder Punkt mit
+seinem Fortschritt, am Abend im besten Fall alles erledigt. Zweimal am Tag —
+mittags und abends — meldet sich der Coach von sich aus dazu, wenn noch etwas
+offen ist, mit zwei Sätzen dazu, was jetzt noch machbar ist. Beim Schrittziel
+nennt er den Stand, damit „noch 2.400 Schritte" auch als Spaziergang lesbar ist.
+
 Gerechnet wird der Wert im Code. Das Modell darf ihn kommentieren, aber nicht
 bestimmen — sonst wäre er von Tag zu Tag beliebig.
 
@@ -124,10 +137,88 @@ was heute sinnvoll ist: Ruhepuls, HRV, Schlaf, Stressmittel, Trainingsbereitscha
 und Body Battery beim Aufwachen. Jeder mit seiner Veränderung gegenüber deiner
 Basislinie und einem knappen Verlauf.
 
+Werte mit einer festen Skala stehen als **„62 von 100"** da, mit einem Balken
+darunter, der zusätzlich den Bereich markiert, in dem sie bei dir normal liegen.
+Eine nackte 62 sagt nichts, solange man weder die Obergrenze noch deinen
+Normalbereich kennt.
+
 Darunter schreibt der Coach drei bis vier Sätze dazu, was die Zahlen bedeuten und
 was für heute folgt — immer im Bezug zur Basislinie, denn ein Ruhepuls von 46
 sagt nichts, solange man deinen Normalwert nicht kennt. Die Einschätzung wird
 für die Sitzung behalten, weil sie auf der CPU spürbar dauert.
+
+## Statistik — alles gegen alles
+
+Die eigene Ansicht **Statistik** vergleicht jede erfasste Größe mit jeder
+anderen: Schlaf gegen Schritte, HRV gegen Gewicht, Body Battery gegen gefühlten
+Stress. 37 Größen aus sieben Gruppen — Schlaf, Herz, Stress, Bewegung, Körper,
+Befinden, Ernährung.
+
+Das ist statistisch heikel, und genau daran scheitern die meisten solchen
+Ansichten: Bei 37 Größen gibt es über 600 Paare. Prüft man die einfach alle
+gegen die übliche Schwelle von 5 %, findet man rein durch Zufall **rund
+dreißig „Zusammenhänge"**, die keine sind. Wer daraus Empfehlungen ableitet,
+folgt Rauschen.
+
+PULS macht deshalb zweierlei:
+
+* Ein Paar wird überhaupt erst betrachtet, wenn es **mindestens zwölf Tage**
+  gibt, an denen beide Werte vorliegen.
+* Über alle geprüften Paare läuft eine **Korrektur für Mehrfachprüfung**
+  (Benjamini-Hochberg, 10 %). Sie zieht die Grenze so, dass unter den als
+  belastbar markierten Funden höchstens jeder zehnte zufällig ist.
+
+Oben stehen die belastbaren Funde, darunter nach Stärke der Rest — sichtbar
+ausgegraut, damit der Unterschied nicht in einer Fußnote verschwindet. Zu jedem
+Fund gehören Richtung, Stärke, der Korrelationskoeffizient und die Anzahl
+gemeinsamer Tage. Auf Knopfdruck ordnet der Coach die stärksten Funde ein — mit
+der ausdrücklichen Auflage, offenzulassen, was Ursache und was Wirkung ist. Ein
+Zusammenhang zwischen Schlaf und HRV sagt nicht, welches von beidem das andere
+treibt.
+
+Jede Größe lässt sich einzeln öffnen: ihr Verlauf, und alles, was mit ihr
+zusammenhängt.
+
+## Autopilot — der Coach plant die Woche
+
+Wer nicht Lauftage, Gym-Tage und Minuten einzeln einstellen will, gibt in den
+Einstellungen nur noch grob an, was er möchte:
+
+| Schwerpunkt | Was daraus wird |
+|---|---|
+| Schneller laufen | Fünf Läufe, davon zwei mit Tempoanteil, zwei Gym-Einheiten |
+| Muskeln aufbauen | Vier Krafteinheiten, Laufen nur locker |
+| Beides halten | Vier Läufe, drei Gym-Einheiten, ein langer Lauf |
+| Ruhiger werden | Deutlich weniger, alles locker |
+
+Dazu: an welchen Tagen du kannst, wie lange eine Einheit dauern darf, wann der
+lange Lauf liegen soll, und ein Freitextfeld für Wünsche.
+
+Den Rest legt der Planer fest — **im Code, aus deinen Zahlen**. Trainings-
+bereitschaft, HRV und Ruhepuls gegenüber deiner Basislinie, Schlaf der letzten
+Woche und das Belastungsverhältnis ergeben zusammen einen Zustand von *frisch*
+bis *erschöpft*. Der bestimmt die Dosis: bei *erschöpft* bleiben 55 % des
+gewünschten Umfangs übrig, harte Läufe fallen ganz weg. Gemeldete Beschwerden
+wirken genauso wie sonst — betroffene Muskelgruppen werden ausgelassen,
+ausgleichende Dehnung kommt dazu.
+
+Die Vorschau zeigt die Woche mit Begründung je Einheit, bevor irgendetwas
+angelegt wird. Erst „Woche übernehmen" schreibt sie in die Planung. Das Modell
+begründet die Woche hinterher in drei bis vier Sätzen — es legt sie nicht fest,
+sonst sähe jede Woche anders aus, ohne dass sich etwas geändert hätte.
+
+## Schlaf
+
+Der Schlaf hat auf dem Dashboard eine eigene, breite Karte: Dauer, Score,
+Tief- und REM-Anteil, Wachzeit und Effizienz, jeweils gegen deine Basislinie.
+Die Verläufe zeichnen den Wert als Linie über einem grauen Band — dem Bereich,
+in dem er bei dir normal liegt. Punkte erscheinen nur dort, wo der Wert das
+Band verlässt. Damit ist auf einen Blick erkennbar, welche Nacht aus der Reihe
+fiel, ohne dass man Zahlen vergleichen müsste.
+
+Auf Knopfdruck sagt der Coach, was konkret *deinen* Schlaf verbessern würde —
+und stützt sich dabei auf die Zusammenhänge, die die Statistik bei dir gefunden
+hat, nicht auf allgemeine Schlafregeln.
 
 ## Was dir guttut — und was nicht
 
@@ -182,6 +273,12 @@ Meldest du gedrückte Stimmung, wenig Energie, hohen Stress oder schlechten
 Schlaf, erscheint eine Karte mit drei konkreten Maßnahmen für die nächsten
 Stunden — aus Bewegung, Ernährung und Gewohnheiten. Jede ist sofort umsetzbar
 und nennt ihren Grund; keine Motivationssprüche.
+
+Die Auswahl gilt für **zwei Stunden**. Sie wechselt also im Lauf des Tages,
+aber nicht bei jedem Neuladen der Seite — sonst stünde dort ständig etwas
+anderes, und die Rückmeldung darunter würde bedeutungslos, weil sie sich auf
+einen Vorschlag bezöge, den man nie umgesetzt hat. Im nächsten Fenster kommen
+bevorzugt Maßnahmen, die heute noch nicht dran waren.
 
 Der eigentliche Punkt ist die Rückmeldung darunter: **hat geholfen** oder
 **bringt mir nichts**. PULS merkt sich das und zieht beim nächsten Mal vor, was
@@ -359,13 +456,13 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Dreizehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Fünfzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
 prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
 Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.
 
 Eine weitere prüft Eigenschaften, die für die ganze API gelten sollen: dass alle
-39 GET-Endpunkte fehlerfrei antworten, dass keiner davon Daten verändert, und
+44 GET-Endpunkte fehlerfrei antworten, dass keiner davon Daten verändert, und
 dass zweimal dieselbe Abfrage dasselbe ergibt. Genau dort ist ein Fehler
 aufgefallen, den keine einzelne Prüfung gefunden hätte.
 
@@ -374,6 +471,12 @@ seiner Kalibrierung, das Ausdünnen der Laufdaten, die Gym-Auswertung, die
 Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync
 samt Verlaufs-Import gegen einen nachgebauten Client, die komplette API gegen
 die echte Anwendung, und die Frontend-Struktur.
+
+Zwei Suiten kamen zuletzt dazu. Die eine prüft die Statistik dort, wo sie
+wehtut: Zweihundert reine Zufallspaare müssen die Mehrfachprüfung fast
+vollständig aussortieren, ein echter Zusammenhang mitten darin muss sie
+überstehen. Die andere hält den Garmin-Fehler fest, der Krafteinheiten
+unsendbar machte (siehe *Workouts auf der Fenix 7*).
 
 ## Installieren und aktualisieren
 
@@ -708,6 +811,16 @@ unter *Training → Workouts* bzw. im Kalender. Kraftübungen kommen mit dem ric
 Garmin-Übungsnamen (also mit Animation), Gewicht und deiner Geräte-Notiz („Stufe 7 bei
 Füße"). Läufe bekommen deine kalibrierten Tempo-Vorgaben. Klappt der API-Weg mal nicht,
 lädst du die FIT-Datei herunter und importierst sie in Garmin Connect.
+
+Eine Eigenheit der Garmin-API ist dabei zu beachten, und sie hat PULS schon
+einmal die Krafteinheiten unsendbar gemacht: Garmin prüft die **Übungskategorie
+gegen die Sportart** des Workouts. Passt eine nicht dazu — etwa eine
+Yoga-Stellung, die als ausgleichende Dehnung an eine Krafteinheit gehängt wurde
+—, antwortet die API mit `400 – invalid category` und verwirft **das ganze
+Workout**, nicht nur den einen Schritt. PULS filtert Kategorien deshalb vor dem
+Hochladen gegen die Sportart. Was durchfällt, geht als benannter Zeitblock mit
+Dauer und Hinweis mit; die Übung steht also weiter auf der Uhr, nur ohne
+Animation.
 
 ## Sicherheit
 

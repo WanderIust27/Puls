@@ -23,6 +23,7 @@
   <button data-view="exercises">Übungen</button>
   <button data-view="nutrition">Essen</button>
   <button data-view="mood">Gemüt</button>
+  <button data-view="stats">Statistik</button>
   <button data-view="coach">Coach</button>
   <button data-view="settings">Mehr</button>
 </nav>
@@ -48,6 +49,25 @@
   </div>
 
   <div class="grid-cards">
+    <div class="card span2" id="coachTop">
+      <h3>Dein Coach sagt</h3>
+      <div class="coach-msg" id="coachMessage">Noch keine Nachricht — hol dir unten eine.</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn small" id="btnDaily">Tages-Check</button>
+        <button class="btn small ghost" id="btnCheckin">Wie läuft's gerade?</button>
+        <button class="btn small ghost" id="btnRest">Pause oder Training?</button>
+      </div>
+    </div>
+
+    <div class="card" id="todayCard">
+      <h3>Heute</h3>
+      <div class="today-head">
+        <div class="today-ring" id="todayRing"></div>
+        <div id="todaySummary" class="muted"></div>
+      </div>
+      <div id="todayList"></div>
+    </div>
+
     <div class="card wide" id="scoreCard">
         <div class="score-head">
           <div class="score-ring" id="scoreRing"></div>
@@ -59,11 +79,6 @@
         <div id="scorePillars" class="pillars"></div>
         <div class="detail-section"><h4>Wo am meisten Potenzial liegt</h4>
           <div id="scorePotential"></div></div>
-      </div>
-
-    <div class="card">
-        <h3>Heute dran</h3>
-        <div id="todayList" class="muted">Nichts geplant.</div>
       </div>
 
     <div class="card">
@@ -133,17 +148,27 @@
       </details>
     </div>
 
-    <div class="card">
+    <div class="card span2">
       <h3>Schlaf</h3>
-      <div class="tiles" id="sleepTiles"></div>
+      <div class="tiles wide-tiles" id="sleepTiles"></div>
       <div id="sleepStagesMini" style="margin-top:12px"></div>
-      <button class="card-link" data-goto="mood">Erholung im Detail ›</button>
+      <div class="chart-wrap" id="sleepChartDash"></div>
+      <div class="coach-msg" id="sleepAdvice" hidden></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn small ghost" id="btnSleepAdvice">Wie schlafe ich besser?</button>
+        <button class="card-link" data-goto="mood" style="margin:0">Erholung im Detail ›</button>
+      </div>
     </div>
 
-    <div class="card">
+    <div class="card span2">
       <h3>Herz</h3>
       <div class="tiles" id="heartTiles"></div>
-      <button class="card-link" data-goto="mood">Alle Werte ›</button>
+      <div class="detail-section"><h4>Ruhepuls gegen deinen Schnitt</h4>
+        <div class="chart-wrap" id="rhrChart"></div></div>
+      <div class="detail-section"><h4>HRV gegen deinen Schnitt</h4>
+        <div class="chart-wrap" id="hrvDashChart"></div></div>
+      <p class="muted">Das graue Band ist dein Normalbereich. Punkte darüber
+        oder darunter sind die Tage, auf die es ankommt.</p>
     </div>
 
     <div class="card" id="suppCard" hidden>
@@ -177,15 +202,6 @@
     <div class="card span2">
         <h3>Trainingslast — letzte 6 Wochen</h3>
         <div class="chart-wrap" id="loadChart"></div>
-      </div>
-
-    <div class="card span2">
-        <h3>Dein Coach sagt</h3>
-        <div class="coach-msg" id="coachMessage">Noch keine Nachricht — hol dir unten eine.</div>
-        <div class="row" style="margin-top:10px">
-          <button class="btn small" id="btnDaily">Tages-Check</button>
-          <button class="btn small ghost" id="btnRest">Pause oder Training?</button>
-        </div>
       </div>
 
     <div class="card">
@@ -609,7 +625,74 @@
   </div>
 </section>
 
+<section id="view-stats" class="view">
+  <div class="card">
+    <h3>Alles gegen alles</h3>
+    <p class="muted" id="statsIntro">wird geladen …</p>
+    <div class="row" style="margin-top:8px">
+      <select id="statsDays" class="small">
+        <option value="90">90 Tage</option>
+        <option value="180">180 Tage</option>
+        <option value="365" selected>1 Jahr</option>
+        <option value="3650">alles</option>
+      </select>
+      <button class="btn ghost small" id="btnStatsExplain">Coach fragen</button>
+    </div>
+    <div class="coach-msg" id="statsAdvice" hidden></div>
+  </div>
+
+  <div class="card">
+    <h3>Belastbare Zusammenhänge</h3>
+    <p class="muted">Diese halten der Prüfung stand, dass bei hunderten
+      Vergleichen ein Teil rein zufällig auffällig aussieht.</p>
+    <div id="statsRobust"></div>
+    <div class="chart-wrap" id="statsRobustBars"></div>
+  </div>
+
+  <div class="card">
+    <h3>Schwächere Auffälligkeiten</h3>
+    <p class="muted">Der Vollständigkeit halber, absteigend nach Stärke. Je
+      weiter unten, desto eher Zufall — nichts, worauf man etwas aufbauen sollte.</p>
+    <div class="chart-wrap" id="statsWeakBars"></div>
+    <button class="card-link" id="btnStatsMore">mehr anzeigen ›</button>
+  </div>
+
+  <div class="card">
+    <h3>Einzelne Größe ansehen</h3>
+    <select id="statsMetric" class="small"></select>
+    <div class="chart-wrap" id="statsMetricChart"></div>
+    <div id="statsMetricRelated"></div>
+  </div>
+</section>
+
 <section id="view-settings" class="view">
+  <div class="card">
+    <h3>Autopilot</h3>
+    <p class="muted">Statt Tage und Minuten einzeln einzustellen: Sag, was du
+      willst und wie viel Zeit du hast — den Rest legt der Coach fest, aus
+      deinen Werten. Bei schlechter Erholung plant er von sich aus weniger.</p>
+    <label class="field">Schwerpunkt</label>
+    <select id="autoFocus"></select>
+    <p class="muted" id="autoFocusNote"></p>
+    <div class="grid3" style="margin-top:8px">
+      <div><label class="field">Minuten je Einheit</label>
+        <input id="autoMinutes" type="number" step="5" min="20" max="180"></div>
+      <div><label class="field">Langer Lauf am</label>
+        <select id="autoLongDay"></select></div>
+    </div>
+    <label class="field" style="margin-top:8px">An diesen Tagen hast du Zeit</label>
+    <div id="autoDays" class="chips"></div>
+    <label class="field" style="margin-top:10px">Wünsche (frei)</label>
+    <input id="autoWishes" placeholder="z. B. mittwochs nur kurz, Waldstrecke bevorzugt">
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost" id="btnAutoSave">Speichern</button>
+      <button class="btn ghost" id="btnAutoPreview">Woche vorschlagen</button>
+      <button class="btn" id="btnAutoApply">Übernehmen</button>
+    </div>
+    <div class="coach-msg" id="autoAdvice" hidden></div>
+    <div id="autoPreview"></div>
+  </div>
+
   <div class="card">
     <h3>Supplements</h3>
     <p class="muted">Feste Uhrzeit oder ans Training gekoppelt. Was ans Training

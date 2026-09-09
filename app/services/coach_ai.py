@@ -341,3 +341,136 @@ def mood_advice() -> str:
         return ("Ohne laufendes Modell: " +
                 " ".join(b["name"] + "." for b in picked["boosters"]))
 
+
+# Wie oft der Coach sich ueber den Tag meldet, und womit. Bewusst wenige
+# feste Zeiten statt staendiger Meldungen — was jederzeit kommt, wird ignoriert.
+CHECKIN_KINDS = {
+    "morning": "Was heute ansteht",
+    "midday": "Wie es läuft",
+    "evening": "Was noch offen ist",
+}
+
+
+def checkin(kind: str = "midday") -> str:
+    """Kurze Meldung im Tagesverlauf — mit Blick auf das, was noch offen ist.
+
+    Der Unterschied zur Tagesnachricht: Hier geht es nicht um Einordnung,
+    sondern um den Rest des Tages. Deshalb steht die Tagesliste im Mittelpunkt
+    und nicht die Wochenbilanz.
+    """
+    from . import score as _score
+    day = _score.today()
+    open_items = day["open"]
+
+    if not open_items:
+        prompt = (
+            f"Der Athlet hat heute alles erledigt: {day['total']} von "
+            f"{day['total']} Punkten. Schreibe einen einzigen Satz Anerkennung. "
+            "Keine Floskel, keine Aufzählung.")
+    else:
+        steps = next((i for i in day["items"] if i["key"] == "steps"), None)
+        prompt = (
+            f"Tageszeit: {CHECKIN_KINDS.get(kind, 'im Tagesverlauf')}.\n"
+            f"Erledigt: {day['done']} von {day['total']}.\n"
+            f"Noch offen: {', '.join(open_items)}.\n"
+            + (f"Schritte: {steps['detail']} ({steps['progress']} % vom Ziel).\n"
+               if steps and steps.get("detail") else "")
+            + "\nSchreibe zwei Sätze: was jetzt noch machbar ist und warum es "
+              "sich lohnt. Nenne höchstens zwei der offenen Punkte, den "
+              "wichtigsten zuerst. Direkt ansprechen, nüchtern, keine "
+              "Aufzählung, keine Floskeln wie 'du schaffst das'.")
+    try:
+        msg = generate(prompt, system=SYSTEM)
+        _store(f"checkin_{kind}", msg)
+        return msg
+    except OllamaUnavailable:
+        if not open_items:
+            return "Heute ist alles erledigt."
+        return f"Noch offen: {', '.join(open_items[:3])}."
+
+
+def sleep_advice() -> str:
+    """Was konkret den Schlaf verbessern wuerde — aus den eigenen Zahlen.
+
+    Schlaf ist die Groesse mit dem groessten Hebel und der laengsten Leitung:
+    Was heute Abend anders laeuft, sieht man morgen frueh. Deshalb bekommt er
+    eine eigene Einschaetzung statt einer Zeile im Tagesbericht.
+    """
+    from . import metrics, stats
+    rec = metrics.recovery_series(30)
+    latest, base = rec["latest"], rec["baselines"]
+    if not latest.get("sleep_seconds"):
+        return ("Noch keine Schlafdaten. Sobald die Uhr eine Nacht aufgezeichnet "
+                "hat, steht hier, woran es hakt.")
+
+    # Was haengt bei DIR mit dem Schlaf zusammen? Das ist der Unterschied zu
+    # allgemeinen Schlafregeln.
+    related = []
+    try:
+        for key in ("sleep_hours", "sleep_score", "sleep_deep_hours"):
+            found = stats.for_metric(key, days=180, limit=4)
+            related += [f"{p['a_label']} ↔ {p['b_label']} (r={p['r']}, n={p['n']})"
+                        for p in found["related"] if p.get("robust")]
+    except Exception as e:
+        log.debug("Zusammenhänge nicht verfuegbar: %s", e)
+
+    facts = {
+        "letzte_nacht": {
+            "dauer_h": round(latest["sleep_seconds"] / 3600, 1),
+            "score": latest.get("sleep_score"),
+            "tief_min": round((latest.get("sleep_deep_s") or 0) / 60),
+            "rem_min": round((latest.get("sleep_rem_s") or 0) / 60),
+            "wach_min": round((latest.get("sleep_awake_s") or 0) / 60),
+            "start": latest.get("sleep_start"), "ende": latest.get("sleep_end"),
+            "atmung": latest.get("respiration_avg"),
+        },
+        "dein_schnitt": base.get("sleep_seconds"),
+        "belegte_zusammenhaenge": related[:5],
+    }
+    prompt = (
+        f"Schlafdaten (JSON):\n{json.dumps(facts, ensure_ascii=False, default=str)}\n\n"
+        "Schreibe drei bis vier Sätze: Was war an der letzten Nacht auffällig, "
+        "und welche ZWEI konkreten Dinge würden bei ihm den größten Unterschied "
+        "machen? Nutze die belegten Zusammenhänge, wenn welche dabei sind — die "
+        "gelten für ihn, nicht allgemein. Tiefschlaf unter 60 Minuten oder "
+        "Wachzeit über 40 Minuten sind erwähnenswert. Keine Aufzählung, keine "
+        "allgemeinen Schlafhygiene-Listen.")
+    try:
+        msg = generate(prompt, system=SYSTEM)
+        _store("sleep", msg)
+        return msg
+    except OllamaUnavailable:
+        n = facts["letzte_nacht"]
+        return (f"{n['dauer_h']} h Schlaf, davon {n['tief_min']} min tief und "
+                f"{n['rem_min']} min REM, {n['wach_min']} min wach.")
+
+
+def stats_readout(days: int = 365, limit: int = 6) -> str:
+    """Einschaetzung zu den staerksten Zusammenhaengen in deinen Daten."""
+    from . import stats
+    data = stats.matrix(days)
+    robust = data["robust"][:limit]
+    if not robust:
+        return (f"Von {data['tested']} geprüften Paaren hält keines der "
+                f"Mehrfachprüfung stand. Das heißt nicht, dass nichts "
+                f"zusammenhängt — es heißt, dass die Datenmenge für eine "
+                f"belastbare Aussage noch nicht reicht. "
+                + (data["hint"] or ""))
+    listing = "\n".join(
+        f"- {p['a_label']} und {p['b_label']}: r={p['r']}, {p['direction']}, "
+        f"{p['n']} gemeinsame Tage" for p in robust)
+    prompt = (
+        f"Aus den Daten eines Sportlers wurden {data['tested']} Paare von "
+        f"Messwerten geprüft. Diese halten der Korrektur für Mehrfachprüfung "
+        f"stand:\n{listing}\n\n"
+        "Schreibe vier bis sechs Sätze: Was sagen diese Zusammenhänge, und was "
+        "folgt praktisch daraus? Weise ausdrücklich darauf hin, wo die Richtung "
+        "unklar ist — ob also A auf B wirkt oder umgekehrt. Erfinde keine "
+        "Zusammenhänge, die nicht in der Liste stehen. Keine Aufzählung.")
+    try:
+        msg = generate(prompt, system=SYSTEM)
+        _store("stats", msg)
+        return msg
+    except OllamaUnavailable:
+        return ("Ohne laufendes Modell nur die Liste:\n" + listing)
+

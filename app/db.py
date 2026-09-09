@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS tip_log (
     context TEXT,                                 -- Lage, in der der Tipp kam
     given_at TEXT NOT NULL DEFAULT (datetime('now')),
     day TEXT NOT NULL,
+    slot TEXT,                                    -- Zwei-Stunden-Fenster der Anzeige
     helpful INTEGER,                              -- NULL offen, 1 half, -1 half nicht
     rated_at TEXT
 );
@@ -329,6 +330,7 @@ DEFAULT_SETTINGS = {
     "pullup_best": "",
     # Laufleistung aus dem Benchmark (m in 12 min, Cooper)
     "supplements_seeded": "0",
+    "step_goal": "10000",
     # Vom Coach vorgeschlagener Schwerpunkt im Gym (auf Zeit)
     "gym_focus_groups": "[]",
     "gym_focus_until": "",
@@ -407,6 +409,7 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("daily_metrics", "hr_min", "REAL"),
     ("daily_metrics", "hr_max", "REAL"),
     ("daily_metrics", "hr_avg", "REAL"),
+    ("tip_log", "slot", "TEXT"),
 ]
 
 

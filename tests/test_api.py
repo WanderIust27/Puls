@@ -340,12 +340,70 @@ with TestClient(app) as client:
               for a in client.get("/api/activities/log?sport=running").json()["activities"]),
           True)
 
+    # --- Statistik ---------------------------------------------------------
+    metrics = client.get("/api/stats/metrics").json()
+    check("Kennzahlen werden aufgelistet", len(metrics) > 20, True)
+    check("Jede Kennzahl hat Gruppe und Bezeichnung",
+          all(m["group"] and m["label"] for m in metrics), True)
+    matrix = client.get("/api/stats/matrix?days=90").json()
+    check("Matrix antwortet", "pairs" in matrix, True)
+    check("Ohne belastbare Funde wird nichts behauptet",
+          all(p.get("robust") is not None for p in matrix["pairs"]), True)
+    check("Belastbares steht vor Unsicherem",
+          [p["robust"] for p in matrix["pairs"]]
+          == sorted([p["robust"] for p in matrix["pairs"]], reverse=True), True)
+    one = client.get("/api/stats/metric/hrv_avg?days=90")
+    check("Einzelne Kennzahl antwortet", one.status_code, 200)
+    check("… mit Verlauf", "series" in one.json(), True)
+    check("Unbekannte Kennzahl ergibt 404",
+          client.get("/api/stats/metric/gibtsnicht").status_code, 404)
+    check("Einschätzung antwortet auch ohne Modell",
+          bool(client.post("/api/stats/explain").json()["message"]), True)
+
+    # --- Autopilot ---------------------------------------------------------
+    saved = client.post("/api/autopilot", json={
+        "enabled": True, "focus": "balanced", "session_minutes": 55,
+        "available_days": ["Mo", "Mi", "Fr", "So"], "long_run_day": "So",
+        "wishes": "Sonntags gerne länger"}).json()
+    check("Autopilot speichert den Schwerpunkt", saved["focus"], "balanced")
+    check("… und die Dauer", saved["session_minutes"], 55)
+    check("… und liest sie zurück",
+          client.get("/api/autopilot").json()["session_minutes"], 55)
+    preview = client.post if False else client.get("/api/autopilot/preview")
+    week = preview.json()
+    check("Vorschau plant sieben Tage", len(week["days"]), 7)
+    check("Vorschau legt nichts an", week["applied"], False)
+    check("Vorschau nennt den Zustand", bool(week["condition"]["state"]), True)
+    before = len(client.get("/api/workouts").json())
+    applied = client.post("/api/autopilot/apply").json()
+    check("Anwenden legt Einheiten an", len(applied["created"]) > 0, True)
+    check("… und sie tauchen in der Planung auf",
+          len(client.get("/api/workouts").json()) > before, True)
+    check("Begründung antwortet auch ohne Modell",
+          bool(client.post("/api/autopilot/explain").json()["message"]), True)
+
+    # --- Tag, Schlaf, Motivation -------------------------------------------
+    today = client.get("/api/today").json()
+    check("Tagesliste antwortet", len(today["items"]) >= 4, True)
+    check("Jeder Punkt hat einen Fortschritt",
+          all(0 <= i["progress"] <= 100 for i in today["items"]), True)
+    check("Erledigt nie mehr als vorhanden", today["done"] <= today["total"], True)
+    check("Anteil passt zu erledigt/gesamt",
+          today["percent"], round(today["done"] / max(1, today["total"]) * 100))
+    for kind in ("morning", "midday", "evening"):
+        check(f"Check-in {kind} antwortet",
+              bool(client.post(f"/api/coach/checkin?kind={kind}").json()["message"]),
+              True)
+    check("Schlaftipps antworten",
+          bool(client.post("/api/coach/sleep").json()["message"]), True)
+
     # --- Bestehende Ansichten duerfen nicht kaputtgegangen sein -----------
     for path in ("/api/dashboard", "/api/health", "/api/settings", "/api/exercises",
                  "/api/workouts", "/api/nutrition", "/api/plan/overview",
                  "/api/scale/status", "/api/coach/messages", "/api/running/summary",
                  "/api/supplements", "/api/supplements/all", "/api/mood",
-                 "/api/mood/adaptations", "/api/recovery"):
+                 "/api/mood/adaptations", "/api/recovery",
+                 "/api/today", "/api/autopilot", "/api/stats/metrics"):
         code = client.get(path).status_code
         check(f"{path} antwortet", code, 200)
 

@@ -54,8 +54,13 @@ def _week_targets() -> tuple[int, int]:
     return runs, gyms
 
 
-def _consistency(days: int = 28) -> dict[str, Any]:
-    """Wird die eigene Wochenstruktur eingehalten?"""
+def _consistency(days: int = 7) -> dict[str, Any]:
+    """Wird die eigene Wochenstruktur eingehalten — in dieser Woche?
+
+    Bewusst sieben Tage statt vier Wochen: Wer den Monat bewertet, sieht den
+    Erfolg einer guten Woche erst Wochen spaeter. Und eine schlechte Woche
+    haengt genauso lange nach, obwohl sie laengst vorbei ist.
+    """
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     with get_db() as db:
         rows = db.execute(
@@ -83,7 +88,7 @@ def _consistency(days: int = 28) -> dict[str, Any]:
             "counts": got}
 
 
-def _progress(days: int = 56) -> dict[str, Any]:
+def _progress(days: int = 28) -> dict[str, Any]:
     """Werden Gewichte schwerer und Läufe schneller?"""
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     mid = (dt.date.today() - dt.timedelta(days=days // 2)).isoformat()
@@ -132,7 +137,7 @@ def _progress(days: int = 56) -> dict[str, Any]:
 def _recovery() -> dict[str, Any]:
     """Schlaf, HRV und Ruhepuls im Verhältnis zur eigenen Basislinie."""
     from . import metrics
-    rec = metrics.recovery_series(30)
+    rec = metrics.recovery_series(14)
     base = rec["baselines"]
     scores, notes = [], []
 
@@ -181,7 +186,7 @@ def _load() -> dict[str, Any]:
     return {"value": round(value), "why": why, "acwr": acwr}
 
 
-def _habits(days: int = 21) -> dict[str, Any]:
+def _habits(days: int = 7) -> dict[str, Any]:
     """Die kleinen Dinge: Einnahme, Wiegen, Eintragen."""
     since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
     scores, notes = [], []
@@ -201,7 +206,7 @@ def _habits(days: int = 21) -> dict[str, Any]:
             "SELECT COUNT(DISTINCT day) AS n FROM mood_entries WHERE day >= ?",
             (since,)).fetchone()["n"]
     # Dreimal die Woche wiegen reicht voellig für einen belastbaren Trend
-    scores.append(_clamp(weigh / (days * 3 / 7) * 100))
+    scores.append(_clamp(weigh / max(1, days * 3 / 7) * 100))
     notes.append(f"{weigh}× im Referenzfenster gewogen")
     scores.append(_clamp(moods / (days / 2) * 100))
     notes.append(f"{moods} Befinden-Einträge")
@@ -307,4 +312,81 @@ def overall() -> dict[str, Any]:
                     for k, v in pillars.items()],
         "potential": _potential(pillars),
         "updated": dt.datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def today() -> dict[str, Any]:
+    """Was heute noch zu einem perfekten Tag fehlt.
+
+    Der Wochenwert sagt, wie die Woche laeuft — er beantwortet aber nicht die
+    Frage, die morgens zaehlt: Was ist heute noch offen? Diese Liste ist kurz,
+    konkret und am Abend im besten Fall leer.
+    """
+    import json
+    from . import supplements
+    today_iso = dt.date.today().isoformat()
+    weekday = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][dt.date.today().weekday()]
+
+    try:
+        run_days = json.loads(get_setting("run_days", "[]") or "[]")
+        gym_days = json.loads(get_setting("gym_days", "[]") or "[]")
+    except ValueError:
+        run_days, gym_days = [], []
+
+    with get_db() as db:
+        done = {r["sport"] for r in db.execute(
+            "SELECT DISTINCT sport FROM activities WHERE substr(start_time,1,10)=?",
+            (today_iso,)).fetchall()}
+        steps_row = db.execute(
+            "SELECT steps FROM daily_metrics WHERE day=?", (today_iso,)).fetchone()
+        weighed = db.execute(
+            "SELECT 1 FROM body_metrics WHERE day=? AND in_window=1",
+            (today_iso,)).fetchone()
+        mood_today = db.execute(
+            "SELECT 1 FROM mood_entries WHERE day=?", (today_iso,)).fetchone()
+
+    try:
+        step_goal = int(float(get_setting("step_goal", "10000") or 10000))
+    except (TypeError, ValueError):
+        step_goal = 10000
+    steps = (steps_row["steps"] if steps_row else None) or 0
+
+    items = []
+    if weekday in run_days:
+        items.append({"key": "run", "label": "Laufen", "done": "running" in done})
+    if weekday in gym_days:
+        items.append({"key": "gym", "label": "Gym-Einheit", "done": "strength" in done})
+    if get_setting("evening_mobility", "1") == "1":
+        items.append({"key": "yoga", "label": "Abend-Yoga", "done": "mobility" in done})
+
+    items.append({"key": "steps", "label": f"{step_goal:,} Schritte".replace(",", "."),
+                  "done": steps >= step_goal,
+                  "progress": min(100, round(steps / max(1, step_goal) * 100)),
+                  "detail": f"{steps:,}".replace(",", ".")})
+
+    supp = supplements.today()
+    if supp["total"]:
+        items.append({"key": "supplements",
+                      "label": f"Supplements ({supp['done']}/{supp['total']})",
+                      "done": supp["done"] >= supp["total"],
+                      "progress": round(supp["done"] / supp["total"] * 100)})
+
+    items.append({"key": "weigh", "label": "Im Referenzfenster gewogen",
+                  "done": bool(weighed)})
+    items.append({"key": "mood", "label": "Befinden eingetragen",
+                  "done": bool(mood_today)})
+
+    # Jeder Punkt bekommt einen Fortschritt — auch die, die es nur ganz oder
+    # gar nicht gibt. So muss die Anzeige nicht zwei Faelle unterscheiden.
+    for item in items:
+        item.setdefault("progress", 100 if item["done"] else 0)
+
+    done_count = sum(1 for i in items if i["done"])
+    return {
+        "day": today_iso,
+        "items": items,
+        "done": done_count,
+        "total": len(items),
+        "percent": round(done_count / max(1, len(items)) * 100),
+        "open": [i["label"] for i in items if not i["done"]],
     }

@@ -408,3 +408,117 @@ function splitBars(container, findings, opts = {}) {
     aria-label="Vergleich nach Einflussgröße">${body}</svg>`;
 }
 
+
+/* ------------------------------------------------- Verlauf mit Basislinie */
+
+/* Eine Linie vor einem Band. Das Band ist dein Normalbereich — damit ist auf
+   einen Blick zu sehen, wann ein Wert darueber oder darunter lag. Vier kleine
+   Kurven nebeneinander sagen das nicht; sie zeigen Zacken ohne Massstab. */
+function baselineChart(container, points, opts = {}) {
+  const data = (points || []).filter((p) => p.value != null);
+  if (data.length < 3) {
+    container.innerHTML = `<p class="muted">${opts.empty || "Noch zu wenige Werte."}</p>`;
+    return;
+  }
+  const W = 720, H = opts.height || 150, padL = 40, padR = 12, padT = 12, padB = 22;
+  const values = data.map((p) => p.value);
+  const base = opts.baseline;
+  const spread = opts.spread || (Math.max(...values) - Math.min(...values)) * 0.25 || 1;
+
+  let min = Math.min(...values, base != null ? base - spread : Infinity);
+  let max = Math.max(...values, base != null ? base + spread : -Infinity);
+  const pad = (max - min) * 0.12 || 1;
+  min -= pad; max += pad;
+
+  const X = (i) => padL + (i * (W - padL - padR)) / Math.max(1, data.length - 1);
+  const Y = (v) => H - padB - ((v - min) / (max - min)) * (H - padB - padT);
+
+  /* Das Normalband: Basislinie plus/minus die uebliche Schwankung */
+  let band = "";
+  if (base != null) {
+    const top = Y(base + spread), bottom = Y(base - spread);
+    band = `<rect x="${padL}" y="${top.toFixed(1)}" width="${W - padL - padR}"
+        height="${Math.max(1, bottom - top).toFixed(1)}"
+        fill="var(--ink-3)" opacity="0.10"></rect>
+      <line x1="${padL}" y1="${Y(base).toFixed(1)}" x2="${W - padR}"
+        y2="${Y(base).toFixed(1)}" stroke="var(--ink-3)" stroke-width="1"
+        stroke-dasharray="none" opacity="0.5"></line>
+      <text x="${W - padR}" y="${(Y(base) - 4).toFixed(1)}" font-size="10"
+        fill="var(--ink-3)" text-anchor="end">dein Schnitt ${
+          opts.fmt ? opts.fmt(base) : Math.round(base)}</text>`;
+  }
+
+  const d = data.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(p.value).toFixed(1)}`).join(" ");
+  const color = opts.color || "var(--accent)";
+
+  /* Punkte nur dort, wo der Wert das Band verlaesst — das sind die Tage,
+     auf die es ankommt. */
+  let marks = "";
+  if (base != null) {
+    data.forEach((p, i) => {
+      const off = p.value > base + spread ? 1 : p.value < base - spread ? -1 : 0;
+      if (!off) return;
+      const good = opts.lowerIsBetter ? off < 0 : off > 0;
+      marks += `<circle cx="${X(i).toFixed(1)}" cy="${Y(p.value).toFixed(1)}" r="3"
+        fill="${good ? "var(--good)" : "var(--warn)"}"></circle>`;
+    });
+  }
+
+  const step = Math.max(1, Math.floor(data.length / 5));
+  let axis = "";
+  for (let i = 0; i < data.length; i += step) {
+    axis += `<text x="${X(i).toFixed(1)}" y="${H - 6}" font-size="10"
+      fill="var(--ink-3)" text-anchor="middle">${esc(data[i].label || "")}</text>`;
+  }
+  const labels = [min + pad, max - pad].map((v) =>
+    `<text x="${padL - 6}" y="${(Y(v) + 3).toFixed(1)}" font-size="10"
+      fill="var(--ink-3)" text-anchor="end">${opts.fmt ? opts.fmt(v) : Math.round(v)}</text>`
+  ).join("");
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="${esc(opts.label || "Verlauf")}">
+      ${band}${labels}
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="1.8"
+        stroke-linejoin="round" stroke-linecap="round"></path>
+      ${marks}${axis}
+    </svg>`;
+}
+
+
+/* ------------------------------------------------------- Zusammenhangsbalken */
+
+/* Ein Balken je Wertepaar, von der Mitte aus: nach rechts gleichläufig, nach
+   links gegenläufig, die Länge ist die Stärke. So ist die Rangfolge auf einen
+   Blick zu sehen, ohne dass man Korrelationskoeffizienten lesen muss. */
+function correlationBars(container, pairs, opts = {}) {
+  const rows = (pairs || []).slice(0, opts.limit || 20);
+  if (!rows.length) { container.innerHTML = ""; return; }
+  const W = 720, rowH = 26, mid = 330, maxBar = 150;
+  const H = rows.length * rowH + 20;
+
+  let body = `<line x1="${mid}" y1="14" x2="${mid}" y2="${H - 8}"
+      stroke="var(--border)" stroke-width="1"></line>
+    <text x="${mid - maxBar}" y="10" font-size="9.5" fill="var(--ink-3)">gegenläufig</text>
+    <text x="${mid + maxBar}" y="10" font-size="9.5" fill="var(--ink-3)"
+      text-anchor="end">gleichläufig</text>`;
+
+  rows.forEach((p, i) => {
+    const y = 20 + i * rowH;
+    const len = Math.abs(p.r) * maxBar;
+    const x = p.r > 0 ? mid : mid - len;
+    const robust = p.robust;
+    const color = robust ? (p.r > 0 ? "var(--teal)" : "var(--accent)") : "var(--ink-3)";
+    body += `
+      <text x="${mid - maxBar - 10}" y="${y + 11}" font-size="11"
+        fill="${robust ? "var(--ink-2)" : "var(--ink-3)"}" text-anchor="end">
+        ${esc(p.a_label)} ↔ ${esc(p.b_label)}</text>
+      <rect x="${x.toFixed(1)}" y="${y + 3}" width="${len.toFixed(1)}" height="14"
+        rx="2" fill="${color}" opacity="${robust ? 0.85 : 0.4}"></rect>
+      <text x="${mid + maxBar + 10}" y="${y + 14}" font-size="10.5"
+        fill="var(--ink-3)">r=${p.r} · n=${p.n}${robust ? "" : " · schwach"}</text>`;
+  });
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="corrbars" role="img"
+    aria-label="Zusammenhänge zwischen Messwerten">${body}</svg>`;
+}
+

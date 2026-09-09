@@ -77,10 +77,13 @@ check("Score prüft auf null statt auf Wahrheitswert",
 dash = html[html.index('id="view-dashboard"'):html.index('id="view-plan"')]
 import re as _re
 titles = _re.findall(r"<h3>([^<]+)</h3>", dash)
-for wanted in ("Heute dran", "Nächste Workouts", "Zuletzt trainiert",
-               "Schlaf", "Herz"):
+for wanted in ("Dein Coach sagt", "Heute", "Nächste Workouts",
+               "Zuletzt trainiert", "Schlaf", "Herz"):
     check(f"Dashboard zeigt „{wanted}“", wanted in titles, True)
 check("Score steht auf dem Dashboard", 'id="scoreRing"' in dash, True)
+# Der Coach soll weit oben stehen — vor den Auswertungen
+check("Coach steht vor dem Score",
+      dash.index("Dein Coach sagt") < dash.index('id="scoreRing"'), True)
 check("Dashboard nutzt das Raster", 'class="grid-cards"' in dash, True)
 
 # --- Die Verweise am Kartenfuß müssen auf echte Ansichten zeigen --------

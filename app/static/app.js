@@ -281,6 +281,7 @@ async function loadDashboard() {
   renderRecentActivities(d.recent_activities);
   renderSleepAndHeart(d.recovery);
   renderSuggestions(d.suggestions);
+  renderToday(d.today);
   renderTodayTiles(d.recovery);
   renderBoosters(d.boosters);
   renderFeedback(d.pending_feedback);
@@ -1407,7 +1408,8 @@ async function loadSupplementManager() {
   $$("[data-del-supp]").forEach((b) => b.addEventListener("click", async () => {
     if (!confirm("Dieses Supplement entfernen?")) return;
     try { await api(`/supplements/${b.dataset.delSupp}`, { method: "DELETE" });
-      loadSupplementManager(); loadSupplements(); }
+      loadSupplementManager();
+  loadAutopilot(); loadSupplements(); }
     catch (e) { toast(e.message, true); }
   }));
 }
@@ -1780,19 +1782,41 @@ function renderSleepAndHeart(rec) {
     <div class="zone-legend">${stages.map(([k, label]) => l[k]
       ? `<span>${label} ${Math.round(l[k] / 60)} min</span>` : "").join("")}</div>` : "";
 
+  /* Nur die zwei Werte, die wirklich etwas sagen — ohne Sparkline, weil
+     darunter das große Diagramm mit dem Normalband steht. */
   $("#heartTiles").innerHTML =
     tile(l.resting_hr != null ? Math.round(l.resting_hr) : null, " bpm", "Ruhepuls", {
-      series: col("resting_hr"), color: "var(--bad)",
       delta: b.resting_hr?.delta, lowerIsBetter: true, threshold: 1 }) +
     tile(l.hrv_avg != null ? Math.round(l.hrv_avg) : null, " ms", "HRV", {
-      series: col("hrv_avg"), color: "var(--good)",
       delta: b.hrv_avg?.delta, threshold: 1 }) +
     tile(l.body_battery_max != null ? Math.round(l.body_battery_max) : null, "",
       "Body Battery", { series: col("body_battery_max"), color: "var(--good)",
         max: 100, band: (v) => v >= 75 ? "voll" : v >= 50 ? "ordentlich" : v >= 25 ? "wenig" : "leer" }) +
     tile(l.stress_avg != null ? Math.round(l.stress_avg) : null, "", "Stress Ø", {
-      series: col("stress_avg"), color: "var(--warn)", lowerIsBetter: true,
-      max: 100, band: (v) => v <= 25 ? "ruhig" : v <= 50 ? "normal" : v <= 75 ? "erhöht" : "hoch" });
+      lowerIsBetter: true, max: 100,
+      band: (v) => v <= 25 ? "ruhig" : v <= 50 ? "normal" : v <= 75 ? "erhöht" : "hoch" });
+
+  /* Verlauf vor dem Normalband: erst dadurch ist zu sehen, ob ein Wert
+     auffällig war oder im üblichen Rahmen lag. */
+  const dayLabel = (r) => r.day.slice(5);
+  baselineChart($("#rhrChart"),
+    series.filter((r) => r.resting_hr != null)
+      .map((r) => ({ value: r.resting_hr, label: dayLabel(r) })),
+    { baseline: b.resting_hr?.baseline, spread: 2, color: "var(--bad)",
+      lowerIsBetter: true, label: "Ruhepuls", empty: "Noch zu wenige Ruhepuls-Werte." });
+  baselineChart($("#hrvDashChart"),
+    series.filter((r) => r.hrv_avg != null)
+      .map((r) => ({ value: r.hrv_avg, label: dayLabel(r) })),
+    { baseline: b.hrv_avg?.baseline, spread: 5, color: "var(--good)",
+      label: "HRV", empty: "Noch zu wenige HRV-Werte." });
+
+  /* Schlafverlauf auf dem Dashboard */
+  baselineChart($("#sleepChartDash"),
+    series.filter((r) => r.sleep_seconds)
+      .map((r) => ({ value: +(r.sleep_seconds / 3600).toFixed(2), label: dayLabel(r) })),
+    { baseline: b.sleep_seconds?.baseline ? b.sleep_seconds.baseline / 3600 : null,
+      spread: 0.5, color: "var(--teal)", fmt: (v) => v.toFixed(1) + " h",
+      label: "Schlafdauer", empty: "Noch zu wenige Nächte aufgezeichnet." });
 }
 
 /* Die Verweise am Kartenfuß sollen wirklich zur Ansicht springen */
@@ -2094,6 +2118,215 @@ $("#btnAddMeal").addEventListener("click", (e) => withSpinner(e.currentTarget, a
   ["mealName", "mealKcal", "mealProtein", "mealCarbs", "mealFat"]
     .forEach((id) => { $("#" + id).value = ""; });
   toast("Eingetragen"); loadMeals(); loadDashboard();
+}));
+
+
+/* ------------------------------------------------------------ Statistik */
+
+let statsCache = null;
+let statsWeakLimit = 12;
+
+async function loadStats() {
+  const days = $("#statsDays").value || 365;
+  let d;
+  try { d = await api(`/stats/matrix?days=${days}`); }
+  catch (e) { $("#statsIntro").textContent = e.message; return; }
+  statsCache = d;
+
+  $("#statsIntro").innerHTML = d.hint ? esc(d.hint) : `
+    ${d.tested} Paare aus ${d.metrics_used} Messgrößen über ${d.rows} Tage geprüft.
+    <b>${d.robust.length}</b> davon halten der Korrektur für Mehrfachprüfung stand.
+    ${d.metrics_missing.length ? `<br><span class="muted">Noch zu wenig Daten für:
+      ${d.metrics_missing.slice(0, 8).map(esc).join(", ")}${
+      d.metrics_missing.length > 8 ? " …" : ""}</span>` : ""}`;
+
+  $("#statsRobust").innerHTML = d.robust.length ? d.robust.slice(0, 10).map((p) => `
+    <div class="corr-row">
+      <div class="ct">${esc(p.a_label)} <span class="muted">und</span> ${esc(p.b_label)}</div>
+      <div class="cm">${p.direction} · ${p.strength} · r=${p.r} · ${p.n} Tage
+        · p=${p.p < 0.001 ? "&lt;0,001" : p.p.toFixed(3).replace(".", ",")}</div>
+    </div>`).join("")
+    : '<p class="muted">Noch kein Zusammenhang belastbar. Das ist kein Fehler — es heißt, dass die Datenmenge dafür noch nicht reicht.</p>';
+  correlationBars($("#statsRobustBars"), d.robust, { limit: 10 });
+
+  const weak = d.pairs.filter((p) => !p.robust);
+  correlationBars($("#statsWeakBars"), weak, { limit: statsWeakLimit });
+  $("#btnStatsMore").hidden = weak.length <= statsWeakLimit;
+}
+
+$("#statsDays").addEventListener("change", loadStats);
+$("#btnStatsMore").addEventListener("click", () => {
+  statsWeakLimit += 20;
+  if (statsCache) correlationBars($("#statsWeakBars"),
+    statsCache.pairs.filter((p) => !p.robust), { limit: statsWeakLimit });
+});
+$("#btnStatsExplain").addEventListener("click", (e) =>
+  withSpinner(e.currentTarget, async () => {
+    const days = $("#statsDays").value || 365;
+    const r = await api(`/stats/explain?days=${days}`, { method: "POST" });
+    $("#statsAdvice").hidden = false;
+    $("#statsAdvice").innerHTML = mdToHtml(r.message);
+  }));
+
+async function loadStatsMetrics() {
+  let list;
+  try { list = await api("/stats/metrics"); } catch (e) { return; }
+  const groups = {};
+  list.forEach((m) => (groups[m.group] = groups[m.group] || []).push(m));
+  $("#statsMetric").innerHTML = '<option value="">Größe wählen …</option>' +
+    Object.entries(groups).map(([g, items]) =>
+      `<optgroup label="${esc(g)}">${items.map((m) =>
+        `<option value="${m.key}">${esc(m.label)}</option>`).join("")}</optgroup>`
+    ).join("");
+}
+
+$("#statsMetric").addEventListener("change", async () => {
+  const key = $("#statsMetric").value;
+  if (!key) { $("#statsMetricChart").innerHTML = ""; $("#statsMetricRelated").innerHTML = ""; return; }
+  let d;
+  try { d = await api(`/stats/metric/${key}?days=${$("#statsDays").value || 365}`); }
+  catch (e) { toast(e.message, true); return; }
+  lineChart($("#statsMetricChart"), d.series.map((p) => ({
+    value: p.value, label: p.day.slice(5), tip: p.day })), { unit: d.unit });
+  $("#statsMetricRelated").innerHTML = d.related.length
+    ? '<h4 class="ins-h">Hängt zusammen mit</h4>' + d.related.map((p) => `
+        <div class="corr-row${p.robust ? "" : " weak"}">
+          <div class="ct">${esc(p.other_label)}</div>
+          <div class="cm">${p.direction} · r=${p.r} · ${p.n} Tage${
+            p.robust ? "" : " · schwach"}</div>
+        </div>`).join("")
+    : '<p class="muted">Für diese Größe zeigt sich noch kein Zusammenhang.</p>';
+});
+
+/* ----------------------------------------------------------- Heute */
+
+function renderToday(d) {
+  if (!d) return;
+  const pct = d.percent;
+  const color = pct >= 100 ? "var(--good)" : pct >= 50 ? "var(--accent)" : "var(--ink-3)";
+  const r = 26, c = 2 * Math.PI * r;
+  $("#todayRing").innerHTML = `<svg viewBox="0 0 64 64" width="64" height="64">
+    <circle cx="32" cy="32" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="6"></circle>
+    <circle cx="32" cy="32" r="${r}" fill="none" stroke="${color}" stroke-width="6"
+      stroke-linecap="round" stroke-dasharray="${(c * pct / 100).toFixed(1)} ${c.toFixed(1)}"
+      transform="rotate(-90 32 32)"></circle>
+    <text x="32" y="37" text-anchor="middle" font-size="16"
+      font-family="var(--serif)" fill="var(--ink)">${d.done}</text>
+  </svg>`;
+  $("#todaySummary").textContent = d.done >= d.total
+    ? "Alles erledigt."
+    : `${d.done} von ${d.total} — offen: ${d.open.slice(0, 2).join(", ")}`;
+
+  $("#todayList").innerHTML = '<div class="mini-list">' + d.items.map((i) => `
+    <div class="mini today-item${i.done ? " done" : ""}" style="cursor:default">
+      <span class="tick">${i.done ? "✓" : "○"}</span>
+      <div class="mt">${esc(i.label)}</div>
+      ${i.progress != null && !i.done
+        ? `<div class="mm"><span class="tiny-bar"><span style="width:${i.progress}%"></span></span>
+           ${i.detail ? esc(i.detail) : i.progress + " %"}</div>` : '<div class="mm"></div>'}
+    </div>`).join("") + "</div>";
+}
+
+$("#btnCheckin").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/coach/checkin?kind=midday", { method: "POST" });
+  $("#coachMessage").innerHTML = mdToHtml(r.message);
+}));
+
+$("#btnSleepAdvice").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/coach/sleep", { method: "POST" });
+  $("#sleepAdvice").hidden = false;
+  $("#sleepAdvice").innerHTML = mdToHtml(r.message);
+}));
+
+
+/* ------------------------------------------------------------ Autopilot */
+
+const AUTO_WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+let autoDays = [];
+
+async function loadAutopilot() {
+  let cfg;
+  try { cfg = await api("/autopilot"); } catch (e) { return; }
+  autoDays = cfg.available_days || AUTO_WEEKDAYS;
+
+  $("#autoFocus").innerHTML = Object.entries(cfg.presets).map(([k, v]) =>
+    `<option value="${k}"${k === cfg.focus ? " selected" : ""}>${esc(v.label)}</option>`
+  ).join("");
+  $("#autoFocusNote").textContent = cfg.presets[cfg.focus]?.note || "";
+  $("#autoMinutes").value = cfg.session_minutes;
+  $("#autoLongDay").innerHTML = AUTO_WEEKDAYS.map((d) =>
+    `<option value="${d}"${d === cfg.long_run_day ? " selected" : ""}>${d}</option>`
+  ).join("");
+  $("#autoWishes").value = cfg.wishes || "";
+  renderAutoDays();
+
+  $("#autoFocus").onchange = () => {
+    $("#autoFocusNote").textContent = cfg.presets[$("#autoFocus").value]?.note || "";
+  };
+}
+
+function renderAutoDays() {
+  $("#autoDays").innerHTML = AUTO_WEEKDAYS.map((d) =>
+    `<button class="chip${autoDays.includes(d) ? " on" : ""}" data-autoday="${d}">${d}</button>`
+  ).join("");
+  $$("[data-autoday]").forEach((b) => b.addEventListener("click", () => {
+    const d = b.dataset.autoday;
+    autoDays = autoDays.includes(d) ? autoDays.filter((x) => x !== d) : [...autoDays, d];
+    renderAutoDays();
+  }));
+}
+
+async function saveAutopilot() {
+  return api("/autopilot", { method: "POST", body: JSON.stringify({
+    focus: $("#autoFocus").value,
+    available_days: autoDays,
+    session_minutes: +$("#autoMinutes").value || 60,
+    long_run_day: $("#autoLongDay").value,
+    wishes: $("#autoWishes").value.trim() }) });
+}
+
+function renderAutoWeek(w) {
+  const cond = w.condition;
+  $("#autoPreview").innerHTML = `
+    <div class="detail-section">
+      <h4>${esc(w.focus)} · ${w.runs} Läufe, ${w.gyms} Gym, je ${w.minutes_per_session} min</h4>
+      <p class="muted">Zustand: <b>${esc(cond.state)}</b>${
+        cond.reasons.length ? " — " + cond.reasons.map(esc).join(", ") : " — die Werte passen"}.
+        ${cond.dose < 1 ? `Dosis auf ${Math.round(cond.dose * 100)} % reduziert.` : ""}</p>
+      ${w.adapted.length ? `<p class="muted">Beschwerden berücksichtigt: ${
+        w.adapted.map(esc).join("; ")}</p>` : ""}
+      ${w.days.map((d) => `
+        <div class="auto-day${d.sessions.length ? "" : " rest"}">
+          <div class="ad">${esc(d.weekday)}</div>
+          <div>
+            ${d.sessions.length ? d.sessions.map((se) => `
+              <div class="as">${esc(SPORT_LABEL[se.sport] || se.sport)} ·
+                ${esc(se.kind)} · ${se.minutes} min</div>
+              <div class="aw">${esc(se.why)}</div>`).join("")
+              : '<div class="as">frei</div>'}
+          </div>
+        </div>`).join("")}
+    </div>`;
+}
+
+$("#btnAutoSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await saveAutopilot(); toast("Gespeichert");
+}));
+
+$("#btnAutoPreview").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await saveAutopilot();
+  renderAutoWeek(await api("/autopilot/preview"));
+  const r = await api("/autopilot/explain", { method: "POST" });
+  $("#autoAdvice").hidden = false;
+  $("#autoAdvice").innerHTML = mdToHtml(r.message);
+}));
+
+$("#btnAutoApply").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await saveAutopilot();
+  const w = await api("/autopilot/apply", { method: "POST" });
+  renderAutoWeek(w);
+  toast(`${w.created.length} Einheiten eingeplant`);
+  loadDashboard();
 }));
 
 /* -------------------------------------------------- Coach-Vorschläge */
@@ -2533,7 +2766,8 @@ function startScalePolling() {
 
 const LOADERS = {
   dashboard: loadDashboard, plan: loadPlan, exercises: loadExercises,
-  nutrition: loadNutrition, mood: loadMood, coach: loadCoach,
+  nutrition: loadNutrition, mood: loadMood, stats: loadStatsAll,
+  coach: loadCoach,
   settings: loadSettings,
 };
 
@@ -2557,3 +2791,8 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 $("#nutDay").value = $("#bodyDay").value = new Date().toISOString().slice(0, 10);
 api("/settings").then((s) => applyFontScale(s.font_scale || 100)).catch(() => {});
 loadDashboard().catch((e) => toast(e.message, true));
+
+async function loadStatsAll() {
+  await loadStatsMetrics();
+  await loadStats();
+}

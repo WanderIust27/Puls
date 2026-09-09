@@ -41,6 +41,16 @@ def _research_job() -> None:
         log.warning("Forschungstipp fehlgeschlagen: %s", e)
 
 
+def _checkin_job(kind: str) -> None:
+    """Kurze Meldung im Tagesverlauf. Fehler hier duerfen den Scheduler
+    nicht anhalten — die naechste Runde kommt ohnehin."""
+    try:
+        from . import coach_ai
+        coach_ai.checkin(kind)
+    except Exception as e:
+        log.debug("Check-in %s uebersprungen: %s", kind, e)
+
+
 def start() -> None:
     scheduler.add_job(_sync_job, IntervalTrigger(hours=SYNC_INTERVAL_HOURS),
                       id="garmin_sync", max_instances=1, coalesce=True)
@@ -51,6 +61,12 @@ def start() -> None:
                       CronTrigger(day_of_week=RESEARCH_TIP_CRON_DOW,
                                   hour=RESEARCH_TIP_CRON_HOUR, timezone=TZ),
                       id="research_tip", max_instances=1, coalesce=True)
+    # Zwei kurze Meldungen ueber den Tag: mittags, wenn noch Zeit zum
+    # Nachsteuern bleibt, und abends, solange sich noch etwas erledigen laesst.
+    for hour, kind in ((13, "midday"), (19, "evening")):
+        scheduler.add_job(_checkin_job, CronTrigger(hour=hour, minute=0, timezone=TZ),
+                          id=f"checkin_{kind}", args=[kind],
+                          max_instances=1, coalesce=True)
     scheduler.start()
     log.info("Scheduler gestartet (Sync alle %s h).", SYNC_INTERVAL_HOURS)
 

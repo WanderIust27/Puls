@@ -28,6 +28,26 @@ SPORT_TYPES = {
     "hiit": {"sportTypeId": 9, "sportTypeKey": "hiit"},
 }
 
+# Welche Übungskategorien Garmin in welcher Sportart akzeptiert. Passt eine
+# Kategorie nicht zum Workout, antwortet die API mit
+# "400 - invalid category" und lehnt das GANZE Workout ab — nicht nur den
+# einen Schritt. Yoga-Stellungen gehören deshalb nicht in eine Krafteinheit.
+# Eine leere Menge heißt: nicht eingeschränkt.
+ALLOWED_CATEGORIES: dict[str, set[str]] = {
+    "strength": {
+        "BENCH_PRESS", "CALF_RAISE", "CARDIO", "CARRY", "CHOP", "CORE",
+        "CRUNCH", "CURL", "DEADLIFT", "FLYE", "HIP_RAISE", "HIP_STABILITY",
+        "HIP_SWING", "HYPEREXTENSION", "LATERAL_RAISE", "LEG_CURL",
+        "LEG_RAISE", "LUNGE", "OLYMPIC_LIFT", "PLANK", "PLYO", "PULL_UP",
+        "PUSH_UP", "ROW", "SHOULDER_PRESS", "SHOULDER_STABILITY", "SHRUG",
+        "SIT_UP", "SQUAT", "TOTAL_BODY", "TRICEPS_EXTENSION", "WARM_UP",
+        "RUN", "UNKNOWN",
+    },
+    # Bei Yoga sind es die Stellungen, nicht die Kraftkategorien
+    "mobility": {"YOGA", "POSE", "UNKNOWN"},
+    "yoga": {"YOGA", "POSE", "UNKNOWN"},
+}
+
 STEP_TYPES = {
     "warmup": {"stepTypeId": 1, "stepTypeKey": "warmup"},
     "cooldown": {"stepTypeId": 2, "stepTypeKey": "cooldown"},
@@ -178,11 +198,20 @@ def _build_step(step: dict[str, Any], order: list[int], sport: str) -> dict[str,
         # hat sie Vorrang — dann zeigt die Uhr Name und Abbildung korrekt an,
         # statt nur einen namenlosen Zeitblock.
         if step.get("garmin_category") and step.get("garmin_exercise"):
-            dto["category"] = step["garmin_category"]
-            dto["exerciseName"] = step["garmin_exercise"]
+            category = step["garmin_category"]
+            # Garmin prüft die Kategorie gegen die Sportart des Workouts und
+            # lehnt das ganze Workout mit "invalid category" ab, wenn sie nicht
+            # dazu passt. Eine Yoga-Stellung in einer Krafteinheit ist genau so
+            # ein Fall. Lieber ohne Kategorie senden — dann wird es ein
+            # benannter Zeitblock statt einer Absage.
+            if category in ALLOWED_CATEGORIES.get(sport, set()) \
+                    or not ALLOWED_CATEGORIES.get(sport):
+                dto["category"] = category
+                dto["exerciseName"] = step["garmin_exercise"]
         else:
             ex = _find_exercise(step.get("name"))
-            if ex:
+            if ex and (ex[0] in ALLOWED_CATEGORIES.get(sport, set())
+                       or not ALLOWED_CATEGORIES.get(sport)):
                 dto["category"], dto["exerciseName"] = ex
         if step.get("weight_kg"):
             desc_parts.append(f"{step['weight_kg']} kg")

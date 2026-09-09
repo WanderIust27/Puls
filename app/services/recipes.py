@@ -404,8 +404,8 @@ def explain(suggestion: dict[str, Any]) -> str:
     try:
         from .ollama_client import generate
         return generate(
-            prompt=(f"Trainingslage heute: {suggestion['reason']}\\n"
-                    f"Vorgeschlagen wurden: {listing}\\n\\n"
+            prompt=(f"Trainingslage heute: {suggestion['reason']}\n"
+                    f"Vorgeschlagen wurden: {listing}\n\n"
                     "Schreibe zwei bis drei Sätze, warum das heute passt. "
                     "Nutze nur die genannten Zahlen, erfinde keine. "
                     "Keine Aufzählung, keine Überschrift."),
