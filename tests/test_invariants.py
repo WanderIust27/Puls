@@ -98,6 +98,27 @@ with TestClient(app) as client:
             b.pop("updated", None)
         check(f"{path} liefert zweimal dasselbe", a == b, True)
 
+# --- Der Versionsstempel muss bis in die Seite durchkommen --------------
+# Sonst laedt der Browser nach einem Update weiter die alte app.js aus
+# seinem Cache — die Datei heisst ja gleich.
+from app.version import VERSION                  # noqa: E402
+
+with TestClient(app) as client:
+    page = client.get("/").text
+    check("Kein unersetzter Platzhalter in der Seite", "{{V}}" in page, False)
+    check("Stylesheet traegt die Version", f"style.css?v={VERSION}" in page, True)
+    check("app.js traegt die Version", f"app.js?v={VERSION}" in page, True)
+    check("charts.js traegt die Version", f"charts.js?v={VERSION}" in page, True)
+
+    sw = client.get("/sw.js").text
+    check("Kein unersetzter Platzhalter im Service Worker", "{{V}}" in sw, False)
+    check("Cache-Name traegt die Version", f'"puls-{VERSION}"' in sw, True)
+    check("charts.js gehört zur App-Hülle", "charts.js" in sw, True)
+
+    h = client.get("/api/health").json()
+    check("Health meldet die Version", h.get("version"), VERSION)
+    check("Health meldet den Stand", bool(h.get("built_at")), True)
+
 if failures:
     print(f"\n{len(failures)} Test(s) fehlgeschlagen:")
     for name in failures:

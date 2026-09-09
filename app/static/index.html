@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#131417">
 <title>PULS — Trainingscoach</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{V}}">
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
@@ -812,12 +812,20 @@
     <h3>System</h3>
     <div id="systemStatus" class="muted">…</div>
   </div>
+
+  <div class="card">
+    <h3>Version</h3>
+    <div id="versionInfo" class="muted">wird geladen …</div>
+    <p class="muted">Kommt ein Update nicht an, steht hier noch die alte
+      Kennung. Dann wurde der Container nicht neu gebaut — auf dem Server
+      hilft <code>./deploy.sh</code> (ohne <code>--no-build</code>).</p>
+  </div>
 </section>
 
 </main>
 
 <div class="tooltip" id="tooltip"></div>
-<script src="/static/charts.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/charts.js?v={{V}}"></script>
+<script src="/static/app.js?v={{V}}"></script>
 </body>
 </html>

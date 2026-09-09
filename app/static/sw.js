@@ -1,6 +1,10 @@
 /* Minimaler Service Worker: App-Shell cachen, API immer frisch. */
-const CACHE = "puls-v1";
-const SHELL = ["/", "/static/style.css", "/static/app.js", "/static/icon.svg", "/manifest.json"];
+/* Der Cache-Name traegt die Version. Beim Aktivieren wird alles
+   Ältere geloescht — sonst haelt der Browser nach einem Update
+   weiter die alten Dateien vor. */
+const CACHE = "puls-{{V}}";
+const SHELL = ["/", "/static/style.css", "/static/app.js",
+               "/static/charts.js", "/static/icon.svg", "/manifest.json"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

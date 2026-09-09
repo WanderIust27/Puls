@@ -66,12 +66,30 @@ case "$cmd" in
       exit 0 ;;
   logs)
       exec docker logs -f --tail 50 puls-coach ;;
-  status)
+  status|version)
       docker ps --filter "name=puls-" \
           --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
       echo
-      curl -fsS "http://localhost:${PULS_PORT}/api/health" 2>/dev/null \
-          && echo || c_warn "PULS antwortet noch nicht auf Port ${PULS_PORT}."
+      health=$(curl -fsS "http://localhost:${PULS_PORT}/api/health" 2>/dev/null)
+      if [ -z "$health" ]; then
+          c_warn "PULS antwortet noch nicht auf Port ${PULS_PORT}."
+          exit 0
+      fi
+      # Kennung des laufenden Stands gegen den im Ordner halten. Weichen sie
+      # ab, laeuft der Container noch auf altem Code — das ist der haeufigste
+      # Grund dafuer, dass ein Update "nicht ankommt".
+      running=$(echo "$health" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+      c_ok "Läuft: Kennung ${running:-unbekannt}"
+      if command -v python3 >/dev/null && [ -f app/version.py ]; then
+          ondisk=$(python3 -c "import sys; sys.path.insert(0,'.'); \
+              from app.version import VERSION; print(VERSION)" 2>/dev/null)
+          if [ -n "$ondisk" ] && [ -n "$running" ] && [ "$ondisk" != "$running" ]; then
+              echo
+              c_warn "Im Ordner liegt Kennung $ondisk — der Container läuft auf $running."
+              c_warn "Das Update ist also da, aber noch nicht gebaut. Beheben mit:"
+              c_warn "    ./deploy.sh"
+          fi
+      fi
       exit 0 ;;
   gpu)
       case "${2:-}" in
@@ -157,7 +175,7 @@ case "$cmd" in
       exit 0 ;;
   deploy|--no-build) : ;;
   *) c_err "Unbekannter Befehl: $cmd"
-     c_info "Bekannt: deploy, --no-build, status, logs, stop, gpu"
+     c_info "Bekannt: deploy, --no-build, status, version, logs, stop, gpu"
      exit 1 ;;
 esac
 

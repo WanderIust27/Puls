@@ -14,6 +14,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..db import get_db, get_setting, rows_to_dicts, set_setting
+from ..version import BUILT_AT, VERSION
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
 from ..services import activity_details as activity_details_svc
@@ -132,6 +133,8 @@ def _goal_progress() -> dict[str, Any]:
 def health() -> dict[str, Any]:
     ollama_ok = is_available()
     return {
+        "version": VERSION,
+        "built_at": BUILT_AT,
         "app": "ok",
         "ollama": ollama_ok,
         "model": ollama_client.active_model(),

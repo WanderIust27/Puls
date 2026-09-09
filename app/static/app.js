@@ -2379,6 +2379,9 @@ function renderDayChips() {
 
 async function loadSettings() {
   const [s, g, h] = await Promise.all([api("/settings"), api("/garmin/status"), api("/health")]);
+  $("#versionInfo").innerHTML = h.version
+    ? `Kennung <b>${esc(h.version)}</b> · Stand ${esc(h.built_at || "unbekannt")}`
+    : "Diese Version meldet noch keine Kennung — das Update ist nicht angekommen.";
   pollBackfill();
   loadSupplementManager();      // zeigt einen laufenden Verlaufs-Import auch nach Neuladen
   selectedGoals = s.goals; renderGoalChips();
