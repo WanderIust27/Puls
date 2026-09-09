@@ -77,7 +77,10 @@ def settings() -> dict[str, Any]:
         "run_days": run_days,
         "gym_days": gym_days,
         "available_days": available or list(WEEKDAYS),
-        "session_minutes": int(float(_get("auto_session_minutes", "60"))),
+        # Dieselbe Einstellung wie im Plan-Reiter. Zwei Schluessel fuer
+        # "wie lange laeuft er" hiessen zwei verschiedene Zahlen an zwei
+        # Stellen — und keine davon war falsch, nur eben nicht dieselbe.
+        "session_minutes": int(float(_get("run_minutes", "45"))),
         "gym_minutes": int(float(_get("gym_minutes", "75"))),
         "long_run_day": _get("auto_long_run_day", "So"),
         "evening_mobility": _get("evening_mobility", "1") == "1",
@@ -103,7 +106,7 @@ def save_settings(data: dict[str, Any]) -> dict[str, Any]:
     if "evening_mobility" in data:
         set_setting("evening_mobility", "1" if data["evening_mobility"] else "0")
     if data.get("session_minutes"):
-        set_setting("auto_session_minutes",
+        set_setting("run_minutes",
                     str(max(20, min(180, int(data["session_minutes"])))))
     if data.get("long_run_day") in WEEKDAYS:
         set_setting("auto_long_run_day", data["long_run_day"])

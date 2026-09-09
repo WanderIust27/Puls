@@ -76,14 +76,22 @@ nav.bottom {
   border-top: 1px solid var(--border-soft);
   backdrop-filter: blur(12px);
   padding: 0 8px calc(0px + env(safe-area-inset-bottom));
+  /* Zehn Reiter passen auf einem Telefon nicht nebeneinander. Statt sie zu
+     stauchen, bis niemand mehr etwas liest, darf die Leiste seitlich
+     scrollen — der aktive Reiter wird beim Wechsel in den Blick geholt. */
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
+nav.bottom::-webkit-scrollbar { display: none; }
 nav.bottom button {
   background: none; border: none; color: var(--ink-3);
   font-size: 0.8em; letter-spacing: .3px; cursor: pointer;
-  padding: 16px 10px 15px; font-family: inherit;
+  padding: 16px 9px 15px; font-family: inherit;
   border-top: 2px solid transparent; margin-top: -1px;
   transition: color .15s;
-  flex: 1; max-width: 120px;
+  flex: 0 0 auto; white-space: nowrap;
+}
+@media (min-width: 900px) {
+  nav.bottom button { flex: 1 1 0; max-width: 130px; }
 }
 nav.bottom button:hover { color: var(--ink-2); }
 nav.bottom button.active { color: var(--ink); border-top-color: var(--accent); }
@@ -850,3 +858,15 @@ ol.plain li, ul.plain li { margin-bottom: 5px; }
   white-space: nowrap; padding-left: 10px; }
 .est-t tr:last-child td { border-bottom: 0; }
 .est-sum { margin-top: 8px; font-size: 0.92em; }
+
+/* Schlafenszeit auf der Startseite */
+.bedtime { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 26px; }
+.bt-main { min-width: 150px; }
+.bt-time { font-size: 2.3em; font-variant-numeric: tabular-nums; line-height: 1;
+  color: var(--teal); }
+.bt-time.soon { color: var(--accent); }
+.bt-sub { font-size: 0.82em; color: var(--ink-3); margin-top: 4px; }
+.bt-facts { display: flex; flex-wrap: wrap; gap: 14px 22px; }
+.bt-f .v { font-size: 1.05em; font-variant-numeric: tabular-nums; }
+.bt-f .l { font-size: 0.74em; color: var(--ink-3); }
+.bt-r { font-size: 0.8em; color: var(--ink-2); margin-top: 6px; }

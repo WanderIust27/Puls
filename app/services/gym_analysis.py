@@ -20,6 +20,8 @@ log = logging.getLogger("puls.gym")
 
 # Ab welchem Unterschied eine Veraenderung eine Erwaehnung wert ist
 VOLUME_NOTE_PCT = 12
+# Nur noch fuer die Muskeluebersicht. In der Rueckmeldung direkt nach einer
+# Einheit hat "das hast du seit sechs Wochen nicht gemacht" nichts verloren.
 STALE_DAYS = 21
 
 
@@ -156,35 +158,60 @@ def _average_volume(day: str, weeks: int = 4) -> float | None:
     return sum(values) / len(values) if values else None
 
 
+def _personal_bests(exercises: list[dict[str, Any]], day: str) -> list[str]:
+    """Uebungen, bei denen heute mehr lag als je zuvor."""
+    out = []
+    with get_db() as db:
+        for e in exercises:
+            best = e.get("best") or {}
+            weight = best.get("weight_kg")
+            if not weight:
+                continue
+            row = db.execute(
+                "SELECT MAX(weight_kg) AS top FROM exercise_sets "
+                "WHERE exercise_id=? AND day < ? AND weight_kg IS NOT NULL",
+                (e["exercise_id"], day)).fetchone()
+            previous = (row or {})["top"]
+            if previous is not None and weight > previous + 0.01:
+                out.append(f"{e['name']} {weight:g} kg")
+    return out
+
+
 def _tips(exercises: list[dict[str, Any]], volume: float,
           day: str) -> list[dict[str, str]]:
-    """Hinweise, die sich aus den Zahlen ergeben — keine allgemeinen Weisheiten."""
+    """Rückmeldung zur Einheit — was gelaufen ist, und was daraus folgt.
+
+    Bewusst in dieser Reihenfolge: Zuerst das Erreichte, dann das Nächste.
+    Wer gerade eine Stunde trainiert hat, will nicht als Erstes lesen, welche
+    Übung er seit sechs Wochen versäumt — das gehört in die Muskelübersicht,
+    wo man den ganzen Plan im Blick hat, und nicht in den Moment danach.
+    """
     tips: list[dict[str, str]] = []
+    done_sets = sum(e["sets"] for e in exercises)
 
-    stalled = [e for e in exercises if e["name"] in
-               [x["name"] for x in exercises if x.get("change")
-                and x["change"]["kind"] in ("hold", "reps_down", "weight_down")]]
-    for e in stalled[:2]:
+    # 1. Bestleistungen zuerst. Das ist die Nachricht des Tages.
+    for name in _personal_bests(exercises, day)[:2]:
         tips.append({
-            "kind": "stall", "level": "info",
-            "text": (f"{e['name']} steht seit der letzten Einheit still. Wenn das "
-                     f"noch einmal passiert, nimm eine Stufe zurück und arbeite "
-                     f"dich sauber wieder hoch — das geht schneller als es klingt.")})
+            "kind": "record", "level": "good",
+            "text": f"Bestwert: {name}. So schwer war es hier noch nie."})
 
-    too_easy = [e for e in exercises if e["easy"] >= 2 and not e["hard"]]
-    for e in too_easy[:2]:
+    # 2. Alles, was zugelegt hat.
+    gained = [e for e in exercises if e.get("change")
+              and e["change"]["kind"] in ("weight", "reps")]
+    if gained:
+        listing = ", ".join(f"{e['name']} ({e['change']['text']})" for e in gained[:3])
         tips.append({
-            "kind": "easy", "level": "good",
-            "text": (f"{e['name']} lief durchgehend leicht. Beim nächsten Mal eine "
-                     f"Stufe höher — dafür ist die Rückmeldung da.")})
+            "kind": "progress", "level": "good",
+            "text": (f"Zugelegt gegenüber der letzten Einheit: {listing}."
+                     + (f" Und {len(gained) - 3} weitere." if len(gained) > 3 else ""))})
 
-    hard = [e for e in exercises if e["hard"] >= 2]
-    for e in hard[:1]:
+    # 3. Wenn nichts gestiegen ist, zählt trotzdem, dass es stattgefunden hat.
+    if not gained and not tips and done_sets:
         tips.append({
-            "kind": "hard", "level": "warn",
-            "text": (f"{e['name']} war über mehrere Sätze schwer. Einmal auf der "
-                     f"Stelle bleiben statt weiter zu steigern ist hier kein "
-                     f"Rückschritt, sondern die Voraussetzung dafür.")})
+            "kind": "done", "level": "good",
+            "text": (f"{done_sets} Sätze durchgezogen. Nicht jede Einheit ist ein "
+                     f"Sprung nach vorn — die meisten sind das Fundament, auf dem "
+                     f"die Sprünge stehen.")})
 
     average = _average_volume(day)
     if average and volume > 0:
@@ -202,19 +229,29 @@ def _tips(exercises: list[dict[str, Any]], volume: float,
                          f"Als Entlastungseinheit sinnvoll — zweimal hintereinander "
                          f"wäre es eher ein Zeichen für fehlende Erholung.")})
 
-    with get_db() as db:
-        stale = db.execute(
-            """SELECT name, last_performed FROM exercises
-               WHERE active=1 AND slot IN ('main','pullup')
-                 AND (last_performed IS NULL OR last_performed < ?)
-               ORDER BY last_performed IS NOT NULL, last_performed LIMIT 2""",
-            ((dt.date.fromisoformat(day) - dt.timedelta(days=STALE_DAYS)).isoformat(),)
-        ).fetchall()
-    for row in stale:
+    # 4. Erst jetzt das Nächste: was beim nächsten Mal anders laufen kann.
+    too_easy = [e for e in exercises if e["easy"] >= 2 and not e["hard"]]
+    for e in too_easy[:2]:
         tips.append({
-            "kind": "stale", "level": "info",
-            "text": (f"{row['name']} war seit über {STALE_DAYS} Tagen nicht dran. "
-                     f"Wenn die Übung noch zu deinem Plan gehört, gehört sie auch "
-                     f"wieder in eine Einheit.")})
+            "kind": "easy", "level": "good",
+            "text": (f"{e['name']} lief durchgehend leicht — da ist noch Luft. "
+                     f"Beim nächsten Mal eine Stufe höher.")})
+
+    hard = [e for e in exercises if e["hard"] >= 2]
+    for e in hard[:1]:
+        tips.append({
+            "kind": "hard", "level": "warn",
+            "text": (f"{e['name']} war über mehrere Sätze schwer. Einmal auf der "
+                     f"Stelle bleiben statt weiter zu steigern ist hier kein "
+                     f"Rückschritt, sondern die Voraussetzung dafür.")})
+
+    stalled = [e for e in exercises if e.get("change")
+               and e["change"]["kind"] in ("hold", "reps_down", "weight_down")]
+    for e in stalled[:1]:
+        tips.append({
+            "kind": "stall", "level": "info",
+            "text": (f"{e['name']} steht seit der letzten Einheit still. Wenn das "
+                     f"noch einmal passiert, nimm eine Stufe zurück und arbeite "
+                     f"dich sauber wieder hoch — das geht schneller als es klingt.")})
 
     return tips

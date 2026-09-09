@@ -338,9 +338,12 @@ def sync_exercise_sets(g: Garmin, days: int) -> int:
             if not ex:
                 log.debug("Übung ohne Zuordnung: %s / %s", gcat, gname)
                 continue
+            # Garmin schreibt -1, wenn die Uhr nichts zaehlen konnte. Als Zahl
+            # gelesen waere das "minus eine Wiederholung" — record_set siebt
+            # das aus, hier steht es nochmal, damit klar ist warum.
             reps = s.get("repetitionCount")
             weight = s.get("weight")            # Gramm
-            weight_kg = round(weight / 1000.0, 2) if weight else None
+            weight_kg = round(weight / 1000.0, 2) if (weight or 0) > 0 else None
             duration = s.get("duration")
             idx = index_per_ex.get(ex["id"], 0) + 1
             index_per_ex[ex["id"]] = idx

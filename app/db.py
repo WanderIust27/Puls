@@ -318,10 +318,12 @@ DEFAULT_SETTINGS = {
     "ollama_model": "",
     # Wochenstruktur (vom Nutzer einstellbar)
     "run_days": json.dumps(["Di", "Do", "Sa"]),
-    "run_minutes": "25",
+    "run_minutes": "45",
     "gym_days": json.dumps(["Mo", "Mi", "Fr"]),
     "gym_minutes": "75",
     "evening_mobility": "1",
+    # Wann du aufstehen willst — daraus rechnet PULS die Zubettgehzeit zurueck
+    "wake_target": "06:30",
     "prefer_machines": "1",
     # Laufziel: 10 km unter 60 min
     "run_goal_distance_km": "10",
@@ -499,6 +501,50 @@ def _fix_run_days(db: sqlite3.Connection) -> None:
                "VALUES('run_days_migrated', '1')")
 
 
+def _clean_sentinel_sets(db: sqlite3.Connection) -> None:
+    """Garmins -1 aus alten Saetzen entfernen.
+
+    repetitionCount = -1 heisst bei Garmin "nicht gezaehlt". Frueher wurde das
+    als Zahl uebernommen; die Progression las daraus ein verfehltes Ziel und
+    haette beim zweiten Mal einen Deload ausgeloest. Die betroffenen Saetze
+    bleiben erhalten — nur der Platzhalter wird zur Luecke, die er ist.
+    """
+    changed = db.execute(
+        "UPDATE exercise_sets SET reps=NULL WHERE reps IS NOT NULL AND reps <= 0"
+    ).rowcount
+    changed += db.execute(
+        "UPDATE exercise_sets SET weight_kg=NULL "
+        "WHERE weight_kg IS NOT NULL AND weight_kg <= 0").rowcount
+    changed += db.execute(
+        "UPDATE exercise_sets SET duration_s=NULL "
+        "WHERE duration_s IS NOT NULL AND duration_s <= 0").rowcount
+    if changed:
+        import logging
+        logging.getLogger("puls.db").info(
+            "%d Platzhalter (-1) aus Saetzen entfernt.", changed)
+        # Die Fehlversuche stammen womoeglich aus genau diesen Saetzen.
+        db.execute("UPDATE exercises SET fail_streak=0 WHERE fail_streak > 0")
+
+
+def _merge_run_minutes(db: sqlite3.Connection) -> None:
+    """Die zwei Dauer-Einstellungen zu einer machen.
+
+    Der Plan-Reiter las run_minutes, der Coach-Reiter auto_session_minutes.
+    Beide beschrieben dasselbe — dieselbe Einheit stand deshalb an zwei
+    Stellen mit zwei verschiedenen Zahlen. Der zuletzt im Coach gesetzte Wert
+    gewinnt, denn dort wird die Woche geplant.
+    """
+    old = db.execute("SELECT value FROM settings WHERE key='auto_session_minutes'"
+                     ).fetchone()
+    if not old or not old["value"]:
+        return
+    db.execute("UPDATE settings SET value=? WHERE key='run_minutes'", (old["value"],))
+    db.execute("DELETE FROM settings WHERE key='auto_session_minutes'")
+    import logging
+    logging.getLogger("puls.db").info(
+        "Laufdauer vereinheitlicht: %s min gelten jetzt überall.", old["value"])
+
+
 def init_db() -> None:
     ensure_dirs()
     with get_db() as db:
@@ -508,6 +554,8 @@ def init_db() -> None:
         for k, v in DEFAULT_SETTINGS.items():
             db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?, ?)", (k, v))
         _fix_run_days(db)
+        _clean_sentinel_sets(db)
+        _merge_run_minutes(db)
         # Token für den Waagen-Webhook einmalig erzeugen
         row = db.execute("SELECT value FROM settings WHERE key='api_token'").fetchone()
         if not row or not row["value"]:

@@ -69,8 +69,8 @@ with get_db() as _db:
                         (_day, f"{_day}T{_h:02d}:15:00", _m, _m, 3))
 
 PORT = 8899
-VIEWS = ("dashboard", "plan", "exercises", "nutrition", "mood",
-         "stats", "coach", "settings")
+VIEWS = ("start", "mood", "plan", "strength", "running", "nutrition",
+         "weight", "vital", "stats", "settings")
 DAY_NAMES = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 failures: list[str] = []
@@ -124,7 +124,7 @@ try:
         # Die Regel für die Zahlenknöpfe hing einmal an einem Elternteil, den
         # die Rückmeldungskarte nicht hat. Der Klick kam an, sichtbar passierte
         # nichts — für den Nutzer war das Bewerten schlicht kaputt.
-        page.click('nav.bottom button[data-view="dashboard"]')
+        page.click('nav.bottom button[data-view="start"]')
         page.wait_for_timeout(2000)
         ok("Rückmeldung wird abgefragt", page.is_visible("#feedbackCard"))
         dots = page.eval_on_selector_all('#feedbackBody [data-fb]', "e => e.length")
@@ -257,7 +257,7 @@ try:
                dates == sorted(dates), str(dates[:5]))
 
         # --- Coach: Ziel, Woche und Trends stehen auf einer Seite ---------
-        page.click('nav.bottom button[data-view="coach"]')
+        page.click('nav.bottom button[data-view="plan"]')
         page.wait_for_timeout(2500)
         focus = page.eval_on_selector("#autoFocus", "el => el.options.length")
         days = page.eval_on_selector("#autoLongDay", "el => el.options.length")
@@ -301,7 +301,7 @@ try:
         page.click("#btnAutoSave")
         page.wait_for_timeout(2000)
         page.reload(wait_until="networkidle")
-        page.click('nav.bottom button[data-view="coach"]')
+        page.click('nav.bottom button[data-view="plan"]')
         page.wait_for_timeout(2500)
         kept = page.eval_on_selector("#autoFocus", "el => el.value")
         ok("Coach: Schwerpunkt überlebt das Neuladen", kept == "build_muscle", kept)
@@ -356,6 +356,23 @@ try:
            not page.is_visible("#mealEstimate"))
         listed = page.eval_on_selector("#mealList", "el => el.textContent")
         ok("Essen: mit Kalorien in der Liste", "kcal" in listed, listed[:80])
+
+        # --- Schlafenszeit: abends auf der Startseite ---------------------
+        page.click('nav.bottom button[data-view="start"]')
+        page.wait_for_timeout(2500)
+        shown = page.is_visible("#bedtimeCard")
+        hour = _dt.datetime.now().hour
+        ok("Schlafenszeit erscheint zur richtigen Tageszeit",
+           shown == (hour >= 15 or hour < 4), f"{hour} Uhr, sichtbar: {shown}")
+        if shown:
+            at = page.eval_on_selector("#bedtimeAt", "el => el.textContent.trim()")
+            ok("Schlafenszeit nennt eine Uhrzeit",
+               len(at) == 5 and at[2] == ":", at)
+            facts = page.eval_on_selector("#bedtimeFacts", "el => el.textContent")
+            ok("… mit Aufstehziel und Bedarf",
+               "Aufstehen" in facts and "Schlafbedarf" in facts, facts[:70])
+            ok("… und einer Begründung",
+               bool(page.eval_on_selector("#bedtimeNote", "el => el.textContent.trim()")))
 
         # --- Statistik: Empfehlungen muessen erscheinen -------------------
         page.click('nav.bottom button[data-view="stats"]')

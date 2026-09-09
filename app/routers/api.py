@@ -20,7 +20,8 @@ from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
 from ..services import activity_details as activity_details_svc
 from ..services import (autopilot, boosters, feedback, gym_analysis,
                         insights, memory, mood, nutrition, recipes, score,
-                        stats, suggestions, supplements, trends)
+                        sleep as sleep_svc, stats, suggestions, supplements,
+                        trends)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -985,6 +986,12 @@ def coach_checkin(kind: str = "midday") -> dict[str, str]:
     return {"message": coach_ai.checkin(kind)}
 
 
+@router.get("/sleep/tonight")
+def sleep_tonight() -> dict[str, Any]:
+    """Wann heute Abend Schlafenszeit wäre — und wie regelmäßig es zugeht."""
+    return sleep_svc.tonight()
+
+
 @router.post("/coach/sleep")
 def coach_sleep() -> dict[str, str]:
     """Was konkret den Schlaf verbessern wuerde."""
@@ -1324,6 +1331,7 @@ class SettingsIn(BaseModel):
     profile: dict[str, Any] | None = None
     run_days: list[str] | None = None
     run_minutes: int | None = None
+    wake_target: str | None = None
     gym_days: list[str] | None = None
     gym_minutes: int | None = None
     evening_mobility: bool | None = None
@@ -1631,7 +1639,8 @@ def get_settings() -> dict[str, Any]:
         "protein_target": get_setting("protein_target", ""),
         "profile": json.loads(get_setting("profile", "{}") or "{}"),
         "run_days": json.loads(get_setting("run_days", "[]") or "[]"),
-        "run_minutes": int(get_setting("run_minutes", "25") or 25),
+        "run_minutes": int(get_setting("run_minutes", "45") or 45),
+        "wake_target": get_setting("wake_target", "06:30"),
         "gym_days": json.loads(get_setting("gym_days", "[]") or "[]"),
         "gym_minutes": int(get_setting("gym_minutes", "75") or 75),
         "evening_mobility": get_setting("evening_mobility", "1") == "1",
@@ -1660,6 +1669,14 @@ def post_settings(s: SettingsIn) -> dict[str, str]:
         set_setting("run_days", json.dumps(s.run_days))
     if s.run_minutes is not None:
         set_setting("run_minutes", str(s.run_minutes))
+    if s.wake_target is not None:
+        # Nur echte Uhrzeiten annehmen — sonst rechnet der Schlafplan mit Unsinn
+        try:
+            hour, minute = s.wake_target.split(":")
+            set_setting("wake_target",
+                        f"{int(hour) % 24:02d}:{int(minute) % 60:02d}")
+        except (ValueError, AttributeError):
+            raise HTTPException(400, "Bitte eine Uhrzeit wie 06:30 angeben.")
     if s.gym_days is not None:
         set_setting("gym_days", json.dumps(s.gym_days))
     if s.gym_minutes is not None:

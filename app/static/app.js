@@ -358,6 +358,7 @@ async function loadDashboard() {
   renderSleepAndHeart(d.recovery);
   renderSuggestions(d.suggestions);
   renderToday(d.today);
+  loadBedtime();
   renderTodayTiles(d.recovery);
   renderBoosters(d.boosters);
   renderFeedback(d.pending_feedback);
@@ -532,14 +533,7 @@ async function loadPlan() {
 
   const open = workouts.filter((w) => ["planned", "pushed"].includes(w.status));
   const wd = (arr) => (arr && arr.length ? arr.join(", ") : "keine");
-  $("#weekStructure").innerHTML = `
-    <div><b>Laufen</b> ${wd(overview.run_days)} · ${overview.run_minutes} min morgens</div>
-    <div><b>Gym</b> ${wd(overview.gym_days)} · ${overview.gym_minutes} min abends</div>
-    ${overview.evening_mobility ? "<div><b>Yoga</b> jeden Abend vor dem Schlafen</div>" : ""}
-    <div style="margin-top:12px">Ziel: ${esc(overview.run_goal)}
-      ${overview.calibrated ? `· locker ${overview.paces.easy}/km · Tempo ${overview.paces.tempo}/km` : "· noch nicht kalibriert"}</div>
-    <div>Klimmzüge: ${overview.pullup_best ? `${overview.pullup_best} → Ziel ${overview.pullup_goal}` : `Ziel ${overview.pullup_goal}, Ausgangswert fehlt`}</div>
-    <div style="margin-top:12px">${renderWeekGrid(open)}</div>`;
+  // Die Wochen-Zusammenfassung steht jetzt im Plan-Reiter als Coach-Karte.
 
   const b = bench;
   const fmtLast = (x) => x.last ? `zuletzt vor ${x.days_ago} Tagen` : "noch nie";
@@ -2780,37 +2774,8 @@ $("#btnBackfillReset").addEventListener("click", (e) => withSpinner(e.currentTar
 
 /* ------------------------------------------------------------------- Coach */
 
-function addBubble(kind, text, label) {
-  const el = document.createElement("div");
-  el.className = "bubble " + kind;
-  el.innerHTML = (label ? `<div class="k">${label}</div>` : "") + esc(text);
-  $("#chatLog").appendChild(el);
-  el.scrollIntoView({ behavior: "smooth", block: "end" });
-  return el;
-}
-
-async function ask(question) {
-  addBubble("user", question);
-  const pending = addBubble("coach", "Denke nach … (lokale KI, kann dauern)", "PULS");
-  try {
-    const r = await api("/coach/ask", { method: "POST", body: JSON.stringify({ question }) });
-    pending.innerHTML = '<div class="k">PULS</div>' + mdToHtml(r.answer);
-  } catch (e) {
-    pending.innerHTML = '<div class="k">PULS</div>⚠️ ' + esc(e.message);
-  }
-}
-
-$("#btnAsk").addEventListener("click", () => {
-  const q = $("#chatInput").value.trim();
-  if (!q) return;
-  $("#chatInput").value = "";
-  ask(q);
-});
-$("#chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#btnAsk").click(); });
-$$("[data-quick]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.quick)));
-
-async function loadCoach() {
-  loadCoachPlan();
+/* Das Wissens-Archiv steht jetzt unter „Mehr“ — aufgerufen aus loadSettings. */
+async function loadTipArchive() {
   const tips = await api("/coach/research-tips?limit=10");
   $("#tipArchive").innerHTML = tips.length ? tips.map((t) =>
     `<div class="list-item"><div class="grow"><div class="title">${esc(t.topic || "Tipp")}</div>
@@ -2935,12 +2900,14 @@ async function loadSettings() {
     ? `Kennung <b>${esc(h.version)}</b> · Stand ${esc(h.built_at || "unbekannt")}`
     : "Diese Version meldet noch keine Kennung — das Update ist nicht angekommen.";
   pollBackfill();
+  loadTipArchive().catch(() => { /* nur ein Archiv, kein Drama */ });
   loadSupplementManager();      // zeigt einen laufenden Verlaufs-Import auch nach Neuladen
   selectedGoals = s.goals; renderGoalChips();
   $("#setWeeklyTarget").value = s.weekly_workout_target;
   $("#setKcal").value = s.kcal_target;
   $("#setProtein").value = s.protein_target;
   $("#setProfile").value = s.profile.text || "";
+  $("#setWakeTarget").value = s.wake_target || "06:30";
   $("#setPullupGoal").value = s.pullup_goal;
   $("#setRunGoalKm").value = s.run_goal_distance_km;
   $("#setRunGoalMin").value = s.run_goal_time_min;
@@ -2971,6 +2938,7 @@ $("#btnCopyToken").addEventListener("click", async () => {
 
 $("#btnSaveWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
   await api("/settings", { method: "POST", body: JSON.stringify({
+    wake_target: $("#setWakeTarget").value || "06:30",
     pullup_goal: +$("#setPullupGoal").value || 10,
     run_goal_distance_km: +$("#setRunGoalKm").value || 10,
     run_goal_time_min: +$("#setRunGoalMin").value || 60,
@@ -3075,17 +3043,135 @@ function startScalePolling() {
 
 /* -------------------------------------------------------------- Navigation */
 
+/* ------------------------------------------------------- Schlafenszeit */
+
+/* Abends die Frage, die zählt: Wann muss ich ins Bett? Rückwärts gerechnet
+   vom Aufstehziel — Schlafbedarf und die eigene Einschlafdauer abgezogen.
+   Tagsüber steht die Karte nicht im Weg; sie erscheint, wenn es relevant wird. */
+async function loadBedtime() {
+  const card = $("#bedtimeCard");
+  let d;
+  try { d = await api("/sleep/tonight"); } catch (e) { card.hidden = true; return; }
+
+  const hour = new Date().getHours();
+  // Ab dem späten Nachmittag, und nachts weiter — nicht beim Frühstück.
+  card.hidden = !(hour >= 15 || hour < 4);
+  if (card.hidden) return;
+
+  const late = d.minutes_until < 0 || d.minutes_until > 20 * 60;
+  $("#bedtimeAt").textContent = d.bedtime;
+  $("#bedtimeUntil").textContent = late
+    ? "diese Zeit ist durch — je eher jetzt, desto besser"
+    : d.minutes_until < 60
+      ? `in ${d.minutes_until} Minuten`
+      : `in ${Math.floor(d.minutes_until / 60)} h ${d.minutes_until % 60} min`;
+  $("#bedtimeAt").className = "bt-time" + (late || d.due_soon ? " soon" : "");
+
+  $("#bedtimeFacts").innerHTML = [
+    { l: "Aufstehen", v: d.wake_target },
+    { l: "Schlafbedarf", v: `${d.need_hours} h` },
+    { l: "Einschlafen", v: `${d.fall_asleep_min} min`,
+      note: d.fall_asleep_measured ? "aus deinen Nächten" : "Vorgabewert" },
+    d.usual_bedtime ? { l: "sonst um", v: d.usual_bedtime } : null,
+  ].filter(Boolean).map((f) => `
+    <div class="bt-f"><div class="v">${esc(f.v)}</div>
+      <div class="l">${esc(f.l)}${f.note ? ` <span class="muted">(${esc(f.note)})</span>` : ""}</div>
+    </div>`).join("");
+
+  $("#bedtimeNote").textContent = d.note || "";
+
+  const r = d.regularity;
+  $("#bedtimeReg").innerHTML = r.nights >= 5 ? `
+    <div class="bt-r">
+      <span>Regelmäßigkeit über ${r.nights} Nächte:</span>
+      <b>±${r.bedtime_spread_h ?? "–"} h</b> beim Zubettgehen,
+      <b>±${r.waketime_spread_h ?? "–"} h</b> beim Aufstehen.
+      ${r.later_than_target ? `An ${r.later_than_target} von ${r.of_nights} Nächten
+        bist du deutlich später als ${esc(r.target)} aufgestanden.` : ""}
+    </div>` : `<div class="bt-r muted">Für die Regelmäßigkeit braucht es noch
+      ein paar aufgezeichnete Nächte.</div>`;
+}
+
+/* --------------------------------------- Lader für die neuen Ansichten */
+
+/* Kraft, Laufen, Gewicht und Vital zeigen Karten, die früher auf dem
+   Dashboard oder im Coach-Reiter standen. Sie brauchen dieselben Daten —
+   deshalb hier je ein schmaler Lader statt eines aufgeblähten Dashboards. */
+
+async function loadStrengthView() {
+  try {
+    const d = await api("/dashboard");
+    rangeTabs($("#loadRange"), "load", DAILY_RANGES, (range, days) => {
+      const rows = daysBack(d.load_series, days);
+      const label = dayLabelFor(range);
+      const every = Math.max(1, Math.ceil(rows.length / 7));
+      barChart($("#loadChart"), rows.map((p, i) => ({
+        value: Math.round(p.load), tip: `${p.day} · ${p.count} Training(s)`,
+        label: i % every === 0 ? label(p.day) : "",
+      })));
+    }, "month");
+  } catch (e) { /* Die Übungsliste steht trotzdem */ }
+  loadTrends();
+}
+
+async function loadRunningView() {
+  loadTrends();
+}
+
+async function loadWeightView() {
+  await loadBody();
+  try {
+    const d = await api("/dashboard");
+    renderComposition(d.body_composition);
+    const ws = d.weight_series.map((p) => ({ ...p, value: p.weight_kg }));
+    rangeTabs($("#weightRange"), "weight", DAILY_RANGES, (range, days) => {
+      const label = dayLabelFor(range);
+      lineChart($("#weightChart"), daysBack(ws, days)
+        .map((p) => ({ value: p.value, label: label(p.day), tip: p.day })),
+        { unit: " kg" });
+    }, "quarter");
+    if (ws.length >= 2) {
+      const diff = (ws[ws.length - 1].value - ws[0].value).toFixed(1);
+      $("#weightDelta").textContent =
+        `${diff > 0 ? "+" : ""}${diff} kg seit ${fmtDate(d.weight_series[0].day)}`;
+    }
+  } catch (e) { /* Körperdaten stehen trotzdem */ }
+}
+
+async function loadVitalView() {
+  const d = await api("/dashboard");
+  renderTodayTiles(d.recovery);
+  renderSleepAndHeart(d.recovery);
+  loadRecovery();
+}
+
+/* Welche Ansicht was nachlädt. Mehrere Ansichten teilen sich einen Lader,
+   wenn sie aus derselben Quelle leben — die Karten stehen jetzt dort, wo man
+   sie sucht, nicht dort, wo der Endpunkt sie zufällig liefert. */
 const LOADERS = {
-  dashboard: loadDashboard, plan: loadPlan, exercises: loadExercises,
-  nutrition: loadNutrition, mood: loadMood, stats: loadStatsAll,
-  coach: loadCoach,
+  start: loadDashboard,
+  mood: loadMood,
+  plan: () => { loadCoachPlan(); loadPlan(); },
+  strength: () => { loadExercises(); loadStrengthView(); },
+  running: () => { loadExercises(); loadRunningView(); },
+  nutrition: loadNutrition,
+  weight: loadWeightView,
+  vital: loadVitalView,
+  stats: loadStatsAll,
   settings: loadSettings,
 };
 
 function goto(view) {
   $$(".view").forEach((v) => v.classList.remove("active"));
   $("#view-" + view).classList.add("active");
-  $$("nav.bottom button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  $$("nav.bottom button").forEach((b) => {
+    const on = b.dataset.view === view;
+    b.classList.toggle("active", on);
+    // Bei zehn Reitern liegt der aktive oft außerhalb des Sichtbaren.
+    if (on && b.scrollIntoView) {
+      b.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    }
+  });
   Promise.resolve((LOADERS[view] || (() => {}))()).catch((e) => toast(e.message, true));
   window.scrollTo({ top: 0 });
 }

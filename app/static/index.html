@@ -18,20 +18,23 @@
 </header>
 
 <nav class="bottom">
-  <button data-view="dashboard" class="active">Start</button>
-  <button data-view="plan">Plan</button>
-  <button data-view="exercises">Übungen</button>
-  <button data-view="nutrition">Essen</button>
+  <button data-view="start" class="active">Start</button>
   <button data-view="mood">Gemüt</button>
+  <button data-view="plan">Plan</button>
+  <button data-view="strength">Kraft</button>
+  <button data-view="running">Laufen</button>
+  <button data-view="nutrition">Essen</button>
+  <button data-view="weight">Gewicht</button>
+  <button data-view="vital">Vital</button>
   <button data-view="stats">Statistik</button>
-  <button data-view="coach">Coach</button>
   <button data-view="settings">Mehr</button>
 </nav>
 
 <main>
 
 <!-- ============================== DASHBOARD ============================== -->
-<section id="view-dashboard" class="view active">
+<!-- ============================== START ============================== -->
+<section id="view-start" class="view active">
 <div class="card hero">
     <div class="ring-wrap">
       <svg id="weekRing" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="Wochenziel"></svg>
@@ -49,7 +52,8 @@
   </div>
 
   <div class="grid-cards">
-    <div class="card span2" id="coachTop">
+    
+<div class="card span2" id="coachTop">
       <h3>Dein Coach sagt</h3>
       <div class="coach-msg" id="coachMessage">Noch keine Nachricht — hol dir unten eine.</div>
       <div class="row" style="margin-top:10px">
@@ -59,16 +63,7 @@
       </div>
     </div>
 
-    <div class="card" id="todayCard">
-      <h3>Heute</h3>
-      <div class="today-head">
-        <div class="today-ring" id="todayRing"></div>
-        <div id="todaySummary" class="muted"></div>
-      </div>
-      <div id="todayList"></div>
-    </div>
-
-    <div class="card wide" id="scoreCard">
+<div class="card wide" id="scoreCard">
         <div class="score-head">
           <div class="score-ring" id="scoreRing"></div>
           <div class="score-text">
@@ -81,54 +76,62 @@
           <div id="scorePotential"></div></div>
       </div>
 
-    <div class="card">
-        <h3>Nächste Workouts</h3>
-        <div id="upcomingList" class="muted">Keine geplant.</div>
+    
+<div class="card" id="todayCard">
+      <h3>Heute</h3>
+      <div class="today-head">
+        <div class="today-ring" id="todayRing"></div>
+        <div id="todaySummary" class="muted"></div>
       </div>
+      <div id="todayList"></div>
+    </div>
 
-    <div class="card wide" id="suggestCard" hidden>
+    
+<div class="card wide" id="suggestCard" hidden>
       <h3>Der Coach schlägt vor</h3>
       <div id="suggestList"></div>
     </div>
 
-    <div class="card">
+    
+<div class="card">
+        <h3>Nächste Workouts</h3>
+        <div id="upcomingList" class="muted">Keine geplant.</div>
+      </div>
+
+    
+<div class="card">
       <h3>Zuletzt trainiert</h3>
       <div id="recentActivities" class="mini-list"></div>
-      <button class="card-link" data-goto="exercises">Ganzes Protokoll ›</button>
+      <button class="card-link" data-goto="running">Ganzes Protokoll ›</button>
     </div>
 
-    <div class="card span2" id="readoutCard">
-      <h3>Dein Zustand heute</h3>
-      <div class="tiles wide-tiles" id="todayTiles"></div>
-      <div class="coach-msg" id="readoutText" style="margin-top:14px">
-        <span class="muted">Der Coach schaut noch auf die Zahlen …</span></div>
-      <button class="btn small ghost" id="btnReadout" style="margin-top:8px">
-        Neu einschätzen</button>
-    </div>
-
-    <div class="card span2" id="insightCard">
-      <h3>Was dir guttut</h3>
-      <div id="insightHint" class="muted"></div>
-      <div id="insightHelps"></div>
-      <div id="insightHurts"></div>
-      <p class="muted" id="insightFoot"></p>
-    </div>
-
-    <div class="card" id="feedbackCard" hidden>
+    
+<div class="card" id="feedbackCard" hidden>
       <h3>Wie war’s?</h3>
       <div id="feedbackBody"></div>
     </div>
 
-    <div class="card span2" id="boosterCard" hidden>
-      <h3>Was jetzt hilft</h3>
-      <div id="boosterSituation" class="muted"></div>
-      <div class="coach-msg" id="boosterAdvice" hidden></div>
-      <div id="boosterList"></div>
-      <div id="boosterOpen"></div>
-      <div id="boosterWorks"></div>
+    
+<div class="card span2" id="bedtimeCard" hidden>
+    <h3>Schlafenszeit</h3>
+    <div class="bedtime">
+      <div class="bt-main">
+        <div class="bt-time" id="bedtimeAt">–</div>
+        <div class="bt-sub" id="bedtimeUntil"></div>
+      </div>
+      <div class="bt-facts" id="bedtimeFacts"></div>
     </div>
+    <p class="muted" id="bedtimeNote"></p>
+    <div class="bt-reg" id="bedtimeReg"></div>
+  </div>
 
-    <div class="card span2">
+<div class="card" id="suppCard" hidden>
+        <h3>Heute einnehmen</h3>
+        <div id="suppList"></div>
+      </div>
+
+    
+<div class="card span2">
       <h3>Mit dem Coach sprechen</h3>
       <div class="chat" id="dashChatLog"></div>
       <div class="row" style="margin-top:10px">
@@ -148,35 +151,8 @@
       </details>
     </div>
 
-    <div class="card span2">
-      <h3>Schlaf</h3>
-      <div class="tiles wide-tiles" id="sleepTiles"></div>
-      <div id="sleepStagesMini" style="margin-top:12px"></div>
-      <div id="sleepDashRange"></div><div class="chart-wrap" id="sleepChartDash"></div>
-      <div class="coach-msg" id="sleepAdvice" hidden></div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn small ghost" id="btnSleepAdvice">Wie schlafe ich besser?</button>
-        <button class="card-link" data-goto="mood" style="margin:0">Erholung im Detail ›</button>
-      </div>
-    </div>
-
-    <div class="card span2">
-      <h3>Herz</h3>
-      <div class="tiles" id="heartTiles"></div>
-      <div class="detail-section"><h4>Ruhepuls gegen deinen Schnitt</h4>
-        <div id="rhrRange"></div><div class="chart-wrap" id="rhrChart"></div></div>
-      <div class="detail-section"><h4>HRV gegen deinen Schnitt</h4>
-        <div id="hrvDashRange"></div><div class="chart-wrap" id="hrvDashChart"></div></div>
-      <p class="muted">Das graue Band ist dein Normalbereich. Punkte darüber
-        oder darunter sind die Tage, auf die es ankommt.</p>
-    </div>
-
-    <div class="card" id="suppCard" hidden>
-        <h3>Heute einnehmen</h3>
-        <div id="suppList"></div>
-      </div>
-
-    <div class="card">
+    
+<div class="card">
         <h3>Ziele im Blick</h3>
         <div class="goal-grid">
           <div class="goal">
@@ -192,19 +168,8 @@
         </div>
       </div>
 
-    <div class="card">
-        <h3>Körper</h3>
-        <div class="comp-row" id="compRow"></div>
-        <div id="weightRange"></div><div class="chart-wrap" id="weightChart"></div>
-        <p class="muted" id="weightDelta"></p>
-      </div>
-
-    <div class="card span2">
-        <h3>Trainingslast — letzte 6 Wochen</h3>
-        <div id="loadRange"></div><div class="chart-wrap" id="loadChart"></div>
-      </div>
-
-    <div class="card">
+    
+<div class="card">
         <h3>Aus der Forschung</h3>
         <div class="tip" id="researchTip">Noch keins — der Coach liefert jede Woche eins.</div>
         <button class="btn small ghost" id="btnResearch" style="margin-top:10px">Neues Häppchen</button>
@@ -212,18 +177,165 @@
   </div>
 </section>
 
-<section id="view-plan" class="view">
-  <div class="card">
-    <h3>Deine Woche</h3>
-    <div id="weekStructure" class="muted">…</div>
-    <div class="row" style="margin-top:12px">
-      <button class="btn" id="btnPlanWeek">Woche planen</button>
-      <button class="btn ghost" id="btnPushAll">Alles an Garmin</button>
+<!-- ============================== GEMÜT ============================== -->
+<section id="view-mood" class="view">
+<div class="card">
+    <h3>Wie geht es dir gerade?</h3>
+    <p class="muted">Mehrmals am Tag eintragbar — der Verlauf über den Tag sagt
+      mehr als ein einzelner Wert am Abend.</p>
+
+    <div class="scales">
+      <div class="scale" data-scale="mood">
+        <label class="field">Stimmung</label>
+        <div class="dots"></div>
+        <div class="word"></div>
+      </div>
+      <div class="scale" data-scale="energy">
+        <label class="field">Energie</label>
+        <div class="dots"></div>
+        <div class="word"></div>
+      </div>
+      <div class="scale" data-scale="stress">
+        <label class="field">Stress</label>
+        <div class="dots"></div>
+        <div class="word"></div>
+      </div>
     </div>
-    <p class="muted">Erzeugt Läufe, Gym-Einheiten und Abend-Yoga für die nächsten 7 Tage. Gewichte und Tempi kommen aus deiner Progression.</p>
+
+    <label class="field" style="margin-top:14px">Beschwerden</label>
+    <div id="complaintPicker" class="chips"></div>
+    <div id="complaintChosen" class="chips chosen"></div>
+
+    <label class="field" style="margin-top:12px">Notiz</label>
+    <textarea id="moodNote" rows="3"
+      placeholder="Was war heute los? Rückenschmerzen, Muskelkater, schlecht geschlafen …"></textarea>
+    <div id="moodSuggest" class="muted" hidden></div>
+
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnSaveMood">Eintragen</button>
+    </div>
   </div>
 
-  <div class="card">
+  
+<div class="card" id="adaptCard" hidden>
+    <h3>Was der Coach daraus macht</h3>
+    <div id="adaptBody"></div>
+  </div>
+
+  
+<div class="card span2" id="boosterCard" hidden>
+      <h3>Was jetzt hilft</h3>
+      <div id="boosterSituation" class="muted"></div>
+      <div class="coach-msg" id="boosterAdvice" hidden></div>
+      <div id="boosterList"></div>
+      <div id="boosterOpen"></div>
+      <div id="boosterWorks"></div>
+    </div>
+
+    
+<div class="card span2" id="insightCard">
+      <h3>Was dir guttut</h3>
+      <div id="insightHint" class="muted"></div>
+      <div id="insightHelps"></div>
+      <div id="insightHurts"></div>
+      <p class="muted" id="insightFoot"></p>
+    </div>
+
+    
+<div class="card span2">
+    <div class="chart-head">
+      <h3 style="margin:0">Verlauf</h3>
+      <span class="ch-t" id="moodChartInfo"></span>
+      <div id="moodRange"></div>
+    </div>
+    <div class="chart-wrap" id="moodChart"></div>
+    <div id="moodList"></div>
+  </div>
+</section>
+
+<!-- ============================== PLAN ============================== -->
+<section id="view-plan" class="view">
+<div class="card span2">
+    <h3>Dein Ziel</h3>
+    <p class="muted">Schreib in eigenen Worten, worauf du hinarbeitest. Der Coach
+      liest daraus mit, worauf er das Training ausrichtet — zusammen mit dem,
+      was deine Daten über deine Entwicklung sagen.</p>
+    <textarea id="goalText" rows="2"
+      placeholder="z. B. 10 km unter 55 Minuten, dabei stärkere Beine und keine Rückenschmerzen"></textarea>
+    <div id="goalRead" class="muted" style="margin-top:6px"></div>
+    <div class="grid3" style="margin-top:10px">
+      <div><label class="field">Schwerpunkt</label>
+        <select id="autoFocus"></select></div>
+      <div><label class="field">Minuten je Lauf</label>
+        <input id="autoMinutes" type="number" step="5" min="20" max="180"></div>
+      <div><label class="field">Minuten je Gym-Einheit</label>
+        <input id="autoGymMinutes" type="number" step="5" min="20" max="180"></div>
+    </div>
+    <p class="muted" id="autoFocusNote"></p>
+  </div>
+
+  
+<div class="card span2">
+    <h3>Deine Woche</h3>
+    <p class="muted">Sag nur, an welchen Tagen du was machst. Welche Einheit
+      genau darauf liegt, entscheidet der Coach jede Woche neu — nach deiner
+      Erholung, deinem Ziel und dem, was zuletzt zu kurz kam.</p>
+
+    <label class="field">Gym an diesen Tagen</label>
+    <div id="gymDayPick" class="chips"></div>
+
+    <label class="field" style="margin-top:12px">Laufen an diesen Tagen</label>
+    <div id="runDayPick" class="chips"></div>
+
+    <div class="grid3" style="margin-top:12px">
+      <div><label class="field">Langer Lauf möglichst am</label>
+        <select id="autoLongDay"></select></div>
+      <div><label class="field">Abend-Yoga</label>
+        <select id="autoMobility">
+          <option value="1">jeden Abend</option>
+          <option value="0">nicht einplanen</option>
+        </select></div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button class="btn ghost" id="btnAutoSave">Speichern</button>
+      <button class="btn ghost" id="btnAutoPreview">Woche vorschlagen</button>
+      <button class="btn" id="btnAutoApply">Übernehmen</button>
+    </div>
+    <div class="coach-msg" id="autoAdvice" hidden></div>
+  </div>
+
+  
+<div class="card span2">
+    <h3>Die kommende Woche</h3>
+    <div id="autoPreview"><p class="muted">Noch nichts vorgeschlagen.</p></div>
+  </div>
+
+  
+<div class="card">
+    <h3>Geplante Einheiten</h3>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn ghost" id="btnPlanWeek">Woche planen</button>
+      <button class="btn ghost" id="btnPushAll">Alles an Garmin</button>
+    </div>
+    <div id="plannedList" class="muted">Nichts geplant.</div>
+  </div>
+
+  
+<div class="card">
+    <h3>Einzelne Einheit erstellen</h3>
+    <div class="quick-grid">
+      <button class="btn ghost" data-run="easy">Lockerer Lauf</button>
+      <button class="btn ghost" data-run="tempo">Tempolauf</button>
+      <button class="btn ghost" data-run="interval">Intervalle</button>
+      <button class="btn ghost" data-run="long">Langer Lauf</button>
+      <button class="btn ghost" id="btnGymSession">Gym-Einheit</button>
+      <button class="btn ghost" id="btnYoga">Abend-Yoga</button>
+    </div>
+  </div>
+
+  
+<div class="card">
     <h3>Kalibrierung</h3>
     <div id="benchmarkStatus" class="muted">…</div>
     <div class="row" style="margin-top:10px">
@@ -245,24 +357,8 @@
     <div id="benchResult" class="calib-result" hidden></div>
   </div>
 
-  <div class="card">
-    <h3>Einzelne Einheit erstellen</h3>
-    <div class="quick-grid">
-      <button class="btn ghost" data-run="easy">Lockerer Lauf</button>
-      <button class="btn ghost" data-run="tempo">Tempolauf</button>
-      <button class="btn ghost" data-run="interval">Intervalle</button>
-      <button class="btn ghost" data-run="long">Langer Lauf</button>
-      <button class="btn ghost" id="btnGymSession">Gym-Einheit</button>
-      <button class="btn ghost" id="btnYoga">Abend-Yoga</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Geplante Einheiten</h3>
-    <div id="plannedList" class="muted">Nichts geplant.</div>
-  </div>
-
-  <div class="card">
+  
+<div class="card">
     <h3>Yoga-Stellungen — so gehen sie</h3>
     <p class="muted">Die Uhr zeigt dir Namen und Abbildung jeder Stellung. Wie du
       hineinkommst, steht hier — einmal in Ruhe durchgehen, dann brauchst du es
@@ -271,9 +367,23 @@
   </div>
 </section>
 
-<!-- ============================== ÜBUNGEN ================================ -->
-<section id="view-exercises" class="view">
-  <div class="card">
+<!-- ============================== KRAFT ============================== -->
+<section id="view-strength" class="view">
+<div class="card">
+    <h3>Muskelgruppen</h3>
+    <p class="muted">Volumen und geschätzte Maximalkraft der letzten vier Wochen
+      gegen die vier davor. Oben steht, was am ehesten dran wäre.</p>
+    <div id="trendMuscles"></div>
+  </div>
+
+  
+<div class="card span2">
+        <h3>Trainingslast — letzte 6 Wochen</h3>
+        <div id="loadRange"></div><div class="chart-wrap" id="loadChart"></div>
+      </div>
+
+    
+<div class="card">
     <h3>Deine Übungen &amp; Maschinen</h3>
     <p class="muted">Was du hier einträgst, benutzt der Coach — und passt Gewicht und Wiederholungen selbst an. Nach jedem Gym-Training holt PULS die Sätze von der Uhr und rechnet weiter.</p>
     <div class="row" style="margin-top:10px">
@@ -291,7 +401,8 @@
 
   <div id="exerciseList"></div>
 
-  <div class="card">
+  
+<div class="card">
     <h3>Training manuell eintragen</h3>
     <div class="grid2">
       <div><label class="field">Was?</label>
@@ -316,7 +427,12 @@
     </div>
   </div>
 
-  <div class="card" id="runTrendCard">
+  
+</section>
+
+<!-- ============================== LAUFEN ============================== -->
+<section id="view-running" class="view">
+<div class="card" id="runTrendCard">
     <h3>Laufform</h3>
     <div id="trendFacts" class="body-facts"></div>
     <div id="trendHints"></div>
@@ -332,7 +448,16 @@
       <div id="trendBests"></div></div>
   </div>
 
-  <div class="card">
+  
+<div class="card">
+    <h3>Laufen</h3>
+    <p class="muted">Der ehrlichste Maßstab ist das Tempo bei gleichem Puls —
+      gleiche Anstrengung, mehr Strecke.</p>
+    <div id="trendRunning"></div>
+  </div>
+
+  
+<div class="card">
     <h3>Letzte Aktivitäten</h3>
     <div class="row" style="margin-bottom:8px">
       <select id="logSport" class="small">
@@ -353,6 +478,455 @@
     <div id="activityList" class="muted">Noch keine.</div>
   </div>
 </section>
+
+<!-- ============================== ESSEN ============================== -->
+<section id="view-nutrition" class="view">
+<div class="card">
+    <h3>Heute gegessen</h3>
+    <div id="mealTargets" class="tiles wide-tiles"></div>
+    <div id="mealList" style="margin-top:12px"></div>
+    <div style="margin-top:14px">
+      <label class="field">Beschreib einfach, was du gegessen hast</label>
+      <div class="row">
+        <input id="mealText" class="grow"
+          placeholder="z. B. 150 g Hähnchen mit Reis und Gemüse, dazu ein Skyr">
+        <select id="mealTextSlot" class="small">
+          <option value="breakfast">Frühstück</option>
+          <option value="lunch">Mittag</option>
+          <option value="dinner">Abend</option>
+          <option value="snack">Snack</option>
+          <option value="other" selected>Sonstiges</option>
+        </select>
+        <button class="btn ghost" id="btnMealEstimate">Berechnen</button>
+      </div>
+      <div id="mealEstimate" hidden></div>
+    </div>
+
+    <details style="margin-top:12px">
+      <summary class="field" style="cursor:pointer">Mahlzeit mit eigenen Zahlen eintragen</summary>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="field">Was</label><input id="mealName" placeholder="z. B. Skyr mit Beeren"></div>
+        <div><label class="field">Wann</label>
+          <select id="mealSlot">
+            <option value="breakfast">Frühstück</option>
+            <option value="lunch">Mittag</option>
+            <option value="dinner">Abend</option>
+            <option value="snack">Snack</option>
+            <option value="other" selected>Sonstiges</option>
+          </select></div>
+        <div><label class="field">Kalorien</label><input id="mealKcal" type="number" step="10"></div>
+        <div><label class="field">Eiweiß (g)</label><input id="mealProtein" type="number" step="1"></div>
+        <div><label class="field">Kohlenhydrate (g)</label><input id="mealCarbs" type="number" step="1"></div>
+        <div><label class="field">Fett (g)</label><input id="mealFat" type="number" step="1"></div>
+      </div>
+      <button class="btn" id="btnAddMeal" style="margin-top:8px">Eintragen</button>
+    </details>
+    <details style="margin-top:8px">
+      <summary class="field" style="cursor:pointer">Woher die Zielwerte kommen</summary>
+      <p class="muted" id="targetExplain"></p>
+    </details>
+  </div>
+
+  
+<div class="card">
+    <h3>Passend zu heute</h3>
+    <div id="recipeReason" class="muted"></div>
+    <div id="recipeList"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost small" id="btnRecipeExplain">Coach fragen</button>
+      <select id="recipeMeal" class="small">
+        <option value="">alles</option>
+        <option value="breakfast">Frühstück</option>
+        <option value="main">Hauptgericht</option>
+        <option value="snack">Snack</option>
+      </select>
+    </div>
+    <div id="recipeAdvice" class="coach-msg" hidden></div>
+  </div>
+
+  
+<div class="card">
+    <h3>Coach-Empfehlung</h3>
+    <div class="coach-msg" id="nutritionAdvice">Frag den Coach, was gerade sinnvoll ist.</div>
+    <button class="btn small" id="btnNutritionAdvice" style="margin-top:10px">Empfehlung holen</button>
+  </div>
+
+  
+<div class="card">
+    <h3>Heute eintragen</h3>
+    <div class="grid3">
+      <div><label class="field">kcal</label><input id="nutKcal" type="number" inputmode="numeric"></div>
+      <div><label class="field">Protein (g)</label><input id="nutProt" type="number" inputmode="numeric"></div>
+      <div><label class="field">Datum</label><input id="nutDay" type="date"></div>
+    </div>
+    <label class="field">Notiz</label>
+    <input id="nutNotes" placeholder="optional">
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnSaveNutrition">Speichern</button>
+      <span class="muted" id="nutTargetInfo"></span>
+    </div>
+  </div>
+
+  
+<div class="card">
+    <h3>Letzte 14 Tage</h3>
+    <div id="nutritionList" class="muted">Noch keine Einträge.</div>
+  </div>
+</section>
+
+<!-- ============================== GEWICHT ============================== -->
+<section id="view-weight" class="view">
+<div class="card">
+    <h3>Körperdaten</h3>
+    <div id="bodyFacts" class="body-facts"></div>
+    <div id="bodyRange"></div><div class="chart-wrap" id="bodyChart" style="margin-top:12px"></div>
+    <div id="bodyDiscipline" class="muted" style="margin-top:4px"></div>
+
+    <details style="margin-top:14px">
+      <summary class="field" style="cursor:pointer">Messung von Hand eintragen</summary>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="field">Gewicht (kg)</label><input id="bodyWeight" type="number" step="0.1"></div>
+        <div><label class="field">Körperfett (%)</label><input id="bodyFat" type="number" step="0.1"></div>
+        <div><label class="field">Datum</label><input id="bodyDay" type="date"></div>
+        <div><label class="field">Uhrzeit</label><input id="bodyTime" type="time"></div>
+      </div>
+      <p class="muted">Ohne Uhrzeit wird die Messung als „Uhrzeit unbekannt“ geführt:
+        sie erscheint in der Liste, zählt aber nicht zur Trendlinie, weil sich
+        ohne Zeitpunkt nicht sagen lässt, wie sie zum Rest passt.</p>
+      <div class="row" style="margin-top:6px">
+        <button class="btn" id="btnSaveBody">Speichern</button>
+        <label class="btn ghost small" style="cursor:pointer">CSV importieren
+          <input type="file" id="bodyCsv" accept=".csv" hidden>
+        </label>
+      </div>
+    </details>
+
+    <details style="margin-top:10px">
+      <summary class="field" style="cursor:pointer">Referenzfenster</summary>
+      <p class="muted">Zwischen der Messung früh nüchtern und der abends nach dem
+        Essen liegen leicht anderthalb Kilo, ohne dass sich am Körper etwas
+        geändert hätte. Nur Messungen in diesem Fenster bilden die Trendlinie;
+        alle anderen werden gespeichert, markiert und rechnerisch angeglichen.</p>
+      <div class="row">
+        <div><label class="field">von</label><input id="winStart" type="time" value="06:00"></div>
+        <div><label class="field">bis</label><input id="winEnd" type="time" value="09:00"></div>
+        <button class="btn ghost" id="btnSaveWindow" style="align-self:end">Übernehmen</button>
+      </div>
+    </details>
+
+    <div id="bodyList" class="muted" style="margin-top:12px"></div>
+  </div>
+
+  
+<div class="card">
+        <h3>Körper</h3>
+        <div class="comp-row" id="compRow"></div>
+        <div id="weightRange"></div><div class="chart-wrap" id="weightChart"></div>
+        <p class="muted" id="weightDelta"></p>
+      </div>
+
+    
+</section>
+
+<!-- ============================== VITAL ============================== -->
+<section id="view-vital" class="view">
+<div class="card span2" id="readoutCard">
+      <h3>Dein Zustand heute</h3>
+      <div class="tiles wide-tiles" id="todayTiles"></div>
+      <div class="coach-msg" id="readoutText" style="margin-top:14px">
+        <span class="muted">Der Coach schaut noch auf die Zahlen …</span></div>
+      <button class="btn small ghost" id="btnReadout" style="margin-top:8px">
+        Neu einschätzen</button>
+    </div>
+
+    
+<div class="card span2">
+      <h3>Schlaf</h3>
+      <div class="tiles wide-tiles" id="sleepTiles"></div>
+      <div id="sleepStagesMini" style="margin-top:12px"></div>
+      <div id="sleepDashRange"></div><div class="chart-wrap" id="sleepChartDash"></div>
+      <div class="coach-msg" id="sleepAdvice" hidden></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn small ghost" id="btnSleepAdvice">Wie schlafe ich besser?</button>
+        <button class="card-link" data-goto="mood" style="margin:0">Erholung im Detail ›</button>
+      </div>
+    </div>
+
+    
+<div class="card span2">
+      <h3>Herz</h3>
+      <div class="tiles" id="heartTiles"></div>
+      <div class="detail-section"><h4>Ruhepuls gegen deinen Schnitt</h4>
+        <div id="rhrRange"></div><div class="chart-wrap" id="rhrChart"></div></div>
+      <div class="detail-section"><h4>HRV gegen deinen Schnitt</h4>
+        <div id="hrvDashRange"></div><div class="chart-wrap" id="hrvDashChart"></div></div>
+      <p class="muted">Das graue Band ist dein Normalbereich. Punkte darüber
+        oder darunter sind die Tage, auf die es ankommt.</p>
+    </div>
+
+    
+<div class="card">
+    <h3>Erholung</h3>
+    <div id="recoveryFacts" class="body-facts"></div>
+    <div id="recoveryNotes"></div>
+    <div class="detail-section"><h4>HRV und Ruhepuls</h4>
+      <div id="hrvRange"></div><div class="chart-wrap" id="hrvChart"></div></div>
+    <div class="detail-section"><h4>Schlaf</h4>
+      <div id="sleepRange"></div><div class="chart-wrap" id="sleepChart"></div>
+      <div id="sleepStages"></div></div>
+    <div class="detail-section"><h4>Stress und Body Battery</h4>
+      <div id="stressRange"></div><div class="chart-wrap" id="stressChart"></div>
+      <div id="batteryRange"></div><div class="chart-wrap" id="batteryChart"></div></div>
+  </div>
+
+  
+</section>
+
+<!-- ============================== STATISTIK ============================== -->
+<section id="view-stats" class="view">
+<div class="card">
+    <h3>Alles gegen alles</h3>
+    <p class="muted" id="statsIntro">wird geladen …</p>
+    <div class="row" style="margin-top:8px">
+      <select id="statsDays" class="small">
+        <option value="90">90 Tage</option>
+        <option value="180">180 Tage</option>
+        <option value="365" selected>1 Jahr</option>
+        <option value="3650">alles</option>
+      </select>
+      <button class="btn ghost small" id="btnStatsExplain">Coach fragen</button>
+    </div>
+    <div class="coach-msg" id="statsAdvice" hidden></div>
+  </div>
+
+  
+<div class="card" id="statsRecCard">
+    <h3>Was daraus folgt</h3>
+    <p class="muted">Aus jedem belastbaren Zusammenhang, bei dem eine Seite
+      etwas ist, woran du drehen kannst, wird hier das Drittel deiner besten
+      Tage gegen das Drittel deiner schlechtesten gestellt — in echten
+      Einheiten, nicht als Koeffizient.</p>
+    <div id="statsRecs"></div>
+  </div>
+
+  
+<div class="card">
+    <h3>Belastbare Zusammenhänge</h3>
+    <p class="muted">Diese halten der Prüfung stand, dass bei hunderten
+      Vergleichen ein Teil rein zufällig auffällig aussieht.</p>
+    <div id="statsRobust"></div>
+    <div class="chart-wrap" id="statsRobustBars"></div>
+  </div>
+
+  
+<div class="card">
+    <h3>Schwächere Auffälligkeiten</h3>
+    <p class="muted">Der Vollständigkeit halber, absteigend nach Stärke. Je
+      weiter unten, desto eher Zufall — nichts, worauf man etwas aufbauen sollte.</p>
+    <div class="chart-wrap" id="statsWeakBars"></div>
+    <button class="card-link" id="btnStatsMore">mehr anzeigen ›</button>
+  </div>
+
+  
+<div class="card">
+    <h3>Einzelne Größe ansehen</h3>
+    <select id="statsMetric" class="small"></select>
+    <div id="statsMetricRange"></div><div class="chart-wrap" id="statsMetricChart"></div>
+    <div id="statsMetricRelated"></div>
+  </div>
+</section>
+
+<!-- ============================== MEHR ============================== -->
+<section id="view-settings" class="view">
+<div class="card">
+    <h3>Garmin Connect</h3>
+    <div id="garminStatus" class="muted">Status wird geladen …</div>
+    <div id="garminLoginForm">
+      <label class="field">E-Mail</label><input id="garminEmail" type="email" autocomplete="username">
+      <label class="field">Passwort</label><input id="garminPassword" type="password" autocomplete="current-password">
+      <p class="muted">Dein Passwort wird nur für den Login benutzt — gespeichert werden nur Zugriffs-Tokens.</p>
+      <button class="btn" id="btnGarminLogin" style="margin-top:6px">Verbinden</button>
+    </div>
+    <div id="garminMfaForm" hidden>
+      <label class="field">MFA-Code (aus Mail/App)</label><input id="garminMfa" inputmode="numeric">
+      <button class="btn" id="btnGarminMfa" style="margin-top:6px">Code bestätigen</button>
+    </div>
+    <div id="garminLinkedBox" hidden>
+      <div class="row" style="margin-top:8px">
+        <button class="btn teal" id="btnSyncNow">Jetzt synchronisieren</button>
+        <button class="btn ghost" id="btnBackfill">Verlauf nachladen</button>
+        <button class="btn ghost" id="btnUnlink">Trennen</button>
+      </div>
+      <p class="muted" style="margin-top:8px">Der Sync holt die letzten zwei Wochen.
+        „Verlauf nachladen“ holt einmalig alles, was Garmin hergibt — Aktivitäten,
+        Schlaf, HRV, Stress, Body Battery und Gewicht. Das dauert einige Minuten
+        und läuft im Hintergrund weiter, auch wenn du die Seite schließt. Erst
+        danach kann der Coach über Tendenzen reden.</p>
+      <div id="backfillProgress" hidden></div>
+      <details style="margin-top:10px">
+        <summary class="field" style="cursor:pointer">Es kommen keine Daten an?</summary>
+        <p class="muted">Die Prüfung geht der Reihe nach durch: Verbindung,
+          ob Garmin überhaupt antwortet, und was davon in der Datenbank
+          gelandet ist. Damit lässt sich unterscheiden, ob die Verbindung, die
+          Abfrage oder das Speichern klemmt.</p>
+        <div class="row">
+          <button class="btn ghost small" id="btnDiagnose">Prüfen</button>
+          <button class="btn ghost small" id="btnBackfillReset">Import zurücksetzen</button>
+        </div>
+        <div id="diagnoseBody"></div>
+      </details>
+    </div>
+  </div>
+
+  
+<div class="card">
+    <h3>Waage</h3>
+    <div class="live-state">
+      <span class="live-dot" id="scaleDot"></span>
+      <div class="grow">
+        <div class="live-title" id="scaleTitle">Status wird geladen …</div>
+        <div class="muted" id="scaleHint"></div>
+      </div>
+    </div>
+
+    <div class="live-metrics" id="scaleMetrics" hidden>
+      <div class="m"><div class="v" id="scaleAdv">–</div><div class="l">Signale</div></div>
+      <div class="m"><div class="v" id="scaleFrames">–</div><div class="l">von der Waage</div></div>
+      <div class="m"><div class="v" id="scaleMeas">–</div><div class="l">Messungen</div></div>
+    </div>
+
+    <div id="scaleLast" class="muted"></div>
+
+    <details id="scaleDevices">
+      <summary>Gefundene Bluetooth-Geräte anzeigen</summary>
+      <div id="scaleDeviceList" class="muted" style="margin-top:10px">–</div>
+      <p class="muted">Deine Waage funkt nur, wenn jemand draufsteht. Tritt kurz drauf,
+        dann taucht sie hier hervorgehoben auf — die Adresse kannst du als
+        <code>SCALE_MAC</code> eintragen, damit nur sie ausgewertet wird.</p>
+    </details>
+
+    <hr class="sep">
+
+    <label class="field">Token für den Waagen-Dienst</label>
+    <div class="row">
+      <input id="apiToken" readonly class="grow">
+      <button class="btn small ghost" id="btnCopyToken">Kopieren</button>
+    </div>
+    <p class="muted">Gehört in die Variable <code>PULS_TOKEN</code> des Containers
+      <code>puls-miscale</code>.</p>
+  </div>
+
+  
+<div class="card">
+    <h3>Supplements</h3>
+    <p class="muted">Feste Uhrzeit oder ans Training gekoppelt. Was ans Training
+      gekoppelt ist, wird an trainingsfreien Tagen gar nicht erst fällig.</p>
+    <div id="suppManage"></div>
+    <details style="margin-top:12px">
+      <summary class="field" style="cursor:pointer">Neues Supplement</summary>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="field">Name</label><input id="suppName"></div>
+        <div><label class="field">Dosis</label><input id="suppDose" placeholder="5 g"></div>
+        <div><label class="field">Fällig</label>
+          <select id="suppTrigger">
+            <option value="time">zu einer Uhrzeit</option>
+            <option value="after_gym">nach der Gym-Einheit</option>
+            <option value="after_run">nach dem Lauf</option>
+          </select></div>
+        <div><label class="field">Uhrzeit</label><input id="suppTime" type="time" value="08:00"></div>
+      </div>
+      <label class="field" style="margin-top:8px">Hinweis (optional)</label>
+      <input id="suppNote" placeholder="z. B. mit Abstand zu Milchprodukten">
+      <button class="btn" id="btnAddSupp" style="margin-top:8px">Anlegen</button>
+    </details>
+  </div>
+
+
+  
+<div class="card">
+    <h3>Trainingsziele</h3>
+    <p class="muted">Welche Tage, wie lange und was darauf liegt, stellst du im
+      <a href="#" data-goto="plan">Plan-Reiter</a> ein — dort sieht man dabei
+      gleich, was daraus für die Woche folgt.</p>
+    <div class="grid3">
+      <div><label class="field">Aufstehen um</label>
+        <input id="setWakeTarget" type="time" step="300"></div>
+      <div><label class="field">Klimmzug-Ziel</label><input id="setPullupGoal" type="number" min="1"></div>
+      <div><label class="field">Laufziel: km</label><input id="setRunGoalKm" type="number" step="0.5"></div>
+      <div><label class="field">in Minuten</label><input id="setRunGoalMin" type="number"></div>
+    </div>
+    <label class="row toggle" style="margin-top:12px">
+      <input type="checkbox" id="setPreferMachines"> Maschinen gegenüber freien Gewichten bevorzugen
+    </label>
+    <button class="btn" id="btnSaveWeek" style="margin-top:12px">Speichern</button>
+  </div>
+
+  
+<div class="card">
+    <h3>Ziele &amp; Ernährung</h3>
+    <div class="row" id="goalChips"></div>
+    <div class="grid3" style="margin-top:10px">
+      <div><label class="field">Workouts/Woche</label><input id="setWeeklyTarget" type="number" min="1" max="21"></div>
+      <div><label class="field">Kalorienziel</label><input id="setKcal" type="number" placeholder="z. B. 3000"></div>
+      <div><label class="field">Proteinziel (g)</label><input id="setProtein" type="number" placeholder="z. B. 150"></div>
+    </div>
+    <label class="field">Über dich (hilft dem Coach): Alter, Größe, Trainingserfahrung …</label>
+    <textarea id="setProfile" rows="3" placeholder="z. B. 24, 1.84 m, 3 Jahre Krafttraining, laufe seit 1 Jahr"></textarea>
+    <button class="btn" id="btnSaveSettings" style="margin-top:10px">Speichern</button>
+  </div>
+
+  
+<div class="card span2">
+    <h3>Wissens-Archiv</h3>
+    <div id="tipArchive" class="muted">Noch keine Häppchen.</div>
+  </div>
+<div class="card">
+    <h3>Darstellung</h3>
+    <label class="field">Schriftgröße</label>
+    <div class="row" id="fontChips"></div>
+    <div class="font-preview">So sieht ein normaler Text in dieser Größe aus —
+      die ganze Oberfläche wächst mit.</div>
+  </div>
+
+  
+<div class="card">
+    <h3>KI-Modell</h3>
+    <div id="modelList" class="muted">Wird geladen …</div>
+    <div class="pull-bar" id="pullBar" hidden><span></span></div>
+    <p class="muted" id="pullStatus"></p>
+    <p class="muted">Der Wechsel lädt das Modell im Hintergrund herunter —
+      je nach Größe dauert das einige Minuten. Solange antwortet der Coach
+      noch mit dem alten Modell.</p>
+  </div>
+
+  
+<div class="card">
+    <h3>System</h3>
+    <div id="systemStatus" class="muted">…</div>
+  </div>
+
+  
+<div class="card">
+    <h3>Version</h3>
+    <div id="versionInfo" class="muted">wird geladen …</div>
+    <p class="muted">Kommt ein Update nicht an, steht hier noch die alte
+      Kennung. Dann wurde der Container nicht neu gebaut — auf dem Server
+      hilft <code>./deploy.sh</code> (ohne <code>--no-build</code>).</p>
+  </div>
+</section>
+
+<!-- Dialoge und Gemeinsames -->
+
+
+    
+
+
+
+
+
+<!-- ============================== ÜBUNGEN ================================ -->
+
+
 
 <!-- Bearbeiten-Dialog für Übungen -->
 <div id="exDialog" class="modal" hidden>
@@ -459,510 +1033,14 @@
 </div>
 
 <!-- ============================== ERNÄHRUNG ============================== -->
-<section id="view-nutrition" class="view">
-  <div class="card">
-    <h3>Heute gegessen</h3>
-    <div id="mealTargets" class="tiles wide-tiles"></div>
-    <div id="mealList" style="margin-top:12px"></div>
-    <div style="margin-top:14px">
-      <label class="field">Beschreib einfach, was du gegessen hast</label>
-      <div class="row">
-        <input id="mealText" class="grow"
-          placeholder="z. B. 150 g Hähnchen mit Reis und Gemüse, dazu ein Skyr">
-        <select id="mealTextSlot" class="small">
-          <option value="breakfast">Frühstück</option>
-          <option value="lunch">Mittag</option>
-          <option value="dinner">Abend</option>
-          <option value="snack">Snack</option>
-          <option value="other" selected>Sonstiges</option>
-        </select>
-        <button class="btn ghost" id="btnMealEstimate">Berechnen</button>
-      </div>
-      <div id="mealEstimate" hidden></div>
-    </div>
 
-    <details style="margin-top:12px">
-      <summary class="field" style="cursor:pointer">Mahlzeit mit eigenen Zahlen eintragen</summary>
-      <div class="grid3" style="margin-top:8px">
-        <div><label class="field">Was</label><input id="mealName" placeholder="z. B. Skyr mit Beeren"></div>
-        <div><label class="field">Wann</label>
-          <select id="mealSlot">
-            <option value="breakfast">Frühstück</option>
-            <option value="lunch">Mittag</option>
-            <option value="dinner">Abend</option>
-            <option value="snack">Snack</option>
-            <option value="other" selected>Sonstiges</option>
-          </select></div>
-        <div><label class="field">Kalorien</label><input id="mealKcal" type="number" step="10"></div>
-        <div><label class="field">Eiweiß (g)</label><input id="mealProtein" type="number" step="1"></div>
-        <div><label class="field">Kohlenhydrate (g)</label><input id="mealCarbs" type="number" step="1"></div>
-        <div><label class="field">Fett (g)</label><input id="mealFat" type="number" step="1"></div>
-      </div>
-      <button class="btn" id="btnAddMeal" style="margin-top:8px">Eintragen</button>
-    </details>
-    <details style="margin-top:8px">
-      <summary class="field" style="cursor:pointer">Woher die Zielwerte kommen</summary>
-      <p class="muted" id="targetExplain"></p>
-    </details>
-  </div>
 
-  <div class="card">
-    <h3>Passend zu heute</h3>
-    <div id="recipeReason" class="muted"></div>
-    <div id="recipeList"></div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn ghost small" id="btnRecipeExplain">Coach fragen</button>
-      <select id="recipeMeal" class="small">
-        <option value="">alles</option>
-        <option value="breakfast">Frühstück</option>
-        <option value="main">Hauptgericht</option>
-        <option value="snack">Snack</option>
-      </select>
-    </div>
-    <div id="recipeAdvice" class="coach-msg" hidden></div>
-  </div>
-
-  <div class="card">
-    <h3>Heute eintragen</h3>
-    <div class="grid3">
-      <div><label class="field">kcal</label><input id="nutKcal" type="number" inputmode="numeric"></div>
-      <div><label class="field">Protein (g)</label><input id="nutProt" type="number" inputmode="numeric"></div>
-      <div><label class="field">Datum</label><input id="nutDay" type="date"></div>
-    </div>
-    <label class="field">Notiz</label>
-    <input id="nutNotes" placeholder="optional">
-    <div class="row" style="margin-top:10px">
-      <button class="btn" id="btnSaveNutrition">Speichern</button>
-      <span class="muted" id="nutTargetInfo"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Coach-Empfehlung</h3>
-    <div class="coach-msg" id="nutritionAdvice">Frag den Coach, was gerade sinnvoll ist.</div>
-    <button class="btn small" id="btnNutritionAdvice" style="margin-top:10px">Empfehlung holen</button>
-  </div>
-
-  <div class="card">
-    <h3>Letzte 14 Tage</h3>
-    <div id="nutritionList" class="muted">Noch keine Einträge.</div>
-  </div>
-</section>
 
 <!-- ============================== COACH ================================== -->
-<section id="view-coach" class="view">
-  <div class="card span2">
-    <h3>Dein Ziel</h3>
-    <p class="muted">Schreib in eigenen Worten, worauf du hinarbeitest. Der Coach
-      liest daraus mit, worauf er das Training ausrichtet — zusammen mit dem,
-      was deine Daten über deine Entwicklung sagen.</p>
-    <textarea id="goalText" rows="2"
-      placeholder="z. B. 10 km unter 55 Minuten, dabei stärkere Beine und keine Rückenschmerzen"></textarea>
-    <div id="goalRead" class="muted" style="margin-top:6px"></div>
-    <div class="grid3" style="margin-top:10px">
-      <div><label class="field">Schwerpunkt</label>
-        <select id="autoFocus"></select></div>
-      <div><label class="field">Minuten je Lauf</label>
-        <input id="autoMinutes" type="number" step="5" min="20" max="180"></div>
-      <div><label class="field">Minuten je Gym-Einheit</label>
-        <input id="autoGymMinutes" type="number" step="5" min="20" max="180"></div>
-    </div>
-    <p class="muted" id="autoFocusNote"></p>
-  </div>
 
-  <div class="card span2">
-    <h3>Deine Woche</h3>
-    <p class="muted">Sag nur, an welchen Tagen du was machst. Welche Einheit
-      genau darauf liegt, entscheidet der Coach jede Woche neu — nach deiner
-      Erholung, deinem Ziel und dem, was zuletzt zu kurz kam.</p>
 
-    <label class="field">Gym an diesen Tagen</label>
-    <div id="gymDayPick" class="chips"></div>
-
-    <label class="field" style="margin-top:12px">Laufen an diesen Tagen</label>
-    <div id="runDayPick" class="chips"></div>
-
-    <div class="grid3" style="margin-top:12px">
-      <div><label class="field">Langer Lauf möglichst am</label>
-        <select id="autoLongDay"></select></div>
-      <div><label class="field">Abend-Yoga</label>
-        <select id="autoMobility">
-          <option value="1">jeden Abend</option>
-          <option value="0">nicht einplanen</option>
-        </select></div>
-    </div>
-
-    <div class="row" style="margin-top:12px">
-      <button class="btn ghost" id="btnAutoSave">Speichern</button>
-      <button class="btn ghost" id="btnAutoPreview">Woche vorschlagen</button>
-      <button class="btn" id="btnAutoApply">Übernehmen</button>
-    </div>
-    <div class="coach-msg" id="autoAdvice" hidden></div>
-  </div>
-
-  <div class="card span2">
-    <h3>Die kommende Woche</h3>
-    <div id="autoPreview"><p class="muted">Noch nichts vorgeschlagen.</p></div>
-  </div>
-
-  <div class="card">
-    <h3>Muskelgruppen</h3>
-    <p class="muted">Volumen und geschätzte Maximalkraft der letzten vier Wochen
-      gegen die vier davor. Oben steht, was am ehesten dran wäre.</p>
-    <div id="trendMuscles"></div>
-  </div>
-
-  <div class="card">
-    <h3>Laufen</h3>
-    <p class="muted">Der ehrlichste Maßstab ist das Tempo bei gleichem Puls —
-      gleiche Anstrengung, mehr Strecke.</p>
-    <div id="trendRunning"></div>
-  </div>
-
-  <div class="card span2">
-    <h3>Frag deinen Coach</h3>
-    <div class="chat" id="chatLog"></div>
-    <div class="row" style="margin-top:10px">
-      <input id="chatInput" class="grow" placeholder="z. B. Wie steigere ich meine Kniebeuge?">
-      <button class="btn" id="btnAsk">Senden</button>
-    </div>
-    <p class="muted">Antworten kommen von deiner lokalen KI — auf CPU dauert das einen Moment.</p>
-    <div class="quick-grid" style="margin-top:12px">
-      <button class="btn ghost" data-quick="Wie sollte mein Training diese Woche aussehen?">Wochenausblick</button>
-      <button class="btn ghost" data-quick="Wie lange sollte ich zwischen harten Einheiten pausieren?">Pausenzeiten</button>
-      <button class="btn ghost" data-quick="Was sollte ich heute nach dem Training essen?">Nach dem Training</button>
-      <button class="btn ghost" data-quick="Bin ich auf Kurs zu meinen Zielen?">Ziel-Check</button>
-    </div>
-  </div>
-
-  <div class="card span2">
-    <h3>Wissens-Archiv</h3>
-    <div id="tipArchive" class="muted">Noch keine Häppchen.</div>
-  </div>
-</section>
 
 <!-- ============================== EINSTELLUNGEN ========================== -->
-<section id="view-mood" class="view">
-  <div class="card">
-    <h3>Wie geht es dir gerade?</h3>
-    <p class="muted">Mehrmals am Tag eintragbar — der Verlauf über den Tag sagt
-      mehr als ein einzelner Wert am Abend.</p>
-
-    <div class="scales">
-      <div class="scale" data-scale="mood">
-        <label class="field">Stimmung</label>
-        <div class="dots"></div>
-        <div class="word"></div>
-      </div>
-      <div class="scale" data-scale="energy">
-        <label class="field">Energie</label>
-        <div class="dots"></div>
-        <div class="word"></div>
-      </div>
-      <div class="scale" data-scale="stress">
-        <label class="field">Stress</label>
-        <div class="dots"></div>
-        <div class="word"></div>
-      </div>
-    </div>
-
-    <label class="field" style="margin-top:14px">Beschwerden</label>
-    <div id="complaintPicker" class="chips"></div>
-    <div id="complaintChosen" class="chips chosen"></div>
-
-    <label class="field" style="margin-top:12px">Notiz</label>
-    <textarea id="moodNote" rows="3"
-      placeholder="Was war heute los? Rückenschmerzen, Muskelkater, schlecht geschlafen …"></textarea>
-    <div id="moodSuggest" class="muted" hidden></div>
-
-    <div class="row" style="margin-top:10px">
-      <button class="btn" id="btnSaveMood">Eintragen</button>
-    </div>
-  </div>
-
-  <div class="card" id="adaptCard" hidden>
-    <h3>Was der Coach daraus macht</h3>
-    <div id="adaptBody"></div>
-  </div>
-
-  <div class="card">
-    <h3>Erholung</h3>
-    <div id="recoveryFacts" class="body-facts"></div>
-    <div id="recoveryNotes"></div>
-    <div class="detail-section"><h4>HRV und Ruhepuls</h4>
-      <div id="hrvRange"></div><div class="chart-wrap" id="hrvChart"></div></div>
-    <div class="detail-section"><h4>Schlaf</h4>
-      <div id="sleepRange"></div><div class="chart-wrap" id="sleepChart"></div>
-      <div id="sleepStages"></div></div>
-    <div class="detail-section"><h4>Stress und Body Battery</h4>
-      <div id="stressRange"></div><div class="chart-wrap" id="stressChart"></div>
-      <div id="batteryRange"></div><div class="chart-wrap" id="batteryChart"></div></div>
-  </div>
-
-  <div class="card span2">
-    <div class="chart-head">
-      <h3 style="margin:0">Verlauf</h3>
-      <span class="ch-t" id="moodChartInfo"></span>
-      <div id="moodRange"></div>
-    </div>
-    <div class="chart-wrap" id="moodChart"></div>
-    <div id="moodList"></div>
-  </div>
-</section>
-
-<section id="view-stats" class="view">
-  <div class="card">
-    <h3>Alles gegen alles</h3>
-    <p class="muted" id="statsIntro">wird geladen …</p>
-    <div class="row" style="margin-top:8px">
-      <select id="statsDays" class="small">
-        <option value="90">90 Tage</option>
-        <option value="180">180 Tage</option>
-        <option value="365" selected>1 Jahr</option>
-        <option value="3650">alles</option>
-      </select>
-      <button class="btn ghost small" id="btnStatsExplain">Coach fragen</button>
-    </div>
-    <div class="coach-msg" id="statsAdvice" hidden></div>
-  </div>
-
-  <div class="card" id="statsRecCard">
-    <h3>Was daraus folgt</h3>
-    <p class="muted">Aus jedem belastbaren Zusammenhang, bei dem eine Seite
-      etwas ist, woran du drehen kannst, wird hier das Drittel deiner besten
-      Tage gegen das Drittel deiner schlechtesten gestellt — in echten
-      Einheiten, nicht als Koeffizient.</p>
-    <div id="statsRecs"></div>
-  </div>
-
-  <div class="card">
-    <h3>Belastbare Zusammenhänge</h3>
-    <p class="muted">Diese halten der Prüfung stand, dass bei hunderten
-      Vergleichen ein Teil rein zufällig auffällig aussieht.</p>
-    <div id="statsRobust"></div>
-    <div class="chart-wrap" id="statsRobustBars"></div>
-  </div>
-
-  <div class="card">
-    <h3>Schwächere Auffälligkeiten</h3>
-    <p class="muted">Der Vollständigkeit halber, absteigend nach Stärke. Je
-      weiter unten, desto eher Zufall — nichts, worauf man etwas aufbauen sollte.</p>
-    <div class="chart-wrap" id="statsWeakBars"></div>
-    <button class="card-link" id="btnStatsMore">mehr anzeigen ›</button>
-  </div>
-
-  <div class="card">
-    <h3>Einzelne Größe ansehen</h3>
-    <select id="statsMetric" class="small"></select>
-    <div id="statsMetricRange"></div><div class="chart-wrap" id="statsMetricChart"></div>
-    <div id="statsMetricRelated"></div>
-  </div>
-</section>
-
-<section id="view-settings" class="view">
-  <div class="card">
-    <h3>Supplements</h3>
-    <p class="muted">Feste Uhrzeit oder ans Training gekoppelt. Was ans Training
-      gekoppelt ist, wird an trainingsfreien Tagen gar nicht erst fällig.</p>
-    <div id="suppManage"></div>
-    <details style="margin-top:12px">
-      <summary class="field" style="cursor:pointer">Neues Supplement</summary>
-      <div class="grid3" style="margin-top:8px">
-        <div><label class="field">Name</label><input id="suppName"></div>
-        <div><label class="field">Dosis</label><input id="suppDose" placeholder="5 g"></div>
-        <div><label class="field">Fällig</label>
-          <select id="suppTrigger">
-            <option value="time">zu einer Uhrzeit</option>
-            <option value="after_gym">nach der Gym-Einheit</option>
-            <option value="after_run">nach dem Lauf</option>
-          </select></div>
-        <div><label class="field">Uhrzeit</label><input id="suppTime" type="time" value="08:00"></div>
-      </div>
-      <label class="field" style="margin-top:8px">Hinweis (optional)</label>
-      <input id="suppNote" placeholder="z. B. mit Abstand zu Milchprodukten">
-      <button class="btn" id="btnAddSupp" style="margin-top:8px">Anlegen</button>
-    </details>
-  </div>
-
-
-  <div class="card">
-    <h3>Garmin Connect</h3>
-    <div id="garminStatus" class="muted">Status wird geladen …</div>
-    <div id="garminLoginForm">
-      <label class="field">E-Mail</label><input id="garminEmail" type="email" autocomplete="username">
-      <label class="field">Passwort</label><input id="garminPassword" type="password" autocomplete="current-password">
-      <p class="muted">Dein Passwort wird nur für den Login benutzt — gespeichert werden nur Zugriffs-Tokens.</p>
-      <button class="btn" id="btnGarminLogin" style="margin-top:6px">Verbinden</button>
-    </div>
-    <div id="garminMfaForm" hidden>
-      <label class="field">MFA-Code (aus Mail/App)</label><input id="garminMfa" inputmode="numeric">
-      <button class="btn" id="btnGarminMfa" style="margin-top:6px">Code bestätigen</button>
-    </div>
-    <div id="garminLinkedBox" hidden>
-      <div class="row" style="margin-top:8px">
-        <button class="btn teal" id="btnSyncNow">Jetzt synchronisieren</button>
-        <button class="btn ghost" id="btnBackfill">Verlauf nachladen</button>
-        <button class="btn ghost" id="btnUnlink">Trennen</button>
-      </div>
-      <p class="muted" style="margin-top:8px">Der Sync holt die letzten zwei Wochen.
-        „Verlauf nachladen“ holt einmalig alles, was Garmin hergibt — Aktivitäten,
-        Schlaf, HRV, Stress, Body Battery und Gewicht. Das dauert einige Minuten
-        und läuft im Hintergrund weiter, auch wenn du die Seite schließt. Erst
-        danach kann der Coach über Tendenzen reden.</p>
-      <div id="backfillProgress" hidden></div>
-      <details style="margin-top:10px">
-        <summary class="field" style="cursor:pointer">Es kommen keine Daten an?</summary>
-        <p class="muted">Die Prüfung geht der Reihe nach durch: Verbindung,
-          ob Garmin überhaupt antwortet, und was davon in der Datenbank
-          gelandet ist. Damit lässt sich unterscheiden, ob die Verbindung, die
-          Abfrage oder das Speichern klemmt.</p>
-        <div class="row">
-          <button class="btn ghost small" id="btnDiagnose">Prüfen</button>
-          <button class="btn ghost small" id="btnBackfillReset">Import zurücksetzen</button>
-        </div>
-        <div id="diagnoseBody"></div>
-      </details>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Trainingsziele</h3>
-    <p class="muted">Welche Tage, wie lange und was darauf liegt, stellst du im
-      <a href="#" data-goto="coach">Coach-Tab</a> ein — dort sieht man dabei
-      gleich, was daraus für die Woche folgt.</p>
-    <div class="grid3">
-      <div><label class="field">Klimmzug-Ziel</label><input id="setPullupGoal" type="number" min="1"></div>
-      <div><label class="field">Laufziel: km</label><input id="setRunGoalKm" type="number" step="0.5"></div>
-      <div><label class="field">in Minuten</label><input id="setRunGoalMin" type="number"></div>
-    </div>
-    <label class="row toggle" style="margin-top:12px">
-      <input type="checkbox" id="setPreferMachines"> Maschinen gegenüber freien Gewichten bevorzugen
-    </label>
-    <button class="btn" id="btnSaveWeek" style="margin-top:12px">Speichern</button>
-  </div>
-
-  <div class="card">
-    <h3>Ziele &amp; Ernährung</h3>
-    <div class="row" id="goalChips"></div>
-    <div class="grid3" style="margin-top:10px">
-      <div><label class="field">Workouts/Woche</label><input id="setWeeklyTarget" type="number" min="1" max="21"></div>
-      <div><label class="field">Kalorienziel</label><input id="setKcal" type="number" placeholder="z. B. 3000"></div>
-      <div><label class="field">Proteinziel (g)</label><input id="setProtein" type="number" placeholder="z. B. 150"></div>
-    </div>
-    <label class="field">Über dich (hilft dem Coach): Alter, Größe, Trainingserfahrung …</label>
-    <textarea id="setProfile" rows="3" placeholder="z. B. 24, 1.84 m, 3 Jahre Krafttraining, laufe seit 1 Jahr"></textarea>
-    <button class="btn" id="btnSaveSettings" style="margin-top:10px">Speichern</button>
-  </div>
-
-  <div class="card">
-    <h3>Körperdaten</h3>
-    <div id="bodyFacts" class="body-facts"></div>
-    <div id="bodyRange"></div><div class="chart-wrap" id="bodyChart" style="margin-top:12px"></div>
-    <div id="bodyDiscipline" class="muted" style="margin-top:4px"></div>
-
-    <details style="margin-top:14px">
-      <summary class="field" style="cursor:pointer">Messung von Hand eintragen</summary>
-      <div class="grid3" style="margin-top:8px">
-        <div><label class="field">Gewicht (kg)</label><input id="bodyWeight" type="number" step="0.1"></div>
-        <div><label class="field">Körperfett (%)</label><input id="bodyFat" type="number" step="0.1"></div>
-        <div><label class="field">Datum</label><input id="bodyDay" type="date"></div>
-        <div><label class="field">Uhrzeit</label><input id="bodyTime" type="time"></div>
-      </div>
-      <p class="muted">Ohne Uhrzeit wird die Messung als „Uhrzeit unbekannt“ geführt:
-        sie erscheint in der Liste, zählt aber nicht zur Trendlinie, weil sich
-        ohne Zeitpunkt nicht sagen lässt, wie sie zum Rest passt.</p>
-      <div class="row" style="margin-top:6px">
-        <button class="btn" id="btnSaveBody">Speichern</button>
-        <label class="btn ghost small" style="cursor:pointer">CSV importieren
-          <input type="file" id="bodyCsv" accept=".csv" hidden>
-        </label>
-      </div>
-    </details>
-
-    <details style="margin-top:10px">
-      <summary class="field" style="cursor:pointer">Referenzfenster</summary>
-      <p class="muted">Zwischen der Messung früh nüchtern und der abends nach dem
-        Essen liegen leicht anderthalb Kilo, ohne dass sich am Körper etwas
-        geändert hätte. Nur Messungen in diesem Fenster bilden die Trendlinie;
-        alle anderen werden gespeichert, markiert und rechnerisch angeglichen.</p>
-      <div class="row">
-        <div><label class="field">von</label><input id="winStart" type="time" value="06:00"></div>
-        <div><label class="field">bis</label><input id="winEnd" type="time" value="09:00"></div>
-        <button class="btn ghost" id="btnSaveWindow" style="align-self:end">Übernehmen</button>
-      </div>
-    </details>
-
-    <div id="bodyList" class="muted" style="margin-top:12px"></div>
-  </div>
-
-  <div class="card">
-    <h3>Waage</h3>
-    <div class="live-state">
-      <span class="live-dot" id="scaleDot"></span>
-      <div class="grow">
-        <div class="live-title" id="scaleTitle">Status wird geladen …</div>
-        <div class="muted" id="scaleHint"></div>
-      </div>
-    </div>
-
-    <div class="live-metrics" id="scaleMetrics" hidden>
-      <div class="m"><div class="v" id="scaleAdv">–</div><div class="l">Signale</div></div>
-      <div class="m"><div class="v" id="scaleFrames">–</div><div class="l">von der Waage</div></div>
-      <div class="m"><div class="v" id="scaleMeas">–</div><div class="l">Messungen</div></div>
-    </div>
-
-    <div id="scaleLast" class="muted"></div>
-
-    <details id="scaleDevices">
-      <summary>Gefundene Bluetooth-Geräte anzeigen</summary>
-      <div id="scaleDeviceList" class="muted" style="margin-top:10px">–</div>
-      <p class="muted">Deine Waage funkt nur, wenn jemand draufsteht. Tritt kurz drauf,
-        dann taucht sie hier hervorgehoben auf — die Adresse kannst du als
-        <code>SCALE_MAC</code> eintragen, damit nur sie ausgewertet wird.</p>
-    </details>
-
-    <hr class="sep">
-
-    <label class="field">Token für den Waagen-Dienst</label>
-    <div class="row">
-      <input id="apiToken" readonly class="grow">
-      <button class="btn small ghost" id="btnCopyToken">Kopieren</button>
-    </div>
-    <p class="muted">Gehört in die Variable <code>PULS_TOKEN</code> des Containers
-      <code>puls-miscale</code>.</p>
-  </div>
-
-  <div class="card">
-    <h3>Darstellung</h3>
-    <label class="field">Schriftgröße</label>
-    <div class="row" id="fontChips"></div>
-    <div class="font-preview">So sieht ein normaler Text in dieser Größe aus —
-      die ganze Oberfläche wächst mit.</div>
-  </div>
-
-  <div class="card">
-    <h3>KI-Modell</h3>
-    <div id="modelList" class="muted">Wird geladen …</div>
-    <div class="pull-bar" id="pullBar" hidden><span></span></div>
-    <p class="muted" id="pullStatus"></p>
-    <p class="muted">Der Wechsel lädt das Modell im Hintergrund herunter —
-      je nach Größe dauert das einige Minuten. Solange antwortet der Coach
-      noch mit dem alten Modell.</p>
-  </div>
-
-  <div class="card">
-    <h3>System</h3>
-    <div id="systemStatus" class="muted">…</div>
-  </div>
-
-  <div class="card">
-    <h3>Version</h3>
-    <div id="versionInfo" class="muted">wird geladen …</div>
-    <p class="muted">Kommt ein Update nicht an, steht hier noch die alte
-      Kennung. Dann wurde der Container nicht neu gebaut — auf dem Server
-      hilft <code>./deploy.sh</code> (ohne <code>--no-build</code>).</p>
-  </div>
-</section>
 
 </main>
 

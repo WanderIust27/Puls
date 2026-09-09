@@ -495,12 +495,35 @@ def match_exercise(garmin_name: str | None, garmin_category: str | None = None
 
 # ------------------------------------------------------------- Satz-Erfassung
 
+def _positive(value: Any) -> float | None:
+    """Nur echte Messwerte durchlassen.
+
+    Garmin schreibt -1 in repetitionCount, wenn die Uhr die Wiederholungen
+    nicht gezaehlt hat — an Maschinen passiert das staendig. Als Zahl gelesen
+    ist das kein "unbekannt", sondern "minus eine Wiederholung": Die
+    Progression liest daraus ein verfehltes Ziel, haelt das Gewicht und legt
+    beim zweiten Mal sogar einen Deload ein. Ein Platzhalter, der wie ein
+    Messwert aussieht, ist schlimmer als eine Luecke.
+    """
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
 def record_set(exercise_id: int, reps: int | None = None, weight_kg: float | None = None,
                duration_s: float | None = None, day: str | None = None,
                set_index: int = 1, feeling: str | None = None,
                source: str = "manual", activity_id: int | None = None,
                garmin_set_key: str | None = None) -> int | None:
     day = day or dt.date.today().isoformat()
+    clean_reps = _positive(reps)
+    reps = int(clean_reps) if clean_reps is not None else None
+    weight_kg = _positive(weight_kg)
+    duration_s = _positive(duration_s)
     with get_db() as db:
         try:
             cur = db.execute(
@@ -588,11 +611,21 @@ def apply_progression(exercise_id: int, day: str | None = None) -> dict[str, Any
             return {"action": "reps_up", "target_duration_s": new_target}
         return {"action": "hold"}
 
-    work_sets = [s for s in sets if s.get("reps")]
+    work_sets = [s for s in sets if (s.get("reps") or 0) > 0]
+    lifted = [s["weight_kg"] for s in sets if (s.get("weight_kg") or 0) > 0]
+
     if not work_sets:
-        return None
+        # Kein Zaehlwerk, aber Gewicht: Das kommt an jeder Maschine vor, an der
+        # die Uhr die Wiederholungen nicht mitbekommt. Die Vorgabe darf dann
+        # nicht stehenbleiben — was tatsaechlich aufgelegt war, ist die neue
+        # Wahrheit, auch wenn niemand weiss, wie oft es bewegt wurde.
+        if not lifted:
+            return None
+        return _adopt_weight(ex, max(lifted), from_weight, from_reps,
+                             "ohne gezählte Wiederholungen")
+
     reps_done = [int(s["reps"]) for s in work_sets]
-    weights = [s["weight_kg"] for s in work_sets if s.get("weight_kg")]
+    weights = [s["weight_kg"] for s in work_sets if (s.get("weight_kg") or 0) > 0]
     session_weight = max(weights) if weights else from_weight
     feelings = [s.get("feeling") for s in work_sets if s.get("feeling")]
     felt_easy = feelings and all(f == "easy" for f in feelings)
@@ -637,6 +670,18 @@ def apply_progression(exercise_id: int, day: str | None = None) -> dict[str, Any
     if action != "hold":
         fail_streak = 0 if action != "deload" else fail_streak
 
+    # Wer den Stift umsteckt, hat entschieden. Was tatsaechlich bewegt wurde,
+    # ist die Wirklichkeit — die Vorgabe hat ihr zu folgen, nicht umgekehrt.
+    # "weight_up" und "deload" rechnen ohnehin schon vom bewegten Gewicht aus;
+    # "hold" und "reps_up" liessen es frueher stehen und planten damit an der
+    # Wirklichkeit vorbei.
+    if action in ("hold", "reps_up") and session_weight and from_weight \
+            and abs(session_weight - from_weight) >= 0.5:
+        note = (f"{session_weight} kg tatsächlich bewegt statt "
+                f"{from_weight} kg — Vorgabe nachgezogen")
+        reason = f"{reason} ({note})" if reason else note
+        new_weight = session_weight
+
     est = None
     if weights and reps_done:
         est = max(epley_1rm(w, r) for w, r in zip(weights, reps_done) if w and r) \
@@ -653,6 +698,25 @@ def apply_progression(exercise_id: int, day: str | None = None) -> dict[str, Any
                VALUES(?,?,?,?,?,?,?)""",
             (exercise_id, action, from_weight, new_weight, from_reps, new_reps, reason))
     return {"action": action, "weight_kg": new_weight, "target_reps": new_reps,
+            "reason": reason}
+
+
+def _adopt_weight(ex: dict[str, Any], lifted: float, from_weight: float | None,
+                  from_reps: int | None, why: str) -> dict[str, Any]:
+    """Die Vorgabe auf das tatsaechlich bewegte Gewicht setzen."""
+    if from_weight and abs(lifted - from_weight) < 0.5:
+        return {"action": "hold", "weight_kg": from_weight,
+                "target_reps": from_reps,
+                "reason": f"{lifted} kg bewegt, {why} — Vorgabe bleibt"}
+    reason = (f"{lifted} kg bewegt {why} (Vorgabe war {from_weight} kg) → "
+              f"Vorgabe nachgezogen")
+    with get_db() as db:
+        db.execute("UPDATE exercises SET weight_kg=? WHERE id=?", (lifted, ex["id"]))
+        db.execute("""INSERT INTO progression_log
+                      (exercise_id, action, from_weight, to_weight, reason)
+                      VALUES(?, 'calibrate', ?, ?, ?)""",
+                   (ex["id"], from_weight, lifted, reason))
+    return {"action": "calibrate", "weight_kg": lifted, "target_reps": from_reps,
             "reason": reason}
 
 

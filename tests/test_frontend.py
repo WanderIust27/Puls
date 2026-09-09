@@ -51,9 +51,12 @@ check("Jede Ansicht ist über die Navigation erreichbar", sorted(views - buttons
 check("Jeder Navigationsknopf hat eine Ansicht", sorted(buttons - views), [])
 
 # --- Jede Ansicht wird auch geladen --------------------------------------
-loaders = re.search(r"\{\s*dashboard:.*?\}", js, re.S)
-mapped = set(re.findall(r"(\w+):\s*load", loaders.group(0))) if loaders else set()
+# Eine Ansicht ohne Lader bleibt beim Öffnen leer, ohne dass irgendetwas
+# meldet, dass etwas fehlt — deshalb hier geprüft und nicht im Betrieb.
+loaders = re.search(r"const LOADERS = \{(.*?)\n\};", js, re.S)
+mapped = set(re.findall(r"(\w+):", loaders.group(1))) if loaders else set()
 check("Jede Ansicht hat eine Ladefunktion", sorted(views - mapped), [])
+check("Kein Lader ohne Ansicht", sorted(mapped - views), [])
 
 # --- Diagramm-Funktionen sind definiert, bevor app.js sie ruft -----------
 for fn in ("runProfile", "routeMap", "splitChart", "dayCurve", "sparkline"):
@@ -73,18 +76,57 @@ for cls in ("score-ring", "pillar", "diag", "supp-row", "mood-row", "body-facts"
 check("Score prüft auf null statt auf Wahrheitswert",
       "p.value != null" in js, True)
 
-# --- Das Dashboard soll das führen, was täglich gebraucht wird -----------
-dash = html[html.index('id="view-dashboard"'):html.index('id="view-plan"')]
+# --- Jeder Reiter trägt das, was sein Name verspricht --------------------
 import re as _re
-titles = _re.findall(r"<h3>([^<]+)</h3>", dash)
-for wanted in ("Dein Coach sagt", "Heute", "Nächste Workouts",
-               "Zuletzt trainiert", "Schlaf", "Herz"):
-    check(f"Dashboard zeigt „{wanted}“", wanted in titles, True)
-check("Score steht auf dem Dashboard", 'id="scoreRing"' in dash, True)
-# Der Coach soll weit oben stehen — vor den Auswertungen
+
+
+def section(name):
+    m = _re.search(r'<section id="view-%s"[^>]*>' % name, html)
+    if not m:
+        return ""
+    return html[m.end():html.index("\n</section>", m.end())]
+
+
+def titles_of(name):
+    return _re.findall(r"<h3[^>]*>([^<]+)</h3>", section(name))
+
+
+EXPECTED = {
+    "start": ("Dein Coach sagt", "Heute", "Nächste Workouts", "Zuletzt trainiert"),
+    "mood": ("Wie geht es dir gerade?", "Was jetzt hilft", "Verlauf"),
+    "plan": ("Dein Ziel", "Deine Woche", "Geplante Einheiten"),
+    "strength": ("Muskelgruppen", "Training manuell eintragen"),
+    "running": ("Laufform", "Laufen"),
+    "nutrition": ("Heute gegessen", "Passend zu heute"),
+    "weight": ("Körperdaten", "Körper"),
+    "vital": ("Dein Zustand heute", "Schlaf", "Herz", "Erholung"),
+    "stats": ("Alles gegen alles", "Was daraus folgt"),
+    "settings": ("Garmin Connect", "Version"),
+}
+for view, wanted in EXPECTED.items():
+    have = titles_of(view)
+    missing = [w for w in wanted if w not in have]
+    check(f"Reiter „{view}“ vollständig", missing, [])
+
+# Jeder Reiter in der Navigation braucht auch einen Abschnitt — und umgekehrt.
+nav = _re.findall(r'<nav class="bottom">(.*?)</nav>', html, _re.S)[0]
+nav_views = _re.findall(r'data-view="([a-z]+)"', nav)
+check("Navigation und Abschnitte passen zusammen",
+      sorted(nav_views), sorted(views))
+check("Zehn Reiter", len(nav_views), 10)
+check("Kein Reiter doppelt", len(set(nav_views)), len(nav_views))
+
+start = section("start")
+check("Score steht auf der Startseite", 'id="scoreRing"' in start, True)
 check("Coach steht vor dem Score",
-      dash.index("Dein Coach sagt") < dash.index('id="scoreRing"'), True)
-check("Dashboard nutzt das Raster", 'class="grid-cards"' in dash, True)
+      start.index("Dein Coach sagt") < start.index('id="scoreRing"'), True)
+check("Startseite nutzt das Raster", 'class="grid-cards"' in html, True)
+
+# Kein Element darf es zweimal geben — beim Umhängen von Karten der
+# wahrscheinlichste Fehler, und einer, den man erst spät bemerkt.
+all_ids = _re.findall(r'id="([A-Za-z0-9_-]+)"', html)
+doppelt = sorted({i for i in all_ids if all_ids.count(i) > 1})
+check("Keine doppelten Element-Kennungen", doppelt, [])
 
 # --- Die Verweise am Kartenfuß müssen auf echte Ansichten zeigen --------
 gotos = set(_re.findall(r'data-goto="([a-z-]+)"', html)) | \

@@ -4,6 +4,24 @@ Selbstgehosteter Trainingscoach mit lokaler KI (Ollama, rein auf CPU), Garmin-An
 in beide Richtungen, Übungsbibliothek mit automatischer Progression und einem dunklen,
 motivierenden Dashboard. Läuft komplett auf deinem Server — keine Cloud-KI, keine Abos.
 
+## Die Reiter
+
+| Reiter | Was dort steht |
+|---|---|
+| **Start** | Score, was der Coach heute sagt, offene Punkte, nächste Einheiten, zuletzt Trainiertes samt Bewertung, Schlafenszeit, Chat |
+| **Gemüt** | Stimmung eintragen, was der Coach daraus macht, „Was jetzt hilft", Verlauf |
+| **Plan** | Ziel, Wochenstruktur, die kommende Woche, geplante Einheiten, Kalibrierung |
+| **Kraft** | Muskelgruppen, Trainingslast, Übungsbibliothek, manuelles Eintragen |
+| **Laufen** | Laufform und Prognosen, Lauftrends, Aktivitätsprotokoll |
+| **Essen** | Tagesbilanz, Freitext-Eingabe, Rezeptvorschläge, Verlauf |
+| **Gewicht** | Referenzfenster, Körperzusammensetzung, Verlauf |
+| **Vital** | Zustand heute, Schlaf, Herz, Erholung |
+| **Statistik** | Alles gegen alles, abgeleitete Empfehlungen |
+| **Mehr** | Garmin, Waage, Supplements, Ziele, Darstellung, Modell, Version |
+
+Zehn Reiter passen auf einem Telefon nicht nebeneinander — die Leiste scrollt
+seitlich, und der aktive Reiter wird beim Wechsel in den Blick geholt.
+
 ## Deine Wochenstruktur
 
 PULS plant genau so, wie du trainierst:
@@ -25,6 +43,29 @@ Woche; **Alles an Garmin** schiebt sie auf die Fenix.
   Dashboard zeigt die aktuelle Prognose und wie weit du noch weg bist.
 - **Mehr Klimmzüge** — eigener Block in jeder Gym-Einheit. Je nach Maximum arbeitet PULS
   mit negativen, bandunterstützten oder freien Klimmzügen.
+
+## Wann du ins Bett solltest
+
+Abends steht auf der Startseite eine Uhrzeit. Sie ist rückwärts gerechnet:
+
+    Zubettgehzeit = Aufstehziel − Schlafbedarf − Einschlafdauer
+
+Das **Aufstehziel** stellst du unter *Mehr → Trainingsziele* ein. Der
+**Schlafbedarf** ist keine feste Zahl: acht Stunden als Grundlage, plus je eine
+halbe Stunde bei schwacher Trainingsbereitschaft, bei einer HRV deutlich unter
+deinem Schnitt und nach einer langen Einheit, dazu bis zu einer halben Stunde
+für den Rückstand der letzten Nächte. Jeder Zuschlag wird benannt — wer ihn für
+falsch hält, sieht sofort, woran es liegt. Die **Einschlafdauer** kommt aus
+deinen eigenen Nächten (Zeit im Bett minus tatsächlich geschlafene Zeit), sobald
+fünf davon vorliegen; vorher gilt ein Vorgabewert von 15 Minuten.
+
+Darunter steht, wie regelmäßig es tatsächlich zugeht: um wie viel deine
+Zubettgeh- und Aufstehzeiten im Schnitt schwanken, und an wie vielen Nächten du
+deutlich später aufgestanden bist als geplant. Regelmäßigkeit bringt hier mehr
+als eine einzelne lange Nacht — deshalb steht sie daneben und nicht in einer
+Fußnote.
+
+Die Karte erscheint ab dem späten Nachmittag. Beim Frühstück hilft sie nicht.
 
 ## Wie lange eine Einheit wirklich dauert
 
@@ -618,6 +659,24 @@ Knochenmasse und Viszeralfett sind daraus **geschätzt** und in der Oberfläche
 mit einem ≈ markiert. Gut für den Trend, nicht als medizinische Aussage.
 Jede Messung ist einzeln löschbar.
 
+## Platzhalter sind keine Messwerte
+
+Garmin schreibt `-1` in die Wiederholungszahl, wenn die Uhr nichts zählen
+konnte — an Maschinen passiert das ständig. Als Zahl gelesen heißt das nicht
+„unbekannt", sondern „minus eine Wiederholung". Die Progression las daraus ein
+verfehltes Ziel, hielt das Gewicht und hätte beim zweiten Mal einen **Deload**
+ausgelöst: Weil die Uhr nicht zählen konnte, wäre das Gewicht gesunken.
+
+Solche Platzhalter werden jetzt zu der Lücke, die sie sind — beim Import und
+zentral in `record_set`, damit auch eine manuelle Eingabe nichts Negatives
+hineinschreiben kann. Vorhandene Sätze bereinigt eine Migration beim Start.
+
+Fehlen die Wiederholungen, ist das kein Grund, gar nichts zu tun: Das
+**aufgelegte Gewicht** ist bekannt, und damit wird die Vorgabe nachgezogen. Das
+gilt auch sonst — wer den Stift umsteckt, hat entschieden. Was tatsächlich
+bewegt wurde, ist die Wirklichkeit; die Vorgabe hat ihr zu folgen, nicht
+umgekehrt.
+
 ## Wann die Waage eine Messung übernimmt
 
 Die Mi Scale meldet ein „stabiles" Gewicht schon, während man noch aufsteigt und
@@ -653,7 +712,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Neunzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Zwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
 prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
 Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.
