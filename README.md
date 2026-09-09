@@ -129,6 +129,53 @@ was für heute folgt — immer im Bezug zur Basislinie, denn ein Ruhepuls von 46
 sagt nichts, solange man deinen Normalwert nicht kennt. Die Einschätzung wird
 für die Sitzung behalten, weil sie auf der CPU spürbar dauert.
 
+## Was dir guttut — und was nicht
+
+Die Frage ist nicht, wie hoch deine HRV ist, sondern ob es dir an Tagen mit
+hoher HRV besser geht. Auf dem Dashboard steht dafür eine Karte, die genau das
+vergleicht: Die Tage werden am Median eines Einflusses in zwei Hälften geteilt,
+und Stimmung, Energie und Trainingsbereitschaft in beiden Hälften
+gegenübergestellt.
+
+*„An Tagen mit mehr als 7,2 h Schlafdauer: Stimmung 4,1 von 5 — sonst 2,8 von 5."*
+
+Ein Balkenpaar zeigt den Unterschied. Das ist ehrlicher als eine
+Korrelationszahl, die niemand einordnen kann — man sieht sofort, ob der
+Unterschied groß oder klein ist.
+
+Gemeldet wird nur, was drei Bedingungen erfüllt: mindestens fünf Tage in jeder
+Hälfte, über 12 % Unterschied, und ein Zusammenhang, der auch als Korrelation
+sichtbar ist. Bei genug Daten wird sonst irgendwann jeder Zufall
+„signifikant". Ein Test füttert die Auswertung mit reinem Rauschen und prüft,
+dass sie schweigt.
+
+Untersucht werden Schlafdauer, Tiefschlaf, Schlafscore, HRV, Ruhepuls, Stress
+und Trainingslast des Vortags. Der Stress von *gestern* erklärt den heutigen
+Zustand — der von heute ist teils dessen Folge.
+
+Zusammenhang ist keine Ursache. Die Texte sagen deshalb, was miteinander
+einherging, nicht was wovon kommt.
+
+## Nährwerte und was du erreichen solltest
+
+Unter *Essen* trägst du Mahlzeiten ein — von Hand oder mit einem Tipp aus der
+Rezeptliste, dann stehen die Nährwerte schon da. Portionen skalieren mit.
+
+Die Zielwerte rechnet PULS aus deinen Daten statt aus einer Tabelle:
+
+- **Grundumsatz** nach Mifflin-St Jeor aus Alter, Größe und Gewicht — die
+  Formel, die in Vergleichsstudien am besten abschneidet
+- **mal 1,3** für den Alltag ohne Sport
+- **plus dein tatsächlicher Trainingsverbrauch** aus den verbrannten Kalorien
+  der letzten 14 Tage. Wer täglich läuft und dreimal ins Gym geht, hat einen
+  anderen Bedarf als der Durchschnitt gleicher Größe und gleichen Gewichts
+- **plus 350 kcal**, wenn „Gewicht zunehmen" unter deinen Zielen steht
+
+Eiweiß mit 1,8 bis 2,2 g je Kilogramm je nach Ziel, Fett mit 0,9 g je
+Kilogramm, der Rest Kohlenhydrate. Jeder Wert zeigt mit einem Balken, wie weit
+der Tag ist und was noch fehlt. Der komplette Rechenweg steht ausklappbar
+darunter — eigene Zielwerte in den Einstellungen haben Vorrang.
+
 ## Was jetzt hilft — und was bei dir wirklich hilft
 
 Meldest du gedrückte Stimmung, wenig Energie, hohen Stress oder schlechten
@@ -312,7 +359,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Zehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Elf Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Abgedeckt sind der Waagen-Parser, das Referenzfenster mit
 seiner Kalibrierung, das Ausdünnen der Laufdaten, die Gym-Auswertung, die
 Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync

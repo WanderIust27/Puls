@@ -17,8 +17,9 @@ from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
                         metrics, ollama_client, planner, run_analysis, running)
 from ..services import activity_details as activity_details_svc
-from ..services import (boosters, feedback, gym_analysis, memory, mood,
-                        recipes, score, suggestions, supplements)
+from ..services import (boosters, feedback, gym_analysis, insights,
+                        memory, mood, nutrition, recipes, score, suggestions,
+                        supplements)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -74,6 +75,7 @@ def dashboard() -> dict[str, Any]:
         "recovery": metrics.recovery_series(21),
         "suggestions": suggestions.list_open(4),
         "boosters": boosters.suggest(3),
+        "insights": insights.analyse(120),
         "pending_feedback": feedback.pending(2),
         "goal_progress": _goal_progress(),
     }
@@ -864,6 +866,63 @@ def suggestion_apply(sid: int) -> dict[str, Any]:
 def suggestion_dismiss(sid: int) -> dict[str, str]:
     if not suggestions.dismiss(sid):
         raise HTTPException(404, "Diesen offenen Vorschlag gibt es nicht.")
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------- Zusammenhänge & Essen
+
+@router.get("/insights")
+def insights_all(days: int = 120) -> dict[str, Any]:
+    """Was mit deinem Befinden einhergeht — und was dagegen."""
+    return insights.analyse(days)
+
+
+@router.get("/nutrition/targets")
+def nutrition_targets() -> dict[str, Any]:
+    """Zielwerte aus Alter, Größe, Gewicht und Trainingsbelastung."""
+    return nutrition.targets()
+
+
+@router.get("/nutrition/day")
+def nutrition_day(day: str | None = None) -> dict[str, Any]:
+    return nutrition.day(day)
+
+
+class MealIn(BaseModel):
+    name: str
+    slot: str = "other"
+    kcal: float | None = None
+    protein_g: float | None = None
+    carbs_g: float | None = None
+    fat_g: float | None = None
+    portions: float = 1
+    eaten_at: str | None = None
+
+
+@router.post("/nutrition/meals")
+def meal_add(m: MealIn) -> dict[str, Any]:
+    return nutrition.add_meal(m.model_dump())
+
+
+class RecipeMealIn(BaseModel):
+    recipe_id: str
+    portions: float = 1
+    slot: str = "other"
+    eaten_at: str | None = None
+
+
+@router.post("/nutrition/meals/from-recipe")
+def meal_from_recipe(m: RecipeMealIn) -> dict[str, Any]:
+    try:
+        return nutrition.add_recipe(m.recipe_id, m.portions, m.slot, m.eaten_at)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.delete("/nutrition/meals/{meal_id}")
+def meal_delete(meal_id: int) -> dict[str, str]:
+    if not nutrition.delete_meal(meal_id):
+        raise HTTPException(404, "Diese Mahlzeit gibt es nicht.")
     return {"status": "ok"}
 
 

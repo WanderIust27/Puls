@@ -91,6 +91,14 @@
         Neu einschätzen</button>
     </div>
 
+    <div class="card span2" id="insightCard">
+      <h3>Was dir guttut</h3>
+      <div id="insightHint" class="muted"></div>
+      <div id="insightHelps"></div>
+      <div id="insightHurts"></div>
+      <p class="muted" id="insightFoot"></p>
+    </div>
+
     <div class="card" id="feedbackCard" hidden>
       <h3>Wie war’s?</h3>
       <div id="feedbackBody"></div>
@@ -437,6 +445,35 @@
 <!-- ============================== ERNÄHRUNG ============================== -->
 <section id="view-nutrition" class="view">
   <div class="card">
+    <h3>Heute gegessen</h3>
+    <div id="mealTargets" class="tiles wide-tiles"></div>
+    <div id="mealList" style="margin-top:12px"></div>
+    <details style="margin-top:12px">
+      <summary class="field" style="cursor:pointer">Mahlzeit eintragen</summary>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="field">Was</label><input id="mealName" placeholder="z. B. Skyr mit Beeren"></div>
+        <div><label class="field">Wann</label>
+          <select id="mealSlot">
+            <option value="breakfast">Frühstück</option>
+            <option value="lunch">Mittag</option>
+            <option value="dinner">Abend</option>
+            <option value="snack">Snack</option>
+            <option value="other" selected>Sonstiges</option>
+          </select></div>
+        <div><label class="field">Kalorien</label><input id="mealKcal" type="number" step="10"></div>
+        <div><label class="field">Eiweiß (g)</label><input id="mealProtein" type="number" step="1"></div>
+        <div><label class="field">Kohlenhydrate (g)</label><input id="mealCarbs" type="number" step="1"></div>
+        <div><label class="field">Fett (g)</label><input id="mealFat" type="number" step="1"></div>
+      </div>
+      <button class="btn" id="btnAddMeal" style="margin-top:8px">Eintragen</button>
+    </details>
+    <details style="margin-top:8px">
+      <summary class="field" style="cursor:pointer">Woher die Zielwerte kommen</summary>
+      <p class="muted" id="targetExplain"></p>
+    </details>
+  </div>
+
+  <div class="card">
     <h3>Passend zu heute</h3>
     <div id="recipeReason" class="muted"></div>
     <div id="recipeList"></div>
@@ -518,14 +555,17 @@
       <div class="scale" data-scale="mood">
         <label class="field">Stimmung</label>
         <div class="dots"></div>
+        <div class="word"></div>
       </div>
       <div class="scale" data-scale="energy">
         <label class="field">Energie</label>
         <div class="dots"></div>
+        <div class="word"></div>
       </div>
       <div class="scale" data-scale="stress">
         <label class="field">Stress</label>
         <div class="dots"></div>
+        <div class="word"></div>
       </div>
     </div>
 

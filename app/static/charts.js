@@ -368,3 +368,43 @@ function sparkline(values, opts = {}) {
   </svg>`;
 }
 
+
+/* ----------------------------------------------------- Vergleichsbalken */
+
+/* Zwei Werte nebeneinander: "an Tagen mit viel X" gegen "an Tagen mit wenig X".
+   Ehrlicher als eine Korrelationszahl, die niemand einordnen kann — man sieht
+   sofort, ob der Unterschied gross oder klein ist. */
+function splitBars(container, findings, opts = {}) {
+  if (!findings || !findings.length) { container.innerHTML = ""; return; }
+  const rows = findings.slice(0, opts.limit || 4);
+  const W = 720, rowH = 54, padL = 4, labelW = 0;
+  const H = rows.length * rowH + 8;
+
+  let body = "";
+  rows.forEach((f, i) => {
+    const top = i * rowH + 4;
+    const max = Math.max(f.low, f.high) * 1.15 || 1;
+    const barW = (v) => Math.max(2, (v / max) * (W - 210));
+    const helps = f.direction === "helps";
+    const hi = helps ? "var(--good)" : "var(--warn)";
+    const lo = "var(--ink-3)";
+
+    body += `
+      <text x="${padL}" y="${top + 11}" font-size="11" fill="var(--ink-2)">
+        ${esc(f.driver_label)} → ${esc(f.target_label)}</text>
+
+      <rect x="${padL}" y="${top + 18}" width="${barW(f.high).toFixed(1)}" height="9"
+        rx="2" fill="${hi}" opacity="0.9"></rect>
+      <text x="${(padL + barW(f.high) + 7).toFixed(1)}" y="${top + 26}" font-size="10.5"
+        fill="var(--ink-2)">${f.high}${esc(f.target_unit)} · viel ${esc(f.driver_label)}</text>
+
+      <rect x="${padL}" y="${top + 31}" width="${barW(f.low).toFixed(1)}" height="9"
+        rx="2" fill="${lo}" opacity="0.55"></rect>
+      <text x="${(padL + barW(f.low) + 7).toFixed(1)}" y="${top + 39}" font-size="10.5"
+        fill="var(--ink-3)">${f.low}${esc(f.target_unit)} · wenig</text>`;
+  });
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="splitbars" role="img"
+    aria-label="Vergleich nach Einflussgröße">${body}</svg>`;
+}
+

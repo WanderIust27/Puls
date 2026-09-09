@@ -284,6 +284,7 @@ async function loadDashboard() {
   renderTodayTiles(d.recovery);
   renderBoosters(d.boosters);
   renderFeedback(d.pending_feedback);
+  renderInsights(d.insights);
   loadReadout();
   loadMemory();
 
@@ -958,6 +959,7 @@ $("#runDialog").addEventListener("click", (e) => {
 
 async function loadNutrition() {
   loadRecipes();
+  loadMeals();
   const [list, s] = await Promise.all([api("/nutrition?days=14"), api("/settings")]);
   const kcalT = s.kcal_target, protT = s.protein_target;
   $("#nutTargetInfo").textContent = kcalT || protT
@@ -1168,10 +1170,13 @@ function renderScales() {
   $$(".scale").forEach((box) => {
     const key = box.dataset.scale;
     const value = moodScales[key];
+    /* Das Wort steht UNTER den Punkten und hat feste Höhe — stünde es
+       daneben, würde die Reihe bei jeder Auswahl verrutschen. */
     box.querySelector(".dots").innerHTML = [1, 2, 3, 4, 5].map((n) =>
       `<button class="dot${value === n ? " on" : ""}" data-scale-set="${key}"
         data-value="${n}" title="${SCALE_WORDS[key][n - 1]}">${n}</button>`
-    ).join("") + (value ? `<span class="w">${SCALE_WORDS[key][value - 1]}</span>` : "");
+    ).join("");
+    box.querySelector(".word").textContent = value ? SCALE_WORDS[key][value - 1] : "";
   });
   $$("[data-scale-set]").forEach((b) => b.addEventListener("click", () => {
     const key = b.dataset.scaleSet;
@@ -1650,9 +1655,25 @@ function renderRecentActivities(list) {
 
 /* Eine Kachel: Wert, Einheit, Veränderung gegenüber der Basislinie, Verlauf.
    Für einen einzelnen Wert ist das ehrlicher als ein Diagramm mit einem Balken. */
+/* Bei einer Skala von 0 bis 100 sagt die nackte Zahl nichts: 38 ist bei
+   Stress gut und bei Bereitschaft schlecht. Deshalb "38 von 100" plus ein
+   Balken, der die Lage auf der Skala zeigt. */
 function tile(value, unit, label, opts = {}) {
   if (value == null) {
     return `<div class="tile"><div class="tv">–</div><div class="tl">${esc(label)}</div></div>`;
+  }
+  let meter = "";
+  if (opts.max) {
+    const pct = Math.max(0, Math.min(100, (Number(value) / opts.max) * 100));
+    /* Farbe nach Bedeutung, nicht nach Höhe: viel Stress ist schlecht,
+       viel Bereitschaft ist gut. */
+    const good = opts.lowerIsBetter ? pct <= 40 : pct >= 65;
+    const bad = opts.lowerIsBetter ? pct >= 70 : pct <= 35;
+    const color = good ? "var(--good)" : bad ? "var(--warn)" : "var(--accent)";
+    meter = `<div class="meter" role="img"
+        aria-label="${esc(String(value))} von ${opts.max}">
+        <span style="width:${pct.toFixed(0)}%;background:${color}"></span></div>
+      <div class="tscale">von ${opts.max}${opts.band ? ` · ${esc(opts.band(value))}` : ""}</div>`;
   }
   let delta = "";
   if (opts.delta != null && Math.abs(opts.delta) >= (opts.threshold || 0.5)) {
@@ -1663,6 +1684,7 @@ function tile(value, unit, label, opts = {}) {
   return `<div class="tile">
     <div class="tv">${esc(String(value))}${unit ? `<span class="u">${unit}</span>` : ""}</div>
     <div class="tl">${esc(label)}</div>
+    ${meter}
     ${delta}
     ${opts.series ? `<div class="spark">${sparkline(opts.series, { color: opts.color })}</div>` : ""}
   </div>`;
@@ -1684,7 +1706,8 @@ function renderSleepAndHeart(rec) {
         ? +(b.sleep_seconds.delta / 3600).toFixed(1) : null,
       deltaUnit: " h", threshold: 0.2 }) +
     tile(l.sleep_score != null ? Math.round(l.sleep_score) : null, "", "Schlafscore",
-      { series: col("sleep_score"), color: "var(--teal)" });
+      { series: col("sleep_score"), color: "var(--teal)", max: 100,
+        band: (v) => v >= 80 ? "sehr gut" : v >= 60 ? "gut" : v >= 40 ? "mäßig" : "schlecht" });
 
   /* Schlafphasen als Anteilsbalken — Teil vom Ganzen, keine Torte */
   const stages = [["sleep_deep_s", "Tief", "z4"], ["sleep_rem_s", "REM", "z3"],
@@ -1706,9 +1729,11 @@ function renderSleepAndHeart(rec) {
       series: col("hrv_avg"), color: "var(--good)",
       delta: b.hrv_avg?.delta, threshold: 1 }) +
     tile(l.body_battery_max != null ? Math.round(l.body_battery_max) : null, "",
-      "Body Battery", { series: col("body_battery_max"), color: "var(--good)" }) +
+      "Body Battery", { series: col("body_battery_max"), color: "var(--good)",
+        max: 100, band: (v) => v >= 75 ? "voll" : v >= 50 ? "ordentlich" : v >= 25 ? "wenig" : "leer" }) +
     tile(l.stress_avg != null ? Math.round(l.stress_avg) : null, "", "Stress Ø", {
-      series: col("stress_avg"), color: "var(--warn)", lowerIsBetter: true });
+      series: col("stress_avg"), color: "var(--warn)", lowerIsBetter: true,
+      max: 100, band: (v) => v <= 25 ? "ruhig" : v <= 50 ? "normal" : v <= 75 ? "erhöht" : "hoch" });
 }
 
 /* Die Verweise am Kartenfuß sollen wirklich zur Ansicht springen */
@@ -1741,11 +1766,14 @@ function renderTodayTiles(rec) {
       { series: series.map((r) => r.sleep_seconds ? r.sleep_seconds / 3600 : null),
         color: "var(--teal)" }) +
     tile(l.stress_avg != null ? Math.round(l.stress_avg) : null, "", "Stress Ø",
-      { series: col("stress_avg"), color: "var(--warn)", lowerIsBetter: true }) +
+      { series: col("stress_avg"), color: "var(--warn)", lowerIsBetter: true,
+        max: 100, band: (v) => v <= 25 ? "ruhig" : v <= 50 ? "normal" : v <= 75 ? "erhöht" : "hoch" }) +
     tile(l.training_readiness != null ? Math.round(l.training_readiness) : null,
-      "", "Bereitschaft", { series: col("training_readiness"), color: "var(--accent)" }) +
+      "", "Bereitschaft", { series: col("training_readiness"),
+        color: "var(--accent)", max: 100, band: (v) => v >= 75 ? "sehr gut" : v >= 50 ? "solide" : v >= 25 ? "mäßig" : "niedrig" }) +
     tile(l.body_battery_wake != null ? Math.round(l.body_battery_wake) : null,
-      "", "Body Battery früh", { series: col("body_battery_wake"), color: "var(--good)" });
+      "", "Body Battery früh", { series: col("body_battery_wake"),
+        color: "var(--good)", max: 100, band: (v) => v >= 75 ? "voll" : v >= 50 ? "ordentlich" : v >= 25 ? "wenig" : "leer" });
 }
 
 async function loadReadout(force = false) {
@@ -1918,6 +1946,95 @@ $("#btnMemAdd").addEventListener("click", (e) => withSpinner(e.currentTarget, as
     body: JSON.stringify({ topic, fact, pinned: true }) });
   $("#memTopic").value = ""; $("#memFact").value = "";
   toast("Gemerkt"); loadMemory();
+}));
+
+
+/* ------------------------------------------------------- Zusammenhänge */
+
+function renderInsights(d) {
+  if (!d) return;
+  $("#insightHint").textContent = d.hint || "";
+  const foot = [];
+  if (d.days_with_mood) foot.push(`${d.days_with_mood} Tage mit Befinden-Einträgen`);
+  foot.push("Zusammenhang heißt nicht Ursache — aber es ist der Anfang.");
+  $("#insightFoot").textContent = foot.join(" · ");
+
+  if (d.helps?.length) {
+    $("#insightHelps").innerHTML = '<h4 class="ins-h">Womit es dir besser geht</h4>' +
+      '<div id="helpBars"></div>' +
+      d.helps.map((f) => `<div class="ins-t">${esc(f.text)}</div>`).join("");
+    splitBars($("#helpBars"), d.helps);
+  } else { $("#insightHelps").innerHTML = ""; }
+
+  if (d.hurts?.length) {
+    $("#insightHurts").innerHTML = '<h4 class="ins-h">Was mit schlechteren Tagen einhergeht</h4>' +
+      '<div id="hurtBars"></div>' +
+      d.hurts.map((f) => `<div class="ins-t">${esc(f.text)}</div>`).join("");
+    splitBars($("#hurtBars"), d.hurts);
+  } else { $("#insightHurts").innerHTML = ""; }
+}
+
+/* --------------------------------------------------------- Mahlzeiten */
+
+const SLOT_WORDS = { breakfast: "Frühstück", lunch: "Mittag", dinner: "Abend",
+                     snack: "Snack", other: "Sonstiges" };
+
+async function loadMeals() {
+  let d;
+  try { d = await api("/nutrition/day"); } catch (e) { return; }
+  const t = d.targets;
+
+  if (!t.ready) {
+    $("#mealTargets").innerHTML = `<p class="muted">${esc(t.hint || "")}</p>`;
+  } else {
+    /* Erreicht von Ziel — der Balken zeigt, wie weit der Tag ist */
+    const row = (key, label, unit, goalKey) => {
+      const have = Math.round(d.total[key] || 0);
+      const goal = t[goalKey];
+      return tile(have, unit, `${label} von ${goal}${unit}`,
+        { max: goal, band: () => d.remaining[key] > 0
+          ? `noch ${d.remaining[key]}${unit}`
+          : `${Math.abs(d.remaining[key])}${unit} drüber` });
+    };
+    $("#mealTargets").innerHTML =
+      row("kcal", "Kalorien", "", "kcal") +
+      row("protein_g", "Eiweiß", " g", "protein_g") +
+      row("carbs_g", "Kohlenhydrate", " g", "carbs_g") +
+      row("fat_g", "Fett", " g", "fat_g");
+    $("#targetExplain").textContent = t.explain || "";
+  }
+
+  $("#mealList").innerHTML = d.meals.length ? `
+    <div class="mini-list">${d.meals.map((m) => `
+      <div class="mini" style="cursor:default">
+        <span class="kind">${esc((SLOT_WORDS[m.slot] || "").slice(0, 4))}</span>
+        <div class="mt">${esc(m.name)}${m.portions !== 1 ? ` ×${m.portions}` : ""}</div>
+        <div class="mm">${[m.kcal ? `${Math.round(m.kcal)} kcal` : null,
+          m.protein_g ? `${Math.round(m.protein_g)} g Eiweiß` : null]
+          .filter(Boolean).join(" · ")}</div>
+        <button class="link-del" data-del-meal="${m.id}" title="Löschen">×</button>
+      </div>`).join("")}</div>`
+    : '<p class="muted">Heute noch nichts eingetragen.</p>';
+
+  $$("[data-del-meal]").forEach((b) => b.addEventListener("click", async () => {
+    try { await api(`/nutrition/meals/${b.dataset.delMeal}`, { method: "DELETE" });
+      loadMeals(); loadDashboard(); }
+    catch (e) { toast(e.message, true); }
+  }));
+}
+
+$("#btnAddMeal").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const name = $("#mealName").value.trim();
+  if (!name) { toast("Wie heißt die Mahlzeit?", true); return; }
+  await api("/nutrition/meals", { method: "POST", body: JSON.stringify({
+    name, slot: $("#mealSlot").value,
+    kcal: +$("#mealKcal").value || null,
+    protein_g: +$("#mealProtein").value || null,
+    carbs_g: +$("#mealCarbs").value || null,
+    fat_g: +$("#mealFat").value || null }) });
+  ["mealName", "mealKcal", "mealProtein", "mealCarbs", "mealFat"]
+    .forEach((id) => { $("#" + id).value = ""; });
+  toast("Eingetragen"); loadMeals(); loadDashboard();
 }));
 
 /* -------------------------------------------------- Coach-Vorschläge */

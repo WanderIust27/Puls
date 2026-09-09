@@ -147,6 +147,18 @@ CREATE TABLE IF NOT EXISTS nutrition_log (
     notes TEXT,
     UNIQUE(day)
 );
+CREATE TABLE IF NOT EXISTS meals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day TEXT NOT NULL,
+    eaten_at TEXT NOT NULL,
+    name TEXT NOT NULL,
+    slot TEXT NOT NULL DEFAULT 'other',           -- breakfast|lunch|dinner|snack|other
+    kcal REAL, protein_g REAL, carbs_g REAL, fat_g REAL,
+    recipe_id TEXT,                               -- falls aus der Rezeptliste
+    portions REAL NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_meals_day ON meals(day);
 CREATE TABLE IF NOT EXISTS body_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     day TEXT NOT NULL,                            -- YYYY-MM-DD, aus measured_at abgeleitet

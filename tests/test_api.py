@@ -204,6 +204,34 @@ with TestClient(app) as client:
     check("Unsinniger Puls wird verworfen", ra.efficiency(5000, 1500, 20), None)
     check("Ohne Distanz keine Effizienz", ra.efficiency(None, 1500, 150), None)
 
+    # --- Zusammenhänge und Mahlzeiten ---------------------------------------
+    ins = client.get("/api/insights").json()
+    check("Zusammenhänge abrufbar", "findings" in ins, True)
+    check("Ohne Daten wird nichts behauptet", ins["findings"], [])
+
+    tg = client.get("/api/nutrition/targets").json()
+    check("Zielwerte antworten", "ready" in tg, True)
+
+    r = client.post("/api/nutrition/meals",
+                    json={"name": "Testmahlzeit", "kcal": 500, "protein_g": 30})
+    check("Mahlzeit eingetragen", r.status_code, 200)
+    meal_id = r.json()["id"]
+    nd = client.get("/api/nutrition/day").json()
+    check("Mahlzeit im Tag", len(nd["meals"]), 1)
+    check("Summe gerechnet", nd["total"]["kcal"], 500.0)
+    check("Aus Rezept übernehmbar",
+          client.post("/api/nutrition/meals/from-recipe",
+                      json={"recipe_id": "skyr_beeren"}).status_code, 200)
+    check("Unbekanntes Rezept meldet 404",
+          client.post("/api/nutrition/meals/from-recipe",
+                      json={"recipe_id": "gibtsnicht"}).status_code, 404)
+    check("Mahlzeit löschbar",
+          client.delete(f"/api/nutrition/meals/{meal_id}").status_code, 200)
+    check("Unbekannte Mahlzeit meldet 404",
+          client.delete("/api/nutrition/meals/999999").status_code, 404)
+    check("Zusammenhänge stehen im Dashboard",
+          "insights" in client.get("/api/dashboard").json(), True)
+
     # --- Schwung, Gedächtnis, Feedback --------------------------------------
     bo = client.get("/api/boosters").json()
     check("Maßnahmen abrufbar", "boosters" in bo and "works" in bo, True)

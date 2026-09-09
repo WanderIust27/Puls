@@ -720,3 +720,30 @@ ol.plain li, ul.plain li { margin-bottom: 5px; }
 .mem-row .mtopic { color: var(--ink-3); }
 .mem-row .pin { background: none; border: 0; cursor: pointer; color: var(--ink-3); }
 .mem-row .pin.on { color: var(--accent); }
+
+/* Regler: das Wort steht unter den Punkten und belegt immer dieselbe Höhe,
+   damit die Reihe bei einer Auswahl nicht verrutscht. */
+.scale .word {
+  min-height: 1.2em; margin-top: 4px; font-size: 0.78em; color: var(--ink-3);
+}
+.scale { min-width: 178px; }
+
+/* Meter: wo Garmin von 0 bis 100 misst, zeigt der Balken die Lage */
+.tile .meter {
+  height: 4px; background: var(--surface-2); border-radius: 2px;
+  overflow: hidden; margin: 5px 0 3px;
+}
+.tile .meter span { display: block; height: 100%; }
+.tile .tscale { font-size: 0.72em; color: var(--ink-3); }
+
+/* ------------------------------------------------------ Zusammenhänge */
+.splitbars { width: 100%; height: auto; display: block; }
+.ins-h {
+  margin: 14px 0 6px; font-size: 0.8em; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.ins-t {
+  font-size: 0.9em; color: var(--ink-2); padding: 4px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.ins-t:last-child { border-bottom: 0; }
