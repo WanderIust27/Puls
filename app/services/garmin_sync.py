@@ -359,7 +359,10 @@ def sync_exercise_sets(g: Garmin, days: int) -> int:
     # Progression nur für Tage fortschreiben, an denen wirklich Neues ankam
     for day in sorted(touched_days):
         try:
-            results = ex_lib.apply_progression_for_day(day)
+            # Vorschlaege statt stiller Aenderungen: Wer 35 kg statt der
+            # geplanten 20 bewegt, hat eine Entscheidung getroffen — die
+            # gehoert bestaetigt, nicht nachtraeglich unterstellt.
+            results = ex_lib.propose_for_day(day)
             if results:
                 log.info("Progression %s: %s", day,
                          ", ".join(f"{r['exercise']}={r['action']}" for r in results))

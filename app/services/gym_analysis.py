@@ -95,18 +95,24 @@ def analyse(activity_id: int, day: str) -> dict[str, Any] | None:
             dr = (best.get("reps") or 0) - (prev_best.get("reps") or 0)
             if dw > 0.01:
                 change = {"kind": "weight", "delta": round(dw, 1),
-                          "text": f"+{dw:.1f} kg gegenüber dem letzten Mal"}
+                          "text": f"{dw:.1f} kg mehr als beim letzten Mal"}
                 improved.append(first["name"])
             elif dw < -0.01:
                 change = {"kind": "weight_down", "delta": round(dw, 1),
-                          "text": f"{dw:.1f} kg gegenüber dem letzten Mal"}
+                          "text": f"{abs(dw):.1f} kg weniger als beim letzten Mal"}
             elif dr > 0:
                 change = {"kind": "reps", "delta": dr,
-                          "text": f"+{dr} Wiederholung{'en' if dr > 1 else ''}"}
+                          "text": f"{dr} Wiederholung{'en' if dr > 1 else ''} "
+                                  f"mehr als beim letzten Mal"}
                 improved.append(first["name"])
             elif dr < 0:
+                # Nicht "-1 Wiederholungen": Das liest sich wie eine gemessene
+                # Zahl, nicht wie ein Vergleich, und stiftet genau die
+                # Verwirrung, die eine Rückmeldung vermeiden sollte.
+                n = abs(dr)
                 change = {"kind": "reps_down", "delta": dr,
-                          "text": f"{dr} Wiederholungen"}
+                          "text": f"{n} Wiederholung{'en' if n > 1 else ''} "
+                                  f"weniger als beim letzten Mal"}
             else:
                 change = {"kind": "hold", "delta": 0, "text": "unverändert"}
 

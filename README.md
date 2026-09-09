@@ -538,6 +538,18 @@ Der Unterschied zu Beschwerden ist Absicht: Auf gemeldete Schmerzen reagiert
 PULS sofort und ohne Rückfrage, weil das keine Geschmacksfrage ist. Ein
 zusätzlicher Sonntagslauf dagegen ist deine Entscheidung.
 
+## Das Layout gehört dir
+
+Jede Karte hat oben links einen Griff (⠿). Damit lässt sie sich verschieben;
+die Reihenfolge bleibt **je Ansicht** gespeichert. Ohne Maus geht es auch:
+Griff anwählen, dann Pfeiltasten. Unter *Mehr → Darstellung* steht ein Knopf,
+der die Anordnung der gerade offenen Ansicht zurücksetzt.
+
+Gespeichert wird eine Liste von Karten-Kennungen. Karten, die mit einem Update
+dazukommen, hängen hinten an, statt zu verschwinden — eine gespeicherte
+Reihenfolge darf ein Update nicht überleben, indem sie neue Karten
+unterschlägt.
+
 ## Diagramme: Zeitraum und Beschriftung
 
 Über jedem Verlaufsdiagramm steht ein Umschalter. Die Wahl bleibt **je
@@ -658,6 +670,34 @@ Die Waage funkt nur Gewicht und Impedanz. Körperfett, Muskelmasse, Wasser,
 Knochenmasse und Viszeralfett sind daraus **geschätzt** und in der Oberfläche
 mit einem ≈ markiert. Gut für den Trend, nicht als medizinische Aussage.
 Jede Messung ist einzeln löschbar.
+
+## Nach dem Training: Vorschläge statt stiller Änderungen
+
+Wer 35 kg bewegt, wo 20 geplant waren, hat eine Entscheidung getroffen. PULS
+rechnet sie durch und **legt sie vor**, statt sie stillschweigend zu
+übernehmen — mit dem Beleg daneben, damit man nicht raten muss, woher die Zahl
+kommt:
+
+> **Beinpresse** — 20 kg → **35 kg**
+> 15× 35 kg geschafft (Vorgabe 15× 20 kg)
+> Du hast 35 kg bewegt, geplant waren 20 kg — das ist die neue Grundlage.
+> [Übernehmen] [Lassen]
+
+Vier Fälle werden unterschieden, und der erste ist der, an dem die alte
+Automatik scheiterte:
+
+| Was passiert ist | Was vorgeschlagen wird |
+|---|---|
+| Schwerer als geplant | Das bewegte Gewicht wird die neue Vorgabe, die Wiederholungen richten sich nach dem, was dabei ging |
+| Wie geplant, Obergrenze erreicht | Gewicht hoch, Wiederholungen zurück an den Anfang der Spanne |
+| Mehr Wiederholungen als verlangt | Das Wiederholungsziel wächst mit |
+| Alles wie geplant | Eine Wiederholung mehr als nächster Schritt |
+
+Ein Tippen macht daraus die neue Vorgabe, „Alle übernehmen" erledigt die ganze
+Einheit auf einmal. Was abgelehnt wird, bleibt unverändert. Unter *Kraft* steht
+außerdem dauerhaft, **was sich seit dem letzten Mal geändert hat** und woraus es
+folgte — eine andere Zahl auf dem Zettel ohne Begründung sieht sonst aus wie ein
+Fehler.
 
 ## Platzhalter sind keine Messwerte
 

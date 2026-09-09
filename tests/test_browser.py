@@ -374,6 +374,69 @@ try:
             ok("… und einer Begründung",
                bool(page.eval_on_selector("#bedtimeNote", "el => el.textContent.trim()")))
 
+        # --- Layout: Karten verschieben und die Reihenfolge behalten ------
+        page.click('nav.bottom button[data-view="start"]')
+        page.wait_for_timeout(1500)
+
+        def card_titles():
+            # Nicht nur die Überschriften vergleichen: Manche Karten haben
+            # keine, und ein Tausch mit einer davon bliebe unsichtbar.
+            return page.eval_on_selector_all(
+                "#view-start .grid-cards > .card",
+                "e => e.map(x => x.id || (x.querySelector('h3') || {}).textContent || '?')")
+
+        before_order = card_titles()
+        grips = page.eval_on_selector_all("#view-start .grid-cards > .card > .drag", "e => e.length")
+        ok("Jede Karte hat einen Griff",
+           grips == page.eval_on_selector_all("#view-start .grid-cards > .card", "e => e.length"),
+           f"{grips} Griffe")
+
+        # Mit der Tastatur verschieben — dasselbe Ergebnis wie mit der Maus,
+        # aber im Test verlässlich reproduzierbar.
+        page.eval_on_selector("#view-start .grid-cards > .card:nth-child(3) > .drag", "el => el.focus()")
+        page.keyboard.press("ArrowUp")
+        page.wait_for_timeout(400)
+        after_order = card_titles()
+        ok("Eine Karte lässt sich verschieben", after_order != before_order,
+           f"{before_order[:3]} -> {after_order[:3]}")
+
+        page.reload(wait_until="networkidle")
+        page.wait_for_timeout(2500)
+        ok("Die Anordnung überlebt das Neuladen", card_titles() == after_order,
+           str(card_titles()[:3]))
+
+        # Zurücksetzen muss die ursprüngliche Reihenfolge wiederherstellen.
+        page.click('nav.bottom button[data-view="settings"]')
+        page.wait_for_timeout(1200)
+        page.click('nav.bottom button[data-view="start"]')
+        page.wait_for_timeout(800)
+        page.evaluate("localStorage.removeItem('puls.layout.start')")
+        page.reload(wait_until="networkidle")
+        page.wait_for_timeout(2500)
+        ok("Zurücksetzen stellt die Vorgabe wieder her",
+           card_titles() == before_order, str(card_titles()[:3]))
+
+        # --- Vital: Schwelle und Stress -----------------------------------
+        page.click('nav.bottom button[data-view="vital"]')
+        page.wait_for_timeout(2500)
+        ok("Vital: Laktatschwelle antwortet",
+           bool(page.eval_on_selector("#thresholdBox", "el => el.textContent.trim()")))
+        ok("Vital: Stressmuster antwortet",
+           bool(page.eval_on_selector("#stressPattern", "el => el.textContent.trim()")))
+
+        # --- Gewicht: Zielhochrechnung ------------------------------------
+        page.click('nav.bottom button[data-view="weight"]')
+        page.wait_for_timeout(2500)
+        ok("Gewicht: Ziel wird angezeigt",
+           bool(page.eval_on_selector("#goalNote", "el => el.textContent.trim()")),
+           page.eval_on_selector("#goalNote", "el => el.textContent")[:70])
+
+        # --- Kraft: was angepasst wurde -----------------------------------
+        page.click('nav.bottom button[data-view="strength"]')
+        page.wait_for_timeout(2500)
+        ok("Kraft: Anpassungen werden erklärt",
+           bool(page.eval_on_selector("#changeList", "el => el.textContent.trim()")))
+
         # --- Statistik: Empfehlungen muessen erscheinen -------------------
         page.click('nav.bottom button[data-view="stats"]')
         page.wait_for_timeout(2500)

@@ -359,6 +359,7 @@ async function loadDashboard() {
   renderSuggestions(d.suggestions);
   renderToday(d.today);
   loadBedtime();
+  loadProposals();
   renderTodayTiles(d.recovery);
   renderBoosters(d.boosters);
   renderFeedback(d.pending_feedback);
@@ -560,6 +561,7 @@ function renderPlanned(open) {
         <div class="meta">${w.planned_date ? fmtDate(w.planned_date) : "kein Datum"}
           ${w.time_of_day ? " · " + esc(w.time_of_day) : ""} · ${SPORT_LABEL[w.sport] || w.sport}</div>
         ${w.description ? `<div class="muted">${esc(w.description)}</div>` : ""}
+        ${w.changes_note ? `<div class="chg-note">${esc(w.changes_note)}</div>` : ""}
         <details><summary class="muted" style="cursor:pointer;font-size:12px;margin-top:4px">Ablauf anzeigen</summary>
           <ul class="steps">${stepsToHtml(w.steps)}</ul></details>
         <div class="ex-actions">
@@ -2021,16 +2023,16 @@ function renderBoosters(d) {
   const card = $("#boosterCard");
   if (!d || !d.boosters || !d.boosters.length) { card.hidden = true; return; }
   card.hidden = false;
-  $("#boosterSituation").textContent = d.situation.reasons.length
-    ? "Weil: " + d.situation.reasons.join(", ") : "";
+  $("#boosterSituation").textContent = (d.situation.reasons.length
+    ? "Weil: " + d.situation.reasons.join(", ") : "")
+    + (d.daypart ? ` · Vorschläge für ${d.daypart}` : "");
 
   $("#boosterList").innerHTML = d.boosters.map((b) => `
     <div class="booster">
       <div class="bk">${KIND_WORDS[b.kind] || b.kind}${b.minutes ? ` · ${b.minutes} min` : ""}</div>
       <div class="bn">${esc(b.name)}</div>
       <div class="bt">${esc(b.text)}</div>
-      ${b.stats && b.stats.bewertet >= 2
-        ? `<div class="bk">bei dir ${b.stats.gut} von ${b.stats.bewertet} Mal hilfreich</div>` : ""}
+      ${b.why ? `<div class="bk good">${esc(b.why)}</div>` : ""}
       <div class="row">
         <button class="btn small ghost" data-rate="${b.id}" data-help="1">Hat geholfen</button>
         <button class="btn small ghost" data-rate="${b.id}" data-help="0">Bringt mir nichts</button>
@@ -3043,6 +3045,242 @@ function startScalePolling() {
 
 /* -------------------------------------------------------------- Navigation */
 
+/* ----------------------------------------------- Karten selbst anordnen */
+
+/* Jede Karte lässt sich an ihrem Griff packen und verschieben; die Reihenfolge
+   bleibt je Ansicht gespeichert. Bewusst ohne Bibliothek: Pointer-Events
+   können das, und eine Sortierbibliothek wäre mehr Code als die ganze Datei.
+
+   Gespeichert wird die Reihenfolge als Liste von Karten-Kennungen. Karten, die
+   später dazukommen, hängen hinten an, statt zu verschwinden — eine
+   gespeicherte Reihenfolge darf ein Update nicht überleben, indem sie neue
+   Karten unterschlägt. */
+
+const LAYOUT_KEY = "puls.layout.";
+let dragging = null;
+
+function cardKey(card, index) {
+  // Eine eigene id ist die beste Kennung; sonst die Überschrift, sonst die
+  // Position. Die Überschrift ist stabil genug und übersteht ein Update.
+  if (card.id) return "#" + card.id;
+  const h = card.querySelector("h3");
+  return h ? "h:" + h.textContent.trim().slice(0, 40) : "n:" + index;
+}
+
+/* Die Karten liegen im Raster, nicht direkt im Abschnitt. Wer den Abschnitt
+   als Behälter nimmt, findet genau eine Karte (die außerhalb des Rasters) und
+   wundert sich, warum nur sie einen Griff bekommt. */
+function cardHost(view) {
+  const section = $("#view-" + view);
+  if (!section) return null;
+  return section.querySelector(":scope > .grid-cards") || section;
+}
+
+function loadOrder(view) {
+  try { return JSON.parse(localStorage.getItem(LAYOUT_KEY + view) || "[]"); }
+  catch (e) { return []; }
+}
+
+function saveOrder(view) {
+  const host = cardHost(view);
+  if (!host) return;
+  const keys = [...host.children].filter((c) => c.classList.contains("card"))
+    .map((c, i) => cardKey(c, i));
+  try { localStorage.setItem(LAYOUT_KEY + view, JSON.stringify(keys)); }
+  catch (e) { /* Kein Speicher — dann eben nur für diese Sitzung */ }
+}
+
+function applyOrder(view) {
+  const host = cardHost(view);
+  if (!host) return;
+  const order = loadOrder(view);
+  if (!order.length) return;
+  const cards = [...host.children].filter((c) => c.classList.contains("card"));
+  const byKey = new Map(cards.map((c, i) => [cardKey(c, i), c]));
+  // Erst die gespeicherten, dann alles Neue in seiner ursprünglichen Folge.
+  const placed = new Set();
+  order.forEach((k) => {
+    const el = byKey.get(k);
+    if (el) { host.appendChild(el); placed.add(k); }
+  });
+  cards.forEach((c, i) => {
+    if (!placed.has(cardKey(c, i))) host.appendChild(c);
+  });
+}
+
+function makeSortable(view) {
+  const host = cardHost(view);
+  if (!host || host.dataset.sortable) return;
+  host.dataset.sortable = "1";
+
+  [...host.children].filter((c) => c.classList.contains("card")).forEach((card) => {
+    if (card.querySelector(":scope > .drag")) return;
+    const grip = document.createElement("button");
+    grip.className = "drag";
+    grip.type = "button";
+    grip.title = "Karte verschieben";
+    grip.setAttribute("aria-label", "Karte verschieben");
+    grip.textContent = "⠿";
+    card.prepend(grip);
+
+    grip.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      dragging = card;
+      card.classList.add("dragging");
+      grip.setPointerCapture(ev.pointerId);
+    });
+    grip.addEventListener("pointermove", (ev) => {
+      if (dragging !== card) return;
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const other = under && under.closest(".card");
+      if (!other || other === card || other.parentElement !== host) return;
+      const cards = [...host.children];
+      const before = cards.indexOf(card) < cards.indexOf(other);
+      host.insertBefore(card, before ? other.nextSibling : other);
+    });
+    const end = (ev) => {
+      if (dragging !== card) return;
+      dragging = null;
+      card.classList.remove("dragging");
+      try { grip.releasePointerCapture(ev.pointerId); } catch (e) { /* egal */ }
+      saveOrder(view);
+      toast("Anordnung gemerkt");
+    };
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+
+    // Ohne Maus: Mit den Pfeiltasten verschieben, wenn der Griff Fokus hat.
+    grip.addEventListener("keydown", (ev) => {
+      const step = ev.key === "ArrowUp" || ev.key === "ArrowLeft" ? -1
+        : ev.key === "ArrowDown" || ev.key === "ArrowRight" ? 1 : 0;
+      if (!step) return;
+      ev.preventDefault();
+      const cards = [...host.children].filter((c) => c.classList.contains("card"));
+      const i = cards.indexOf(card);
+      const target = cards[i + step];
+      if (!target) return;
+      host.insertBefore(step < 0 ? card : target, step < 0 ? target : card);
+      saveOrder(view);
+      grip.focus();
+    });
+  });
+}
+
+function resetLayout(view) {
+  try { localStorage.removeItem(LAYOUT_KEY + view); } catch (e) { /* egal */ }
+  location.reload();
+}
+
+/* ------------------------------------------- Vorschläge nach dem Training */
+
+/* Was tatsächlich geleistet wurde, passt oft nicht zur Vorgabe — wer 35 kg
+   statt der geplanten 20 bewegt, hat eine Entscheidung getroffen. PULS
+   rechnet sie durch und legt sie vor; übernommen wird sie erst mit einem
+   Tippen. Der Beleg steht daneben, damit man nicht raten muss, woher die
+   Zahl kommt. */
+async function loadProposals() {
+  const card = $("#proposalCard");
+  if (!card) return;
+  let list;
+  try { list = await api("/exercises/proposals"); } catch (e) { card.hidden = true; return; }
+  if (!list.length) { card.hidden = true; return; }
+  card.hidden = false;
+
+  $("#proposalList").innerHTML = list.map((p) => {
+    const dw = (p.to_weight ?? 0) - (p.from_weight ?? 0);
+    const dr = (p.to_reps ?? 0) - (p.from_reps ?? 0);
+    const bits = [];
+    if (Math.abs(dw) >= 0.1) bits.push(`${p.from_weight}\u2009kg → <b>${p.to_weight}\u2009kg</b>`);
+    if (dr) bits.push(`${p.from_reps} → <b>${p.to_reps}</b> Wdh.`);
+    return `
+      <div class="prop" data-prop="${p.id}">
+        <div class="pn">${esc(p.name)}</div>
+        <div class="pc">${bits.join(" · ")}</div>
+        <div class="pe">${esc(p.evidence || "")}</div>
+        <div class="pr">${esc(p.reason || "")}</div>
+        <div class="row">
+          <button class="btn small" data-accept="${p.id}">Übernehmen</button>
+          <button class="btn small ghost" data-decline="${p.id}">Lassen</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  $$("#proposalList [data-accept]").forEach((b) => b.addEventListener("click", (e) =>
+    withSpinner(e.currentTarget, async () => {
+      await api(`/exercises/proposals/${b.dataset.accept}`, { method: "POST",
+        body: JSON.stringify({ accept: true }) });
+      toast("Übernommen"); loadProposals(); loadChanges();
+    })));
+  $$("#proposalList [data-decline]").forEach((b) => b.addEventListener("click", (e) =>
+    withSpinner(e.currentTarget, async () => {
+      await api(`/exercises/proposals/${b.dataset.decline}`, { method: "POST",
+        body: JSON.stringify({ accept: false }) });
+      toast("Bleibt, wie es war"); loadProposals();
+    })));
+}
+
+$("#btnAcceptAll").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/exercises/proposals", { method: "POST",
+    body: JSON.stringify({ accept: true }) });
+  toast(`${r.count} übernommen`); loadProposals(); loadChanges();
+}));
+$("#btnDeclineAll").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const r = await api("/exercises/proposals", { method: "POST",
+    body: JSON.stringify({ accept: false }) });
+  toast(`${r.count} unverändert gelassen`); loadProposals();
+}));
+
+/* ---------------------------------------------------------- Zielgewicht */
+
+/* Die Frage, die hinter jedem Gewichtsverlauf steht: Wann bin ich da? Die
+   Hochrechnung kommt aus der Steigung der geglätteten Kurve — und sie sagt
+   auch, wenn sie nichts sagen kann. */
+async function loadWeightGoal() {
+  let g;
+  try { g = await api("/body/goal"); } catch (e) { return; }
+
+  $("#goalNow").textContent = g.current_kg != null ? `${g.current_kg.toFixed(1)} kg` : "–";
+  $("#goalTarget").textContent = g.goal_kg != null ? `${g.goal_kg} kg` : "–";
+  $("#goalInput").value = g.target_kg ?? "";
+
+  const facts = [
+    g.remaining_kg != null
+      ? { l: "noch", v: `${Math.abs(g.remaining_kg).toFixed(1)} kg` } : null,
+    g.rate_kg_week != null
+      ? { l: "pro Woche", v: `${g.rate_kg_week > 0 ? "+" : ""}${g.rate_kg_week} kg`,
+          note: g.pace } : null,
+    g.eta ? { l: "voraussichtlich", v: fmtDate(g.eta) }
+      : g.weeks_to_goal ? { l: "noch", v: `${Math.round(g.weeks_to_goal)} Wochen` } : null,
+    g.bmi != null ? { l: "BMI", v: String(g.bmi),
+                      note: g.in_healthy_range ? "im grünen Bereich" : "außerhalb" } : null,
+  ].filter(Boolean);
+  $("#goalFacts").innerHTML = facts.map((f) => `
+    <div class="gw-f"><div class="v">${esc(f.v)}</div>
+      <div class="l">${esc(f.l)}${f.note ? ` <span class="muted">· ${esc(f.note)}</span>` : ""}</div>
+    </div>`).join("");
+
+  // Der Balken zeigt den Weg seit dem Start der Messreihe, nicht seit null —
+  // ein Balken, der bei 73 von 76 kg fast voll ist, sagt nichts.
+  let pct = 0;
+  if (g.current_kg != null && g.goal_kg != null && g.remaining_kg != null) {
+    const span = Math.abs(g.goal_kg - (g.current_kg - (g.rate_kg_week || 0) * 8));
+    pct = span > 0.1 ? Math.max(0, Math.min(100, (1 - Math.abs(g.remaining_kg) / span) * 100)) : 0;
+  }
+  $("#goalBar").style.width = `${pct.toFixed(0)}%`;
+  $("#goalBar").className = g.on_track === false ? "wrong" : "";
+  $("#goalNote").textContent = g.note || "";
+}
+
+$("#btnGoalSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/body/goal", { method: "POST",
+    body: JSON.stringify({ target_kg: +$("#goalInput").value || null }) });
+  toast("Ziel gesetzt"); loadWeightGoal();
+}));
+$("#btnGoalClear").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/body/goal", { method: "POST", body: JSON.stringify({ target_kg: null }) });
+  toast("Vorschlag übernommen"); loadWeightGoal();
+}));
+
 /* ------------------------------------------------------- Schlafenszeit */
 
 /* Abends die Frage, die zählt: Wann muss ich ins Bett? Rückwärts gerechnet
@@ -3112,6 +3350,30 @@ async function loadStrengthView() {
     }, "month");
   } catch (e) { /* Die Übungsliste steht trotzdem */ }
   loadTrends();
+  loadChanges();
+}
+
+/* Was nach der letzten Einheit an den Vorgaben angepasst wurde. */
+async function loadChanges() {
+  if (!$("#changeList")) return;
+  let list;
+  try { list = await api("/exercises/changes?days=14"); } catch (e) { return; }
+  const box = $("#changeList");
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = '<p class="muted">Seit zwei Wochen wurde nichts angepasst — ' +
+      'sobald eine Einheit ausgewertet ist, steht hier, was daraus folgte.</p>';
+    return;
+  }
+  const cls = (c) => c.action === "deload" ? "down"
+    : c.action === "calibrate" ? "cal" : "up";
+  box.innerHTML = list.map((c) => `
+    <div class="chg ${cls(c)}">
+      <div class="ch">${esc(c.name)}
+        <span class="cw">${esc(c.change)}</span>
+        <span class="ct">${fmtDate(c.when)}</span></div>
+      <div class="cr">${esc(c.reason || "")}</div>
+    </div>`).join("");
 }
 
 async function loadRunningView() {
@@ -3120,6 +3382,7 @@ async function loadRunningView() {
 
 async function loadWeightView() {
   await loadBody();
+  loadWeightGoal();
   try {
     const d = await api("/dashboard");
     renderComposition(d.body_composition);
@@ -3143,7 +3406,76 @@ async function loadVitalView() {
   renderTodayTiles(d.recovery);
   renderSleepAndHeart(d.recovery);
   loadRecovery();
+  loadThreshold();
+  loadStressPattern();
 }
+
+/* Die Schwelle in Pulsbereiche übersetzt: Der Maximalpuls ist eine Zahl, die
+   man selten kennt und noch seltener erreicht — die Schwelle läuft man jede
+   Woche, also sind die Bereiche daran ausgerichtet. */
+async function loadThreshold() {
+  let t;
+  try { t = await api("/vitals/threshold"); } catch (e) { return; }
+  $("#lthrInput").value = t.measured ? t.hr : "";
+  if (!t.hr) {
+    $("#thresholdBox").innerHTML = `<p class="muted">${esc(t.hint)}</p>`;
+    return;
+  }
+  $("#thresholdBox").innerHTML = `
+    <div class="thr-head">
+      <div><div class="v">${t.hr}<span class="u"> bpm</span></div>
+        <div class="l">Schwellenpuls</div></div>
+      ${t.pace_text ? `<div><div class="v">${esc(t.pace_text)}<span class="u"> /km</span></div>
+        <div class="l">Schwellentempo</div></div>` : ""}
+      <div class="thr-src">${esc(t.source || "")}${
+        t.runs_used ? ` · ${t.runs_used} Läufe` : ""}</div>
+    </div>
+    <div class="thr-zones">${(t.zones || []).map((z) => `
+      <div class="thr-z">
+        <div class="zn">${esc(z.name)}</div>
+        <div class="zr">${z.from}–${z.to} bpm</div>
+        <div class="zd">${esc(z.note)}</div>
+      </div>`).join("")}</div>`;
+}
+
+async function loadStressPattern() {
+  let d;
+  try { d = await api("/vitals/stress"); } catch (e) { return; }
+  const box = $("#stressPattern");
+  if (!d.days) { box.innerHTML = `<p class="muted">${esc(d.hint)}</p>`; return; }
+
+  box.innerHTML = `
+    <div class="tiles wide-tiles">
+      <div class="tile"><div class="tv">${d.average}<span class="tu"> von 100</span></div>
+        <div class="tl">Stress im Schnitt</div></div>
+      ${d.worst_weekday ? `<div class="tile"><div class="tv">${esc(d.worst_weekday.weekday)}</div>
+        <div class="tl">höchster Wert (${d.worst_weekday.value})</div></div>` : ""}
+      ${d.calmest_weekday ? `<div class="tile"><div class="tv">${esc(d.calmest_weekday.weekday)}</div>
+        <div class="tl">ruhigster Tag (${d.calmest_weekday.value})</div></div>` : ""}
+      <div class="tile"><div class="tv">${d.high_days}</div>
+        <div class="tl">Tage deutlich über deinem Schnitt</div></div>
+    </div>
+    ${d.agreement_note ? `<p class="muted" style="margin-top:8px">${esc(d.agreement_note)}</p>` : ""}
+    <h4 class="ins-h" style="margin-top:14px">Was bei dir dagegen hilft</h4>
+    ${d.helpers.length ? d.helpers.map((h) => `
+      <div class="helper">
+        <div class="hn">${esc(h.name)}</div>
+        <div class="hm">${h.gut} von ${h.von} Mal hilfreich${
+          h.when ? ` — ${esc(h.when)}` : ""}</div>
+        ${h.text ? `<div class="hd">${esc(h.text)}</div>` : ""}
+      </div>`).join("")
+      : `<p class="muted">${esc(d.hint || "")}</p>`}`;
+}
+
+$("#btnLthrSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/vitals/threshold", { method: "POST",
+    body: JSON.stringify({ hr: +$("#lthrInput").value || null }) });
+  toast("Eingetragen"); loadThreshold();
+}));
+$("#btnLthrClear").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  await api("/vitals/threshold", { method: "POST", body: JSON.stringify({ hr: null }) });
+  toast("Wird wieder geschätzt"); loadThreshold();
+}));
 
 /* Welche Ansicht was nachlädt. Mehrere Ansichten teilen sich einen Lader,
    wenn sie aus derselben Quelle leben — die Karten stehen jetzt dort, wo man
@@ -3164,6 +3496,8 @@ const LOADERS = {
 function goto(view) {
   $$(".view").forEach((v) => v.classList.remove("active"));
   $("#view-" + view).classList.add("active");
+  applyOrder(view);
+  makeSortable(view);
   $$("nav.bottom button").forEach((b) => {
     const on = b.dataset.view === view;
     b.classList.toggle("active", on);
@@ -3187,9 +3521,22 @@ document.addEventListener("click", (e) => {
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 $("#nutDay").value = $("#bodyDay").value = new Date().toISOString().slice(0, 10);
 api("/settings").then((s) => applyFontScale(s.font_scale || 100)).catch(() => {});
+
+// Die gespeicherte Anordnung gilt in jeder Ansicht, nicht erst nach einem
+// Wechsel — sonst sähe die Startseite beim ersten Öffnen anders aus als danach.
+$$(".view").forEach((v) => {
+  const name = v.id.replace("view-", "");
+  applyOrder(name);
+  makeSortable(name);
+});
 loadDashboard().catch((e) => toast(e.message, true));
 
 async function loadStatsAll() {
   await loadStatsMetrics();
   await loadStats();
 }
+
+$("#btnResetLayout").addEventListener("click", () => {
+  const active = $$(".view").find((v) => v.classList.contains("active"));
+  if (active) resetLayout(active.id.replace("view-", ""));
+});

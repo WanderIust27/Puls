@@ -156,6 +156,167 @@ set_setting("wake_target", "quatsch")
 ok("Kaputtes Aufstehziel fällt auf die Vorgabe zurück",
    sleep.tonight()["wake_target"] == "06:30", sleep.tonight()["wake_target"])
 
+# --- Was seit dem letzten Mal angepasst wurde ---------------------------
+from app.services import gym_analysis, planner, vitals              # noqa: E402
+
+changes = ex_lib.recent_changes(days=14)
+ok("Anpassungen werden aufgelistet", bool(changes), f"{len(changes)} Einträge")
+ok("Jede nennt Übung, Änderung und Grund",
+   all(c["name"] and c["change"] and c["reason"] for c in changes))
+ok("Je Übung nur die jüngste",
+   len({c["exercise_id"] for c in changes}) == len(changes))
+ok("Unveränderte tauchen nicht auf",
+   all(c["action"] != "hold" for c in changes))
+session = planner.build_gym_session(60)
+ok("Die Einheit trägt den Hinweis mit sich",
+   session["changes_note"] is None or "angepasst" in session["changes_note"],
+   str(session["changes_note"])[:60])
+
+# --- Der Vergleich zur letzten Einheit darf nicht wie ein Messwert klingen
+with get_db() as db:
+    db.execute("DELETE FROM exercise_sets")
+    act = db.execute("INSERT INTO activities(sport, start_time, duration_s, source) "
+                     "VALUES('strength', ?, 3600, 'manual')",
+                     (TODAY.isoformat() + "T18:00:00",)).lastrowid
+    ex_row = db.execute("SELECT id FROM exercises WHERE slot='main' LIMIT 1").fetchone()
+for i in range(3):
+    ex_lib.record_set(ex_row["id"], reps=16, weight_kg=60,
+                      day=(TODAY - dt.timedelta(days=3)).isoformat(), set_index=i + 1)
+for i in range(3):
+    ex_lib.record_set(ex_row["id"], reps=15, weight_kg=60, day=TODAY.isoformat(),
+                      set_index=i + 1, activity_id=act)
+res = gym_analysis.analyse(act, TODAY.isoformat())
+text = res["detail"][0]["change"]["text"]
+ok("Weniger Wiederholungen werden als Vergleich benannt",
+   text.startswith("1 Wiederholung weniger"), text)
+ok("… und nicht als negative Zahl", not text.strip().startswith("-"), text)
+
+# --- Laktatschwelle ------------------------------------------------------
+set_setting("easy_pace_s_per_km", "330")
+set_setting("tempo_pace_s_per_km", "285")
+bare = vitals.threshold()
+ok("Ohne Läufe ein Hinweis statt einer Zahl",
+   bare["hr"] is None and bool(bare["hint"]))
+
+with get_db() as db:
+    for d in range(3, 40, 6):
+        day = TODAY - dt.timedelta(days=d)
+        db.execute("""INSERT INTO activities(sport, start_time, duration_s,
+                          distance_m, avg_hr, source)
+                      VALUES('running', ?, ?, 8000, 168, 'manual')""",
+                   (day.isoformat() + "T07:00:00", 8 * 285))
+t = vitals.threshold()
+ok("Schwelle wird geschätzt", t["hr"] == 168, str(t["hr"]))
+ok("… und die Herkunft benannt", "geschätzt" in (t["source"] or ""), t["source"])
+ok("Vier Bereiche abgeleitet", len(t["zones"]) == 4)
+ok("Die Bereiche steigen an",
+   all(t["zones"][i]["to"] <= t["zones"][i + 1]["to"] for i in range(3)))
+ok("Der Schwellenbereich enthält den Schwellenpuls",
+   t["zones"][2]["from"] <= t["hr"] <= t["zones"][2]["to"],
+   f"{t['zones'][2]['from']}–{t['zones'][2]['to']}")
+
+set_setting("lthr_bpm", "175")
+measured = vitals.threshold()
+check("Der Wert der Uhr schlägt die Schätzung", measured["hr"], 175)
+ok("… und wird als gemessen ausgewiesen", measured["measured"])
+
+# --- Zielgewicht ---------------------------------------------------------
+from app.services import body                                        # noqa: E402
+import json as _json                                                 # noqa: E402
+set_setting("body_height_cm", "184")
+set_setting("goals", _json.dumps(["muscle", "weight_gain"]))
+for d in range(90, -1, -1):
+    day = TODAY - dt.timedelta(days=d)
+    body.record({"weight_kg": 72.0 + (90 - d) * 0.02,
+                 "measured_at": f"{day.isoformat()}T07:15:00"}, source="test")
+g = body.goal()
+ok("Ein Ziel wird vorgeschlagen", g["suggested_kg"] is not None, str(g["suggested_kg"]))
+ok("Der Vorschlag liegt über dem Ist (Ziel: zunehmen)",
+   g["suggested_kg"] > g["current_kg"], f"{g['current_kg']} -> {g['suggested_kg']}")
+ok("Der Vorschlag bleibt im gesunden Bereich",
+   g["healthy_range_kg"][0] <= g["suggested_kg"] <= g["healthy_range_kg"][1])
+ok("Die Rate wird gerechnet", g["rate_kg_week"] is not None, str(g["rate_kg_week"]))
+ok("… und stimmt mit der gelegten überein",
+   abs(g["rate_kg_week"] - 0.14) < 0.03, f"{g['rate_kg_week']} kg/Woche")
+ok("Eine Ankunft wird geschätzt", g["eta"] is not None, str(g["eta"]))
+ok("… und liegt in der Zukunft", g["eta"] > TODAY.isoformat())
+ok("Das Tempo wird eingeordnet", g["pace"] in
+   ("passend", "zügig", "zu schnell", "gemächlich"), str(g["pace"]))
+
+# Ein Ziel in der Gegenrichtung darf nicht als erreichbar gelten.
+from app.db import set_setting as _set                                # noqa: E402
+_set("weight_target_kg", "68")
+back = body.goal()
+ok("Ziel gegen die Richtung wird als solches erkannt",
+   back["on_track"] is False, str(back["on_track"]))
+ok("… und es wird keine Ankunft versprochen", back["eta"] is None)
+ok("… sondern gesagt, dass es so nicht klappt",
+   "anderen Richtung" in back["note"], back["note"][-60:])
+
+# --- Vorschläge statt stiller Änderungen --------------------------------
+with get_db() as db:
+    db.execute("DELETE FROM exercise_sets")
+    db.execute("DELETE FROM progression_proposals")
+    heavy = db.execute("SELECT id FROM exercises WHERE slot='main' LIMIT 1").fetchone()["id"]
+    db.execute("UPDATE exercises SET weight_kg=20, target_reps=15, rep_min=10, "
+               "rep_max=15 WHERE id=?", (heavy,))
+for i in range(3):
+    ex_lib.record_set(heavy, reps=15, weight_kg=35, day=TODAY.isoformat(), set_index=i + 1)
+
+made = ex_lib.propose_for_day(TODAY.isoformat())
+p = next((m for m in made if m["exercise_id"] == heavy), None)
+ok("Aus 35 statt 20 kg wird ein Vorschlag", p is not None)
+if p:
+    check("… mit dem tatsächlich bewegten Gewicht", p["to_weight"], 35.0)
+    check("… und den dabei geschafften Wiederholungen", p["to_reps"], 15)
+    ok("… mit Beleg", "35 kg" in p["evidence"], p["evidence"])
+    ok("… und Begründung", bool(p["reason"]))
+
+with get_db() as db:
+    unchanged = db.execute("SELECT weight_kg FROM exercises WHERE id=?",
+                           (heavy,)).fetchone()
+check("Solange nichts entschieden ist, bleibt die Vorgabe", unchanged["weight_kg"], 20.0)
+
+open_now = ex_lib.open_proposals()
+ok("Der Vorschlag ist offen", any(o["exercise_id"] == heavy for o in open_now))
+pid = next(o["id"] for o in open_now if o["exercise_id"] == heavy)
+
+# Zweimal auswerten darf keinen zweiten Vorschlag ergeben.
+ex_lib.propose_for_day(TODAY.isoformat())
+check("Kein doppelter Vorschlag",
+      len([o for o in ex_lib.open_proposals() if o["exercise_id"] == heavy]), 1)
+
+ex_lib.decide_proposal(pid, True)
+with get_db() as db:
+    after_accept = db.execute("SELECT weight_kg, target_reps, fail_streak "
+                              "FROM exercises WHERE id=?", (heavy,)).fetchone()
+check("Nach dem Übernehmen gilt der neue Wert", after_accept["weight_kg"], 35.0)
+check("… und die neuen Wiederholungen", after_accept["target_reps"], 15)
+ok("Ein übernommener Vorschlag ist nicht mehr offen",
+   not any(o["id"] == pid for o in ex_lib.open_proposals()))
+ok("Zweimal entscheiden geht nicht", ex_lib.decide_proposal(pid, True) is None)
+
+# Ablehnen darf nichts ändern.
+with get_db() as db:
+    other = db.execute("SELECT id, weight_kg FROM exercises WHERE slot='main' "
+                       "AND id != ? LIMIT 1", (heavy,)).fetchone()
+before_decline = other["weight_kg"]
+for i in range(3):
+    ex_lib.record_set(other["id"], reps=25, weight_kg=before_decline,
+                      day=TODAY.isoformat(), set_index=i + 1)
+ex_lib.propose_for_day(TODAY.isoformat())
+pid2 = next((o["id"] for o in ex_lib.open_proposals()
+             if o["exercise_id"] == other["id"]), None)
+ok("Auch mehr Wiederholungen ergeben einen Vorschlag", pid2 is not None)
+if pid2:
+    ex_lib.decide_proposal(pid2, False)
+    with get_db() as db:
+        still = db.execute("SELECT weight_kg FROM exercises WHERE id=?",
+                           (other["id"],)).fetchone()
+    check("Abgelehnt heißt unverändert", still["weight_kg"], before_decline)
+    ok("… und der Vorschlag ist weg",
+       not any(o["id"] == pid2 for o in ex_lib.open_proposals()))
+
 print()
 if failures:
     print(f"{len(failures)} Test(s) fehlgeschlagen: {', '.join(failures)}")

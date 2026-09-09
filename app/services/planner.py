@@ -325,8 +325,19 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
         adapted = {"reason": reason, "changes": parts,
                    "complaints": adapt["complaints"]}
 
+    # Was sich seit der letzten Einheit an den Vorgaben geaendert hat, gehoert
+    # an die Einheit selbst: Wer eine andere Zahl auf dem Zettel findet, ohne
+    # zu wissen warum, glaubt eher an einen Fehler als an eine Anpassung.
+    changes = ex_lib.recent_changes([e["id"] for e in used], days=10)
+
     return {
         "adapted": adapted,
+        "changes": changes,
+        "changes_note": (
+            "Seit der letzten Einheit angepasst: "
+            + "; ".join(f"{c['name']} {c['change']}" for c in changes[:3])
+            + ("." if len(changes) <= 3 else f" und {len(changes) - 3} weitere.")
+        ) if changes else None,
         # Im Namen steht die gerechnete Dauer, nicht die gewünschte: Eine
         # Einheit, die "90 min" heißt und nach 80 vorbei ist, ist eine Ansage,
         # auf die man sich nicht verlassen kann.

@@ -112,7 +112,18 @@
     </div>
 
     
-<div class="card span2" id="bedtimeCard" hidden>
+<div class="card span2" id="proposalCard" hidden>
+    <h3>Nach deinem Training</h3>
+    <p class="muted">Was du geschafft hast, passt nicht mehr zur Vorgabe. Hier
+      steht, was PULS daraus machen würde — du entscheidest.</p>
+    <div id="proposalList"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnAcceptAll">Alle übernehmen</button>
+      <button class="btn ghost" id="btnDeclineAll">Alle lassen</button>
+    </div>
+  </div>
+
+  <div class="card span2" id="bedtimeCard" hidden>
     <h3>Schlafenszeit</h3>
     <div class="bedtime">
       <div class="bt-main">
@@ -179,6 +190,7 @@
 
 <!-- ============================== GEMÜT ============================== -->
 <section id="view-mood" class="view">
+  <div class="grid-cards">
 <div class="card">
     <h3>Wie geht es dir gerade?</h3>
     <p class="muted">Mehrmals am Tag eintragbar — der Verlauf über den Tag sagt
@@ -251,10 +263,12 @@
     <div class="chart-wrap" id="moodChart"></div>
     <div id="moodList"></div>
   </div>
+  </div>
 </section>
 
 <!-- ============================== PLAN ============================== -->
 <section id="view-plan" class="view">
+  <div class="grid-cards">
 <div class="card span2">
     <h3>Dein Ziel</h3>
     <p class="muted">Schreib in eigenen Worten, worauf du hinarbeitest. Der Coach
@@ -365,15 +379,25 @@
       abends nicht mehr.</p>
     <div id="poseList"></div>
   </div>
+  </div>
 </section>
 
 <!-- ============================== KRAFT ============================== -->
 <section id="view-strength" class="view">
+  <div class="grid-cards">
 <div class="card">
     <h3>Muskelgruppen</h3>
     <p class="muted">Volumen und geschätzte Maximalkraft der letzten vier Wochen
       gegen die vier davor. Oben steht, was am ehesten dran wäre.</p>
     <div id="trendMuscles"></div>
+  </div>
+
+  <div class="card span2">
+    <h3>Was sich seit dem letzten Mal geändert hat</h3>
+    <p class="muted">Nach jeder Einheit schreibt PULS die Vorgaben fort. Hier
+      steht, was sich geändert hat und woraus es folgt — eine andere Zahl auf
+      dem Zettel ohne Begründung sieht sonst aus wie ein Fehler.</p>
+    <div id="changeList"></div>
   </div>
 
   
@@ -428,10 +452,12 @@
   </div>
 
   
+  </div>
 </section>
 
 <!-- ============================== LAUFEN ============================== -->
 <section id="view-running" class="view">
+  <div class="grid-cards">
 <div class="card" id="runTrendCard">
     <h3>Laufform</h3>
     <div id="trendFacts" class="body-facts"></div>
@@ -477,10 +503,12 @@
     <div id="logTotals" class="muted"></div>
     <div id="activityList" class="muted">Noch keine.</div>
   </div>
+  </div>
 </section>
 
 <!-- ============================== ESSEN ============================== -->
 <section id="view-nutrition" class="view">
+  <div class="grid-cards">
 <div class="card">
     <h3>Heute gegessen</h3>
     <div id="mealTargets" class="tiles wide-tiles"></div>
@@ -572,10 +600,33 @@
     <h3>Letzte 14 Tage</h3>
     <div id="nutritionList" class="muted">Noch keine Einträge.</div>
   </div>
+  </div>
 </section>
 
 <!-- ============================== GEWICHT ============================== -->
 <section id="view-weight" class="view">
+    <div class="grid-cards">
+<div class="card span2">
+    <h3>Zielgewicht</h3>
+    <div class="goalw">
+      <div class="gw-main">
+        <div class="gw-now" id="goalNow">–</div>
+        <div class="gw-arrow">→</div>
+        <div class="gw-target" id="goalTarget">–</div>
+      </div>
+      <div class="gw-facts" id="goalFacts"></div>
+    </div>
+    <div class="gw-bar"><i id="goalBar"></i></div>
+    <p class="muted" id="goalNote"></p>
+    <div class="row" style="margin-top:8px">
+      <label class="field" style="margin:0">Eigenes Ziel</label>
+      <input id="goalInput" type="number" step="0.5" min="35" max="250"
+             style="max-width:110px" placeholder="kg">
+      <button class="btn ghost small" id="btnGoalSave">Setzen</button>
+      <button class="btn ghost small" id="btnGoalClear">Vorschlag nutzen</button>
+    </div>
+  </div>
+
 <div class="card">
     <h3>Körperdaten</h3>
     <div id="bodyFacts" class="body-facts"></div>
@@ -626,10 +677,32 @@
       </div>
 
     
+  </div>
 </section>
 
 <!-- ============================== VITAL ============================== -->
 <section id="view-vital" class="view">
+    <div class="grid-cards">
+<div class="card span2">
+    <h3>Laktatschwelle</h3>
+    <p class="muted">Das Tempo, das du noch etwa eine Stunde durchhältst.
+      Darüber sammelt sich Laktat schneller an, als der Körper es abbaut —
+      der wichtigste einzelne Wert für die Trainingsplanung.</p>
+    <div id="thresholdBox"></div>
+    <div class="row" style="margin-top:10px">
+      <label class="field" style="margin:0">Wert deiner Uhr</label>
+      <input id="lthrInput" type="number" min="90" max="220"
+             style="max-width:100px" placeholder="bpm">
+      <button class="btn ghost small" id="btnLthrSave">Eintragen</button>
+      <button class="btn ghost small" id="btnLthrClear">Schätzen lassen</button>
+    </div>
+  </div>
+
+  <div class="card span2">
+    <h3>Stress — wann, und was hilft</h3>
+    <div id="stressPattern"></div>
+  </div>
+
 <div class="card span2" id="readoutCard">
       <h3>Dein Zustand heute</h3>
       <div class="tiles wide-tiles" id="todayTiles"></div>
@@ -680,10 +753,12 @@
   </div>
 
   
+  </div>
 </section>
 
 <!-- ============================== STATISTIK ============================== -->
 <section id="view-stats" class="view">
+  <div class="grid-cards">
 <div class="card">
     <h3>Alles gegen alles</h3>
     <p class="muted" id="statsIntro">wird geladen …</p>
@@ -734,10 +809,12 @@
     <div id="statsMetricRange"></div><div class="chart-wrap" id="statsMetricChart"></div>
     <div id="statsMetricRelated"></div>
   </div>
+  </div>
 </section>
 
 <!-- ============================== MEHR ============================== -->
 <section id="view-settings" class="view">
+  <div class="grid-cards">
 <div class="card">
     <h3>Garmin Connect</h3>
     <div id="garminStatus" class="muted">Status wird geladen …</div>
@@ -882,6 +959,11 @@
   </div>
 <div class="card">
     <h3>Darstellung</h3>
+    <p class="muted">Die Karten lassen sich an ihrem Griff (⠿ oben links)
+      verschieben — jede Ansicht merkt sich ihre eigene Reihenfolge. Mit der
+      Tastatur geht es auch: Griff anwählen, dann Pfeiltasten.</p>
+    <button class="btn ghost small" id="btnResetLayout"
+      style="margin-bottom:12px">Anordnung dieser Ansicht zurücksetzen</button>
     <label class="field">Schriftgröße</label>
     <div class="row" id="fontChips"></div>
     <div class="font-preview">So sieht ein normaler Text in dieser Größe aus —
@@ -912,6 +994,7 @@
     <p class="muted">Kommt ein Update nicht an, steht hier noch die alte
       Kennung. Dann wurde der Container nicht neu gebaut — auf dem Server
       hilft <code>./deploy.sh</code> (ohne <code>--no-build</code>).</p>
+  </div>
   </div>
 </section>
 

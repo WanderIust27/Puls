@@ -291,6 +291,20 @@ CREATE TABLE IF NOT EXISTS exercise_sets (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_sets_exercise_day ON exercise_sets(exercise_id, day);
+CREATE TABLE IF NOT EXISTS progression_proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,                            -- Trainingstag, aus dem er folgt
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    from_weight REAL, to_weight REAL,
+    from_reps INTEGER, to_reps INTEGER,
+    evidence TEXT,                                -- was tatsächlich geleistet wurde
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'open',          -- open | accepted | declined
+    decided_at TEXT,
+    UNIQUE(exercise_id, day)
+);
+CREATE INDEX IF NOT EXISTS idx_prop_status ON progression_proposals(status, day);
 CREATE TABLE IF NOT EXISTS progression_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,

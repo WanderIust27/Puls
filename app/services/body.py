@@ -369,3 +369,170 @@ def summary(days: int = 180) -> dict[str, Any]:
         "estimated_fields": ["body_fat_pct", "muscle_kg", "water_pct",
                              "bone_kg", "lbm_kg", "visceral_fat"],
     }
+
+
+# --------------------------------------------------------------- Zielgewicht
+
+# Was als gesunde Veraenderungsrate gilt. Mehr geht, aber dann ist ein
+# nennenswerter Teil davon nicht das, was man haben wollte: Beim Zunehmen Fett
+# statt Muskel, beim Abnehmen Muskel statt Fett.
+SAFE_GAIN_PCT_WEEK = 0.35        # % des Koerpergewichts pro Woche
+SAFE_LOSS_PCT_WEEK = 0.75
+MIN_TREND_DAYS = 21              # darunter ist eine Hochrechnung Kaffeesatz
+HEALTHY_BMI = (20.0, 25.0)
+
+
+def _bmi_range(height_cm: float) -> tuple[float, float]:
+    m = height_cm / 100
+    return round(HEALTHY_BMI[0] * m * m, 1), round(HEALTHY_BMI[1] * m * m, 1)
+
+
+def _weekly_rate(points: list[dict[str, Any]], days: int = 42) -> float | None:
+    """Veraenderung in kg pro Woche — aus der geglaetteten Kurve.
+
+    Kleinste Quadrate ueber die Tage, nicht erster gegen letzter Wert: Ein
+    einzelner Ausreisser am Rand wuerde die Steigung sonst bestimmen.
+    """
+    cutoff = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    rows = [p for p in points if p["smooth_kg"] is not None and p["day"] >= cutoff]
+    if len(rows) < MIN_TREND_DAYS:
+        return None
+    base = dt.date.fromisoformat(rows[0]["day"]).toordinal()
+    xs = [dt.date.fromisoformat(r["day"]).toordinal() - base for r in rows]
+    ys = [r["smooth_kg"] for r in rows]
+    n = len(xs)
+    mx, my = sum(xs) / n, sum(ys) / n
+    denom = sum((x - mx) ** 2 for x in xs)
+    if denom == 0:
+        return None
+    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom
+    return round(slope * 7, 3)
+
+
+def goal() -> dict[str, Any]:
+    """Zielgewicht: wo du stehst, wann du ankommst, was sinnvoll waere."""
+    import json
+    from . import nutrition
+
+    profile = nutrition._profile()
+    height = profile["height_cm"]
+    data = summary(180)
+    current = data["current_kg"]
+    rate = _weekly_rate(data["points"])
+
+    try:
+        goals = json.loads(get_setting("goals", "[]") or "[]")
+    except ValueError:
+        goals = []
+    direction = ("up" if "weight_gain" in goals else
+                 "down" if "weight_loss" in goals else "hold")
+
+    low, high = _bmi_range(height)
+    bmi = round(current / (height / 100) ** 2, 1) if current else None
+
+    # Ein Zielgewicht, das nicht gesetzt ist, wird vorgeschlagen — aus der
+    # Richtung, die du angegeben hast, und dem gesunden Bereich fuer deine
+    # Groesse. Zwei Prozent in acht Wochen sind ein Ziel, das man erreicht.
+    try:
+        target = float(get_setting("weight_target_kg", "") or 0) or None
+    except (TypeError, ValueError):
+        target = None
+
+    suggested = None
+    if current:
+        if direction == "up":
+            suggested = round(min(high, current * 1.04), 1)
+        elif direction == "down":
+            suggested = round(max(low, current * 0.94), 1)
+        else:
+            suggested = round(current, 1)
+
+    goal_kg = target or suggested
+    remaining = round(goal_kg - current, 2) if (goal_kg and current) else None
+
+    # Wie lange noch? Nur wenn die Richtung stimmt — sonst waere die Zahl eine
+    # Hochrechnung ins Gegenteil.
+    weeks = None
+    eta = None
+    on_track = None
+    if remaining is not None and rate:
+        if abs(remaining) < 0.3:
+            weeks, on_track = 0, True
+        elif (remaining > 0) == (rate > 0):
+            weeks = round(abs(remaining / rate), 1)
+            on_track = True
+            if weeks <= 260:
+                eta = (dt.date.today() + dt.timedelta(weeks=weeks)).isoformat()
+        else:
+            on_track = False
+
+    # Ist das Tempo gesund? Zunehmen und Abnehmen vertragen Verschiedenes.
+    limit = None
+    pace = None
+    if current and rate:
+        cap = (SAFE_GAIN_PCT_WEEK if rate > 0 else SAFE_LOSS_PCT_WEEK) / 100 * current
+        limit = round(cap, 2)
+        pace = ("zu schnell" if abs(rate) > cap * 1.5 else
+                "zügig" if abs(rate) > cap else
+                "gemächlich" if abs(rate) < cap * 0.25 else "passend")
+
+    return {
+        "current_kg": current,
+        "bmi": bmi,
+        "healthy_range_kg": [low, high],
+        "in_healthy_range": (low <= current <= high) if current else None,
+        "direction": direction,
+        "target_kg": target,
+        "suggested_kg": suggested,
+        "goal_kg": goal_kg,
+        "remaining_kg": remaining,
+        "rate_kg_week": rate,
+        "trend_days": MIN_TREND_DAYS,
+        "weeks_to_goal": weeks,
+        "eta": eta,
+        "on_track": on_track,
+        "safe_rate_kg_week": limit,
+        "pace": pace,
+        "note": _goal_note(current, goal_kg, remaining, rate, weeks, eta,
+                           pace, limit, low, high, bmi, target),
+    }
+
+
+def _goal_note(current, goal_kg, remaining, rate, weeks, eta, pace, limit,
+               low, high, bmi, target) -> str:
+    """Der Satz darunter — im Code formuliert, damit er verlaesslich ist."""
+    if current is None:
+        return ("Noch keine Referenzmessung. Sobald du ein paar Mal im "
+                "Zeitfenster gewogen hast, steht hier eine Hochrechnung.")
+    parts = []
+    if bmi is not None:
+        wo = "im" if low <= current <= high else "außerhalb des"
+        parts.append(f"Bei {current:.1f} kg liegst du {wo} gesunden Bereich "
+                     f"({low}–{high} kg für deine Größe, BMI {bmi}).")
+    if not target and goal_kg:
+        parts.append(f"Ein Ziel von {goal_kg} kg wäre erreichbar, ohne dass ein "
+                     f"großer Teil davon in die falsche Richtung geht.")
+    if rate is None:
+        parts.append(f"Für eine Hochrechnung fehlen noch Messungen — es braucht "
+                     f"mindestens {MIN_TREND_DAYS} Tage im Referenzfenster.")
+        return " ".join(parts)
+
+    richtung = "zu" if rate > 0 else "ab" if rate < 0 else "gleich"
+    parts.append(f"Du nimmst gerade {abs(rate):.2f} kg pro Woche {richtung}.")
+    if pace == "zu schnell" and limit:
+        parts.append(f"Das ist schnell — über {limit} kg pro Woche ist ein "
+                     f"spürbarer Teil davon nicht das, was du haben wolltest.")
+    elif pace == "gemächlich":
+        parts.append("Das ist langsam, aber es geht in die richtige Richtung.")
+    if weeks == 0:
+        parts.append("Du bist da.")
+    elif eta:
+        parts.append(f"In diesem Tempo erreichst du {goal_kg} kg in etwa "
+                     f"{weeks:.0f} Wochen, also um den "
+                     f"{dt.date.fromisoformat(eta).strftime('%d.%m.%Y')}.")
+    elif weeks:
+        parts.append(f"In diesem Tempo dauert es rund {weeks:.0f} Wochen.")
+    elif remaining is not None:
+        parts.append(f"So kommst du dem Ziel nicht näher — es liegt "
+                     f"{abs(remaining):.1f} kg in der anderen Richtung.")
+    return " ".join(parts)

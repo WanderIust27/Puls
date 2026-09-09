@@ -21,7 +21,7 @@ from ..services import activity_details as activity_details_svc
 from ..services import (autopilot, boosters, feedback, gym_analysis,
                         insights, memory, mood, nutrition, recipes, score,
                         sleep as sleep_svc, stats, suggestions, supplements,
-                        trends)
+                        trends, vitals)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -986,6 +986,84 @@ def coach_checkin(kind: str = "midday") -> dict[str, str]:
     return {"message": coach_ai.checkin(kind)}
 
 
+@router.get("/exercises/proposals")
+def exercise_proposals() -> list[dict[str, Any]]:
+    """Was nach dem letzten Training angepasst werden sollte."""
+    return ex_lib.open_proposals()
+
+
+class ProposalDecision(BaseModel):
+    accept: bool = True
+
+
+@router.post("/exercises/proposals/{proposal_id}")
+def exercise_proposal_decide(proposal_id: int, d: ProposalDecision) -> dict[str, Any]:
+    result = ex_lib.decide_proposal(proposal_id, d.accept)
+    if not result:
+        raise HTTPException(404, "Diesen offenen Vorschlag gibt es nicht.")
+    return result
+
+
+@router.post("/exercises/proposals")
+def exercise_proposals_all(d: ProposalDecision) -> dict[str, int]:
+    return {"count": ex_lib.decide_all(d.accept)}
+
+
+@router.get("/exercises/changes")
+def exercise_changes(days: int = 10) -> list[dict[str, Any]]:
+    """Was seit der letzten Einheit an den Vorgaben geaendert wurde."""
+    return ex_lib.recent_changes(days=days)
+
+
+@router.get("/vitals/threshold")
+def vitals_threshold() -> dict[str, Any]:
+    """Laktatschwelle: Puls, Tempo und die daraus abgeleiteten Bereiche."""
+    return vitals.threshold()
+
+
+class ThresholdIn(BaseModel):
+    hr: int | None = None
+
+
+@router.post("/vitals/threshold")
+def vitals_threshold_set(t: ThresholdIn) -> dict[str, Any]:
+    """Den Wert der Uhr eintragen — er schlaegt jede Schaetzung."""
+    if t.hr is None or t.hr <= 0:
+        set_setting("lthr_bpm", "")
+    elif not 90 <= t.hr <= 220:
+        raise HTTPException(400, "Bitte einen Puls zwischen 90 und 220.")
+    else:
+        set_setting("lthr_bpm", str(int(t.hr)))
+    return vitals.threshold()
+
+
+@router.get("/vitals/stress")
+def vitals_stress(days: int = 30) -> dict[str, Any]:
+    """Wann Stress hoch ist — und was dagegen bei dir hilft."""
+    return vitals.stress_pattern(days)
+
+
+@router.get("/body/goal")
+def body_goal() -> dict[str, Any]:
+    """Zielgewicht: Stand, Hochrechnung und was sinnvoll waere."""
+    return body.goal()
+
+
+class WeightGoalIn(BaseModel):
+    target_kg: float | None = None
+
+
+@router.post("/body/goal")
+def body_goal_set(g: WeightGoalIn) -> dict[str, Any]:
+    if g.target_kg is None or g.target_kg <= 0:
+        set_setting("weight_target_kg", "")
+    elif not 35 <= g.target_kg <= 250:
+        raise HTTPException(400, "Bitte ein Zielgewicht zwischen 35 und 250 kg.")
+    else:
+        set_setting("weight_target_kg", str(round(g.target_kg, 1)))
+    return body.goal()
+
+
 @router.get("/sleep/tonight")
 def sleep_tonight() -> dict[str, Any]:
     """Wann heute Abend Schlafenszeit wäre — und wie regelmäßig es zugeht."""
@@ -1439,7 +1517,7 @@ class ProgressIn(BaseModel):
 @router.post("/sets/apply-progression")
 def run_progression(body: ProgressIn) -> dict[str, Any]:
     day = body.day or dt.date.today().isoformat()
-    return {"results": ex_lib.apply_progression_for_day(day)}
+    return {"results": ex_lib.propose_for_day(day)}
 
 
 # ----------------------------------------------------------------- Benchmark

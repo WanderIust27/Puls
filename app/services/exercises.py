@@ -734,6 +734,201 @@ def apply_progression_for_day(day: str) -> list[dict[str, Any]]:
     return out
 
 
+# ------------------------------------------------------------- Vorschlaege
+
+def _best_set(sets: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Der Satz, der am meisten gesagt hat: schwerstes Gewicht, darin die
+    meisten Wiederholungen."""
+    real = [s for s in sets if (s.get("weight_kg") or 0) > 0 and (s.get("reps") or 0) > 0]
+    if not real:
+        return None
+    top = max(s["weight_kg"] for s in real)
+    at_top = [s for s in real if s["weight_kg"] == top]
+    return max(at_top, key=lambda s: s["reps"])
+
+
+def propose_for_day(day: str) -> list[dict[str, Any]]:
+    """Aus einem Trainingstag Vorschlaege ableiten — ohne etwas zu aendern.
+
+    Der Unterschied zur automatischen Fortschreibung ist nicht technisch,
+    sondern eine Frage der Zustaendigkeit: Wer 35 kg statt der geplanten 20
+    bewegt, hat eine Entscheidung getroffen, die PULS nachvollziehen, aber
+    nicht stillschweigend uebernehmen sollte. Der Vorschlag steht da, mit dem
+    Beleg daneben, und ein Tippen macht ihn zur neuen Vorgabe.
+    """
+    with get_db() as db:
+        ids = [r["exercise_id"] for r in db.execute(
+            "SELECT DISTINCT exercise_id FROM exercise_sets WHERE day=?",
+            (day,)).fetchall()]
+
+    made: list[dict[str, Any]] = []
+    for ex_id in ids:
+        ex = get_exercise(ex_id)
+        if not ex or ex["mode"] == "time":
+            continue
+        sets = sets_for_day(ex_id, day)
+        best = _best_set(sets)
+        if not best:
+            continue
+
+        from_weight = ex["weight_kg"] or 0.0
+        from_reps = ex["target_reps"] or ex["rep_min"] or 8
+        lifted, reps = float(best["weight_kg"]), int(best["reps"])
+        done = [int(s["reps"]) for s in sets if (s.get("reps") or 0) > 0]
+        all_hit = bool(done) and all(r >= from_reps for r in done)
+
+        # 1. Schwerer als geplant: Das Gewicht ist die neue Wahrheit. Die
+        #    Wiederholungen richten sich nach dem, was dabei ging.
+        if lifted > from_weight + 0.4:
+            to_weight = lifted
+            to_reps = max(ex["rep_min"], min(ex["rep_max"], reps))
+            evidence = f"{reps}× {lifted:g} kg geschafft (Vorgabe {from_reps}× {from_weight:g} kg)"
+            reason = (f"Du hast {lifted:g} kg bewegt, geplant waren "
+                      f"{from_weight:g} kg — das ist die neue Grundlage.")
+        # 2. Wie geplant, aber die Obergrenze erreicht: Gewicht hoch, Wieder-
+        #    holungen zurueck auf den Anfang der Spanne.
+        elif all_hit and from_reps >= ex["rep_max"]:
+            step = ex["weight_increment"] or 2.5
+            to_weight = round_to_increment(lifted + step, step)
+            to_reps = ex["rep_min"]
+            evidence = f"{ex['rep_max']}× {lifted:g} kg in allen Sätzen"
+            reason = (f"Die Obergrenze von {ex['rep_max']} Wiederholungen sitzt "
+                      f"— jetzt mehr Gewicht, dafür wieder {to_reps} Wiederholungen.")
+        # 3. Mehr Wiederholungen als verlangt: Ziel anheben.
+        elif done and max(done) > from_reps:
+            to_weight = lifted
+            to_reps = min(ex["rep_max"], max(done))
+            evidence = f"{max(done)}× {lifted:g} kg statt der geplanten {from_reps}"
+            reason = (f"Du hast mehr Wiederholungen geschafft als verlangt — "
+                      f"das Ziel darf mitwachsen.")
+        # 4. Alles wie geplant: eine Wiederholung mehr als naechster Schritt.
+        elif all_hit and from_reps < ex["rep_max"]:
+            to_weight = lifted or from_weight
+            to_reps = from_reps + 1
+            evidence = f"alle Sätze mit {from_reps}× {lifted:g} kg"
+            reason = "Sauber durchgezogen — der nächste kleine Schritt."
+        else:
+            continue
+
+        if abs(to_weight - from_weight) < 0.4 and to_reps == from_reps:
+            continue
+
+        with get_db() as db:
+            db.execute(
+                """INSERT INTO progression_proposals
+                   (exercise_id, day, from_weight, to_weight, from_reps, to_reps,
+                    evidence, reason)
+                   VALUES(?,?,?,?,?,?,?,?)
+                   ON CONFLICT(exercise_id, day) DO UPDATE SET
+                     to_weight=excluded.to_weight, to_reps=excluded.to_reps,
+                     evidence=excluded.evidence, reason=excluded.reason
+                   WHERE progression_proposals.status='open'""",
+                (ex_id, day, from_weight, round(to_weight, 1), from_reps,
+                 int(to_reps), evidence, reason))
+        made.append({"exercise_id": ex_id, "name": ex["name"],
+                     "from_weight": from_weight, "to_weight": round(to_weight, 1),
+                     "from_reps": from_reps, "to_reps": int(to_reps),
+                     "evidence": evidence, "reason": reason})
+    return made
+
+
+def open_proposals(limit: int = 20) -> list[dict[str, Any]]:
+    """Offene Vorschlaege, juengste zuerst."""
+    with get_db() as db:
+        return rows_to_dicts(db.execute(
+            """SELECT p.*, e.name, e.muscle_group, e.rep_min, e.rep_max
+               FROM progression_proposals p JOIN exercises e ON e.id = p.exercise_id
+               WHERE p.status='open' ORDER BY p.day DESC, p.id DESC LIMIT ?""",
+            (limit,)).fetchall())
+
+
+def decide_proposal(proposal_id: int, accept: bool) -> dict[str, Any] | None:
+    """Einen Vorschlag uebernehmen oder verwerfen."""
+    with get_db() as db:
+        row = db.execute("SELECT * FROM progression_proposals WHERE id=? AND status='open'",
+                         (proposal_id,)).fetchone()
+        if not row:
+            return None
+        db.execute("UPDATE progression_proposals SET status=?, decided_at=datetime('now') "
+                   "WHERE id=?", ("accepted" if accept else "declined", proposal_id))
+        if accept:
+            db.execute(
+                "UPDATE exercises SET weight_kg=?, target_reps=?, fail_streak=0 "
+                "WHERE id=?", (row["to_weight"], row["to_reps"], row["exercise_id"]))
+            db.execute(
+                """INSERT INTO progression_log(exercise_id, action, from_weight,
+                       to_weight, from_reps, to_reps, reason)
+                   VALUES(?, 'accepted', ?, ?, ?, ?, ?)""",
+                (row["exercise_id"], row["from_weight"], row["to_weight"],
+                 row["from_reps"], row["to_reps"],
+                 f"Vorschlag übernommen: {row['reason']}"))
+    return {"id": proposal_id, "accepted": accept}
+
+
+def decide_all(accept: bool = True) -> int:
+    """Alle offenen Vorschlaege auf einmal."""
+    count = 0
+    for p in open_proposals(limit=100):
+        if decide_proposal(p["id"], accept):
+            count += 1
+    return count
+
+
+ACTION_WORDS = {
+    "weight_up": "mehr Gewicht", "reps_up": "mehr Wiederholungen",
+    "deload": "zurückgenommen", "hold": "unverändert",
+    "calibrate": "an die Wirklichkeit angepasst",
+}
+
+
+def recent_changes(exercise_ids: list[int] | None = None,
+                   days: int = 10) -> list[dict[str, Any]]:
+    """Was seit dem letzten Mal an den Vorgaben geaendert wurde — und warum.
+
+    Der Plan aendert sich nach jeder Einheit, aber bisher sah man nur das
+    Ergebnis. Wer eine andere Zahl auf dem Zettel findet, ohne zu wissen
+    warum, glaubt eher an einen Fehler als an eine Anpassung.
+    """
+    since = (dt.datetime.now() - dt.timedelta(days=days)).isoformat(timespec="seconds")
+    query = """SELECT p.exercise_id, p.ts, p.action, p.from_weight, p.to_weight,
+                      p.from_reps, p.to_reps, p.reason, e.name, e.muscle_group
+               FROM progression_log p JOIN exercises e ON e.id = p.exercise_id
+               WHERE p.ts >= ?"""
+    params: list[Any] = [since]
+    if exercise_ids:
+        query += f" AND p.exercise_id IN ({','.join('?' * len(exercise_ids))})"
+        params += list(exercise_ids)
+    query += " ORDER BY p.ts DESC"
+    with get_db() as db:
+        rows = rows_to_dicts(db.execute(query, params).fetchall())
+
+    # Je Uebung nur die juengste Aenderung — sonst steht dieselbe Uebung
+    # dreimal da, weil sie dreimal fortgeschrieben wurde.
+    seen: set[int] = set()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        if r["exercise_id"] in seen or r["action"] == "hold":
+            continue
+        seen.add(r["exercise_id"])
+        dw = (r["to_weight"] or 0) - (r["from_weight"] or 0)
+        dr = (r["to_reps"] or 0) - (r["from_reps"] or 0)
+        parts = []
+        if abs(dw) >= 0.1:
+            parts.append(f"{r['from_weight']:g} → {r['to_weight']:g} kg")
+        if dr:
+            parts.append(f"{r['from_reps']} → {r['to_reps']} Wdh.")
+        out.append({
+            "exercise_id": r["exercise_id"], "name": r["name"],
+            "muscle_group": r["muscle_group"], "action": r["action"],
+            "label": ACTION_WORDS.get(r["action"], r["action"]),
+            "change": " · ".join(parts) or ACTION_WORDS.get(r["action"], ""),
+            "delta_kg": round(dw, 1) if abs(dw) >= 0.1 else None,
+            "delta_reps": dr or None,
+            "reason": r["reason"], "when": r["ts"],
+        })
+    return out
+
+
 def progression_history(exercise_id: int, limit: int = 20) -> list[dict[str, Any]]:
     with get_db() as db:
         return rows_to_dicts(db.execute(

@@ -177,9 +177,63 @@ def situation(as_of: str | None = None) -> dict[str, Any]:
     return {"tags": sorted(set(tags)), "reasons": reasons}
 
 
-def effectiveness() -> dict[str, dict[str, Any]]:
-    """Wie oft hat welche Massnahme geholfen?"""
+# Tageszeiten, in denen erfahrungsgemaess Verschiedenes hilft. Ein Spaziergang
+# um acht Uhr morgens ist etwas anderes als ein Spaziergang um elf Uhr abends.
+DAYPARTS = [(5, 10, "morgens"), (10, 14, "mittags"), (14, 18, "nachmittags"),
+            (18, 23, "abends")]
+MIN_PART_RATINGS = 2      # so viele Bewertungen braucht eine Tageszeit
+
+
+def daypart(hour: int | None = None) -> str:
+    hour = dt.datetime.now().hour if hour is None else hour
+    for start, end, name in DAYPARTS:
+        if start <= hour < end:
+            return name
+    return "nachts"
+
+
+def _slot_hour(slot: str | None) -> int | None:
+    """Aus '2026-09-09#10' die Stunde zurueckrechnen."""
+    if not slot or "#" not in slot:
+        return None
+    try:
+        return int(slot.rsplit("#", 1)[1]) * SLOT_HOURS
+    except ValueError:
+        return None
+
+
+def effectiveness(part: str | None = None) -> dict[str, dict[str, Any]]:
+    """Wie oft hat welche Massnahme geholfen?
+
+    Mit part nur die Bewertungen aus dieser Tageszeit. Das ist der Unterschied
+    zwischen "hat dir schon geholfen" und "hat dir abends schon geholfen" —
+    und abends ist die Frage eine andere als morgens.
+    """
     with get_db() as db:
+        if part:
+            raw = db.execute(
+                "SELECT tip_id, slot, helpful FROM tip_log WHERE slot IS NOT NULL"
+            ).fetchall()
+            counts: dict[str, dict[str, int]] = {}
+            for r in raw:
+                hour = _slot_hour(r["slot"])
+                if hour is None or daypart(hour) != part:
+                    continue
+                c = counts.setdefault(r["tip_id"], {"gut": 0, "schlecht": 0,
+                                                    "bewertet": 0, "gezeigt": 0})
+                c["gezeigt"] += 1
+                if r["helpful"] == 1:
+                    c["gut"] += 1
+                    c["bewertet"] += 1
+                elif r["helpful"] == -1:
+                    c["schlecht"] += 1
+                    c["bewertet"] += 1
+            return {
+                tip: {**c, "score": round(c["gut"] / c["bewertet"], 2)
+                      if c["bewertet"] >= MIN_PART_RATINGS else 0.5,
+                      "part": part}
+                for tip, c in counts.items()}
+
         rows = db.execute(
             """SELECT tip_id,
                       SUM(CASE WHEN helpful = 1 THEN 1 ELSE 0 END) AS gut,
@@ -217,6 +271,8 @@ def suggest(count: int = 3, as_of: str | None = None,
     ctx = situation(as_of)
     stats = effectiveness()
     now = now or dt.datetime.now()
+    part = daypart(now.hour)
+    part_stats = effectiveness(part)
     day = as_of or now.date().isoformat()
     slot = _slot(now)
 
@@ -237,8 +293,14 @@ def suggest(count: int = 3, as_of: str | None = None,
             if not hits:
                 return -1.0
             stat = stats.get(b["id"], {})
-            # Erfahrung schlaegt Passung, sobald genug Bewertungen da sind
-            return hits + (stat.get("score", 0.5) - 0.5) * 4
+            value = hits + (stat.get("score", 0.5) - 0.5) * 4
+            # Was zu DIESER Tageszeit geholfen hat, wiegt schwerer als der
+            # Schnitt über alle Stunden — aber nur, wenn es dafür genug
+            # Bewertungen gibt. Sonst entschiede eine einzelne gute Nacht.
+            here = part_stats.get(b["id"], {})
+            if here.get("bewertet", 0) >= MIN_PART_RATINGS:
+                value += (here["score"] - 0.5) * 6
+            return value
 
         taken = {b["id"] for b in chosen}
         pool = [b for b in BOOSTERS if b["id"] not in taken and score(b) > -1]
@@ -256,9 +318,24 @@ def suggest(count: int = 3, as_of: str | None = None,
                         (b["id"], ",".join(ctx["tags"]), day, slot))
         chosen += fresh
 
+    def note(b: dict[str, Any]) -> str | None:
+        """Warum steht das hier — in einem Satz, aus den Zahlen."""
+        here = part_stats.get(b["id"], {})
+        if here.get("bewertet", 0) >= MIN_PART_RATINGS:
+            return (f"hat dir {part} {here['gut']} von {here['bewertet']} Mal "
+                    f"geholfen")
+        overall = stats.get(b["id"], {})
+        if overall.get("bewertet", 0) >= MIN_RATINGS:
+            return (f"hat dir {overall['gut']} von {overall['bewertet']} Mal "
+                    f"geholfen")
+        return None
+
     return {
         "situation": ctx,
-        "boosters": [{**b, "stats": stats.get(b["id"])} for b in chosen],
+        "daypart": part,
+        "boosters": [{**b, "stats": stats.get(b["id"]),
+                      "part_stats": part_stats.get(b["id"]),
+                      "why": note(b)} for b in chosen],
         "learned": sum(1 for v in stats.values() if v["bewertet"] >= MIN_RATINGS),
         "slot": slot,
         "next_change": (now.replace(minute=0, second=0, microsecond=0)
