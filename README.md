@@ -157,6 +157,40 @@ sie nichts verloren. Umgekehrt darf eine verlangte Übung aus jedem Block kommen
 Wer auf den ersten Klimmzug hinarbeitet, braucht negative Klimmzüge — egal, in
 welcher Schublade sie liegen.
 
+## Ein Schwerpunkt trägt die Einheit
+
+„90 Minuten Gym, Sixpack" ergab lange **eine** Bauchübung von sechs. Zwei
+Gründe: Der Hauptteil ging stur reihum durch alle Muskelgruppen, und die
+Matten-Übungen — Sit-ups, Planken, Seitstütz — lagen im Block „zuhause" und
+waren im Studio damit gesperrt. Als hinge ein Sit-up an einer Maschine.
+
+Beides ist geändert. Matten-Übungen haben einen eigenen Block und kommen
+**sowohl zuhause als auch im Studio** in Frage. Und bei einem ausdrücklichen
+Wunsch trägt der Schwerpunkt den Hauptteil, statt nur vorne zu stehen: Auftakt
+und Klimmzugarbeit schrumpfen zugunsten der gewünschten Gruppen, ein
+Kettlebell-Satz bleibt als Aufwärmen stehen. Dazu sechs neue Studio-Übungen für
+den Rumpf: Sit-ups, Negativ-Sit-ups an der Schrägbank, Rumpfrotation,
+Rückenstrecker, hängendes Beinheben, Crunch am Kabelzug.
+
+Aus „90 Minuten Gym Sixpack" wird damit:
+
+    Aufwärmen (Kettlebell)
+    Klappmesser · Sit-ups · Hängendes Beinheben
+    Unterarmstütz · Seitstütz · Käfer
+    Beinpresse
+    Negativ-Sit-ups · Rumpfrotation · Crunch am Kabelzug
+    Dehnen
+
+Die Reihenfolge ist kein Zufall: **Matte vor Maschine.** Nach dem Aufwärmen
+liegt man ohnehin schon, und die Geräte sind später frei. Ein breiter Wunsch
+(„Ganzkörper") bleibt dagegen ausgewogen — dort ist die Gleichverteilung ja
+gerade der Punkt.
+
+Neue Übungen erreichen auch eine **bestehende** Bibliothek: Gesät wird nur beim
+ersten Start, deshalb trägt ein Abgleich beim Hochfahren nach, was dazugekommen
+ist. Angefasst wird dabei nichts Bestehendes — eigene Gewichte, Zielwerte und
+selbst angelegte Übungen bleiben unberührt.
+
 ## Zuhause trainieren
 
 Nicht jede Einheit braucht ein Studio. Unter *Plan → Zuhause trainieren* wählst

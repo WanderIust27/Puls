@@ -180,8 +180,13 @@ def build(text: str) -> dict[str, Any]:
                                              with_dumbbell=True,
                                              must=(goal or {}).get("must"))
     else:
+        # Ein Wunsch ist ein Wunsch: Wer „Sixpack-Training" schreibt, will
+        # nicht eine Bauchübung von sechsen. Nur bei einem breiten Wunsch
+        # (Ganzkörper) bleibt es bei der ausgewogenen Verteilung.
+        wide = len(want["groups"]) >= 5
         workout = planner.build_gym_session(want["minutes"],
-                                            emphasis=want["groups"][:3])
+                                            emphasis=want["groups"][:3],
+                                            dominate=not wide)
 
     labels = [ex_lib.MUSCLE_LABELS.get(g, g) for g in want["groups"]]
     workout["request"] = {

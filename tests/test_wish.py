@@ -112,6 +112,48 @@ ok("Ohne Ziel kein Handstand", "Handstand an der Wand" not in namen,
    " · ".join(namen))
 ok("… und keine Krähe", "Krähe" not in namen, " · ".join(namen))
 
+# --- Ein Schwerpunkt muss die Einheit auch tragen ------------------------
+# „Sixpack-Training" darf nicht eine Bauchübung von sechsen ergeben.
+w = sr.build("90 minuten gym sixpack training")
+namen = names_of(w)
+with get_db() as db:
+    gruppen = [db.execute("SELECT muscle_group FROM exercises WHERE id=?", (i,)
+                          ).fetchone()["muscle_group"] for i in w["exercise_ids"]]
+kern = sum(1 for g in gruppen if g == "core")
+ok("Der Schwerpunkt trägt die Einheit", kern >= 6,
+   f"{kern} von {len(gruppen)} Übungen für den Rumpf")
+ok("Sit-ups sind dabei", "Sit-ups" in namen, " · ".join(namen))
+ok("Planken sind dabei",
+   "Unterarmstütz" in namen and "Seitstütz" in namen, " · ".join(namen))
+ok("Maschinen sind auch dabei",
+   any(n in namen for n in ("Negativ-Sit-ups (Schrägbank)",
+                            "Rumpfrotation an der Maschine",
+                            "Crunch am Kabelzug")), " · ".join(namen))
+
+# Die Reihenfolge: erst Matte, dann Gerät — nach dem Aufwärmen liegt man
+# ohnehin schon, und die Geräte sind später frei.
+# Nur den Hauptteil betrachten: Der Kettlebell-Auftakt steht davor, das
+# Dehnen dahinter — nach dem Block zu filtern ist verlässlicher, als
+# Übungsnamen zu erraten.
+with get_db() as db:
+    rows = [db.execute("SELECT name, equipment, slot FROM exercises WHERE id=?",
+                       (i,)).fetchone() for i in w["exercise_ids"]]
+haupt = [(r["name"], r["equipment"]) for r in rows
+         if r["slot"] in ("main", "mat")]
+erste_maschine = next((i for i, (_n, g) in enumerate(haupt)
+                       if g in ("machine", "cable")), len(haupt))
+letzte_matte = max((i for i, (_n, g) in enumerate(haupt)
+                    if g == "bodyweight"), default=-1)
+ok("Matte vor Maschine", letzte_matte < erste_maschine or erste_maschine == len(haupt),
+   " · ".join(f"{n} ({g})" for n, g in haupt))
+
+# Ein breiter Wunsch bleibt ausgewogen.
+w = sr.build("90 Minuten Ganzkörper")
+with get_db() as db:
+    gruppen = {db.execute("SELECT muscle_group FROM exercises WHERE id=?", (i,)
+                          ).fetchone()["muscle_group"] for i in w["exercise_ids"]}
+ok("Ganzkörper bleibt breit", len(gruppen) >= 5, str(sorted(gruppen)))
+
 # --- Aufteilung der Woche -------------------------------------------------
 set_setting("gym_days", json.dumps(["Mo", "Mi", "Fr"]))
 set_setting("run_days", json.dumps(["Di", "Do"]))
@@ -157,6 +199,39 @@ ok("Jede Einheit erklärt ihre Rolle",
 autopilot.save_settings({"split": "quatsch"})
 check("Unbekannte Aufteilung wird nicht übernommen",
       autopilot.settings()["split"], "push_pull")
+
+# --- Neue Übungen erreichen auch eine bestehende Bibliothek --------------
+# Gesät wird nur einmal. Kommen mit einem Update Übungen dazu, sähe sie sonst
+# niemand, der PULS schon benutzt.
+with get_db() as db:
+    for n in ("Sit-ups", "Negativ-Sit-ups (Schrägbank)",
+              "Rumpfrotation an der Maschine", "Rückenstrecker (Gerät)",
+              "Hängendes Beinheben", "Crunch am Kabelzug"):
+        db.execute("DELETE FROM exercises WHERE name=?", (n,))
+    db.execute("UPDATE exercises SET slot='home' WHERE slot='mat'")
+    db.execute("UPDATE exercises SET weight_kg=99 WHERE name='Beinpresse'")
+    db.execute("""INSERT INTO exercises(name, muscle_group, equipment, slot)
+                  VALUES('Meine eigene Übung', 'core', 'bodyweight', 'mat')""")
+    vorher = db.execute("SELECT COUNT(*) c FROM exercises").fetchone()["c"]
+
+r = ex_lib.sync_seed_library()
+with get_db() as db:
+    nachher = db.execute("SELECT COUNT(*) c FROM exercises").fetchone()["c"]
+    bp = db.execute("SELECT weight_kg FROM exercises WHERE name='Beinpresse'"
+                    ).fetchone()["weight_kg"]
+    mat = db.execute("SELECT COUNT(*) c FROM exercises WHERE slot='mat'"
+                     ).fetchone()["c"]
+    eigen = db.execute("SELECT COUNT(*) c FROM exercises "
+                       "WHERE name='Meine eigene Übung'").fetchone()["c"]
+check("Sechs Übungen kommen dazu", r["added"], 6)
+ok("… und landen wirklich in der Bibliothek", nachher == vorher + 6,
+   f"{vorher} → {nachher}")
+ok("Umsortierte Blöcke werden nachgezogen", r["moved"] >= 8, str(r["moved"]))
+ok("Der Matten-Block ist danach gefüllt", mat >= 9, str(mat))
+check("Eigene Gewichte bleiben unangetastet", bp, 99.0)
+check("Selbst angelegte Übungen bleiben", eigen, 1)
+check("Ein zweiter Lauf ändert nichts", ex_lib.sync_seed_library(),
+      {"added": 0, "moved": 0})
 
 print()
 if failures:

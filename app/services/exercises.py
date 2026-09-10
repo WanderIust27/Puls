@@ -120,6 +120,41 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          weight_kg=50, weight_increment=5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="PULL_UP", garmin_exercise="LAT_PULLDOWN", sort_order=60,
          aliases=["lat pulldown", "latzug", "latziehen"]),
+    dict(name="Sit-ups", muscle_group="core", equipment="bodyweight",
+         target_reps=20, rep_min=12, rep_max=30, weight_increment=0, sets=3, rest_s=45,
+         slot="mat", garmin_category="SIT_UP", garmin_exercise="SIT_UP",
+         sort_order=71, notes="Auf der Matte, Füße locker — nicht reißen",
+         aliases=["situp", "sit up", "sit-ups", "bauchpresse frei"]),
+    dict(name="Negativ-Sit-ups (Schrägbank)", muscle_group="core", equipment="machine",
+         weight_kg=0, weight_increment=2.5, target_reps=12, rep_min=8, rep_max=20,
+         sets=3, rest_s=60, slot="main",
+         garmin_category="SIT_UP", garmin_exercise="DECLINE_SIT_UP",
+         sort_order=72, notes="Schrägbank; Gewicht erst, wenn 20 sauber gehen",
+         aliases=["decline situp", "negativ situps", "schraegbank situps"]),
+    dict(name="Rumpfrotation an der Maschine", muscle_group="core", equipment="machine",
+         weight_kg=25, weight_increment=5, target_reps=12, rep_min=10, rep_max=18,
+         sets=3, rest_s=60, slot="main",
+         garmin_category="CHOP", garmin_exercise="CABLE_WOOD_CHOP",
+         sort_order=73, notes="Aus dem Rumpf drehen, Hüfte bleibt ruhig",
+         aliases=["rotation", "torso rotation", "holzhacker", "wood chop",
+                  "rumpfrotation"]),
+    dict(name="Rückenstrecker (Gerät)", muscle_group="back", equipment="machine",
+         weight_kg=0, weight_increment=5, target_reps=15, rep_min=10, rep_max=20,
+         sets=3, rest_s=60, slot="main",
+         garmin_category="HYPEREXTENSION", garmin_exercise="HYPEREXTENSION",
+         sort_order=74, notes="Nur bis zur Geraden, nicht ins Hohlkreuz",
+         aliases=["rueckenstrecker", "hyperextension", "back extension"]),
+    dict(name="Hängendes Beinheben", muscle_group="core", equipment="bodyweight",
+         target_reps=10, rep_min=6, rep_max=18, weight_increment=0, sets=3, rest_s=60,
+         slot="main", garmin_category="LEG_RAISE", garmin_exercise="HANGING_LEG_RAISE",
+         sort_order=75, notes="An der Klimmzugstange, ohne Schwung",
+         aliases=["hanging leg raise", "beinheben", "knieheben"]),
+    dict(name="Crunch am Kabelzug", muscle_group="core", equipment="cable",
+         weight_kg=25, weight_increment=5, target_reps=15, rep_min=10, rep_max=20,
+         sets=3, rest_s=50, slot="main",
+         garmin_category="CRUNCH", garmin_exercise="CABLE_CRUNCH",
+         sort_order=76, notes="Kniend, mit dem Brustbein Richtung Becken",
+         aliases=["cable crunch", "kabelcrunch", "seilzug crunch"]),
     dict(name="Klappmesser", muscle_group="core", equipment="bodyweight",
          mode="time", target_duration_s=30, weight_increment=0, sets=3, rest_s=60,
          garmin_category="CORE", garmin_exercise="SWISS_BALL_JACKKNIFE", sort_order=70,
@@ -190,38 +225,38 @@ SEED_EXERCISES: list[dict[str, Any]] = [
     # nicht in Frage kommt.
     dict(name="Unterarmstütz", muscle_group="core", equipment="bodyweight",
          mode="time", target_duration_s=45, weight_increment=0, sets=3, rest_s=45,
-         slot="home", garmin_category="PLANK", garmin_exercise="FRONT_PLANK",
+         slot="mat", garmin_category="PLANK", garmin_exercise="FRONT_PLANK",
          sort_order=300, notes="Becken bewusst nicht durchhängen lassen",
          aliases=["plank", "planke", "unterarmstuetz"]),
     dict(name="Seitstütz", muscle_group="core", equipment="bodyweight",
          mode="time", target_duration_s=30, weight_increment=0, sets=4, rest_s=30,
-         slot="home", garmin_category="PLANK", garmin_exercise="SIDE_PLANK",
+         slot="mat", garmin_category="PLANK", garmin_exercise="SIDE_PLANK",
          sort_order=305, notes="Je Seite zwei Sätze",
          aliases=["side plank", "seitstuetz", "seitliche planke"]),
     dict(name="Käfer", muscle_group="core", equipment="bodyweight",
          target_reps=12, rep_min=8, rep_max=20, weight_increment=0, sets=3, rest_s=45,
-         slot="home", garmin_category="CORE", garmin_exercise="DEAD_BUG",
+         slot="mat", garmin_category="CORE", garmin_exercise="DEAD_BUG",
          sort_order=310, notes="Langsam, der untere Rücken bleibt am Boden",
          aliases=["dead bug", "kaefer", "totenkaefer"]),
     dict(name="Vierfüßlerstand diagonal", muscle_group="core", equipment="bodyweight",
          target_reps=10, rep_min=8, rep_max=16, weight_increment=0, sets=3, rest_s=40,
-         slot="home", garmin_category="CORE", garmin_exercise="BIRD_DOG",
+         slot="mat", garmin_category="CORE", garmin_exercise="BIRD_DOG",
          sort_order=315, notes="Arm und gegenüberliegendes Bein, kurz halten",
          aliases=["bird dog", "vierfuesslerstand", "birddog"]),
     dict(name="Beckenheben", muscle_group="core", equipment="bodyweight",
          target_reps=15, rep_min=10, rep_max=25, weight_increment=0, sets=3, rest_s=45,
-         slot="home", garmin_category="HIP_RAISE", garmin_exercise="GLUTE_BRIDGE",
+         slot="mat", garmin_category="HIP_RAISE", garmin_exercise="GLUTE_BRIDGE",
          sort_order=320, notes="Oben eine Sekunde halten",
          aliases=["glute bridge", "brücke", "beckenheben", "hip raise"]),
     dict(name="Rückenstrecken am Boden", muscle_group="back", equipment="bodyweight",
          target_reps=12, rep_min=8, rep_max=20, weight_increment=0, sets=3, rest_s=45,
-         slot="home", garmin_category="HYPEREXTENSION",
+         slot="mat", garmin_category="HYPEREXTENSION",
          garmin_exercise="BACK_EXTENSION_WITH_OPPOSITE_ARM_AND_LEG_REACH",
          sort_order=325, notes="Aus dem Rücken heben, nicht aus dem Nacken",
          aliases=["superman", "rueckenstrecken", "back extension"]),
     dict(name="Schwimmer", muscle_group="back", equipment="bodyweight",
          mode="time", target_duration_s=40, weight_increment=0, sets=3, rest_s=40,
-         slot="home", garmin_category="HYPEREXTENSION",
+         slot="mat", garmin_category="HYPEREXTENSION",
          garmin_exercise="SUPERMAN_ON_SWISS_BALL", sort_order=330,
          notes="Arme und Beine wechselseitig, klein und schnell",
          aliases=["swimmer", "schwimmer"]),
@@ -250,7 +285,7 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          aliases=["pullover", "ueberzuege"]),
     dict(name="Russischer Twist mit Hantel", muscle_group="core", equipment="dumbbell",
          weight_kg=6, weight_increment=2, target_reps=16, rep_min=10, rep_max=24,
-         sets=3, rest_s=45, slot="home", garmin_category="CHOP",
+         sets=3, rest_s=45, slot="mat", garmin_category="CHOP",
          garmin_exercise="WEIGHTED_RUSSIAN_TWIST_ON_SWISS_BALL", sort_order=355,
          notes="Aus dem Rumpf drehen, nicht aus den Armen",
          aliases=["russian twist", "russischer twist"]),
@@ -285,7 +320,7 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          aliases=["pike push up", "pike liegestuetz"]),
     dict(name="Hohlkörper halten", muscle_group="core", equipment="bodyweight",
          mode="time", target_duration_s=30, weight_increment=0, sets=3, rest_s=60,
-         slot="home", garmin_category="CORE", garmin_exercise="HOLLOW_HOLD",
+         slot="mat", garmin_category="CORE", garmin_exercise="HOLLOW_HOLD",
          sort_order=410, notes="Unterer Rücken bleibt am Boden — davon hängt alles ab",
          aliases=["hollow body", "hohlkoerper", "hollow hold"]),
     dict(name="Krähe", muscle_group="arms", equipment="bodyweight",
@@ -406,9 +441,68 @@ EVENING_YOGA_POOL: list[dict[str, Any]] = [
 
 # --------------------------------------------------------------------- CRUD
 
+def _seed_row(ex: dict[str, Any]) -> dict[str, Any]:
+    """Einen Eintrag der Startbibliothek in eine Datenbankzeile uebersetzen."""
+    return {
+        "name": ex["name"],
+        "aliases": json.dumps(ex.get("aliases", []), ensure_ascii=False),
+        "muscle_group": ex["muscle_group"],
+        "equipment": ex["equipment"],
+        "mode": ex.get("mode", "reps"),
+        "weight_kg": ex.get("weight_kg"),
+        "weight_increment": ex.get("weight_increment",
+                                   DEFAULT_INCREMENT.get(ex["equipment"], 2.5)),
+        "target_reps": ex.get("target_reps", 12),
+        "rep_min": ex.get("rep_min", 12),
+        "rep_max": ex.get("rep_max", 15),
+        "target_duration_s": ex.get("target_duration_s"),
+        "sets": ex.get("sets", 3),
+        "rest_s": ex.get("rest_s", 90),
+        "machine_setting": ex.get("machine_setting"),
+        "slot": ex.get("slot", "main"),
+        "priority": ex.get("priority", 2),
+        "garmin_category": ex.get("garmin_category"),
+        "garmin_exercise": ex.get("garmin_exercise"),
+        "sort_order": ex.get("sort_order", 100),
+        "notes": ex.get("notes"),
+    }
+
+
+def sync_seed_library() -> dict[str, int]:
+    """Neue Uebungen aus der Startbibliothek nachtragen.
+
+    Gesaet wird nur einmal, beim ersten Start. Kommen mit einem Update neue
+    Uebungen dazu — etwa Sit-ups und Planken fuers Studio —, saehe sie sonst
+    niemand, der PULS schon benutzt. Angefasst wird nichts Bestehendes:
+    Gewichte, Zielwerte und selbst angelegte Uebungen bleiben, wie sie sind.
+    Nur der Block wird nachgezogen, wenn eine Uebung umgeraeumt wurde.
+    """
+    added = moved = 0
+    with get_db() as db:
+        known = {r["name"]: r["slot"] for r in db.execute(
+            "SELECT name, slot FROM exercises").fetchall()}
+        if not known:
+            return {"added": 0, "moved": 0}
+        for ex in SEED_EXERCISES:
+            if ex["name"] not in known:
+                row = _seed_row(ex)
+                db.execute(
+                    f"INSERT OR IGNORE INTO exercises({', '.join(row)}) "
+                    f"VALUES({', '.join(':' + k for k in row)})", row)
+                added += 1
+            elif ex.get("slot", "main") != known[ex["name"]]:
+                db.execute("UPDATE exercises SET slot=? WHERE name=?",
+                           (ex.get("slot", "main"), ex["name"]))
+                moved += 1
+    if added or moved:
+        log.info("Bibliothek ergänzt: %d neu, %d umsortiert.", added, moved)
+    return {"added": added, "moved": moved}
+
+
 def seed_default_exercises() -> None:
     """Einmalig beim ersten Start: Thomas' Plan als Startbibliothek anlegen."""
     if get_setting("exercises_seeded") == "1":
+        sync_seed_library()
         return
     with get_db() as db:
         existing = db.execute("SELECT COUNT(*) AS n FROM exercises").fetchone()["n"]
@@ -416,29 +510,7 @@ def seed_default_exercises() -> None:
             set_setting("exercises_seeded", "1")
             return
         for ex in SEED_EXERCISES:
-            row = {
-                "name": ex["name"],
-                "aliases": json.dumps(ex.get("aliases", []), ensure_ascii=False),
-                "muscle_group": ex["muscle_group"],
-                "equipment": ex["equipment"],
-                "mode": ex.get("mode", "reps"),
-                "weight_kg": ex.get("weight_kg"),
-                "weight_increment": ex.get("weight_increment",
-                                           DEFAULT_INCREMENT.get(ex["equipment"], 2.5)),
-                "target_reps": ex.get("target_reps", 12),
-                "rep_min": ex.get("rep_min", 12),
-                "rep_max": ex.get("rep_max", 15),
-                "target_duration_s": ex.get("target_duration_s"),
-                "sets": ex.get("sets", 3),
-                "rest_s": ex.get("rest_s", 90),
-                "machine_setting": ex.get("machine_setting"),
-                "slot": ex.get("slot", "main"),
-                "priority": ex.get("priority", 2),
-                "garmin_category": ex.get("garmin_category"),
-                "garmin_exercise": ex.get("garmin_exercise"),
-                "sort_order": ex.get("sort_order", 100),
-                "notes": ex.get("notes"),
-            }
+            row = _seed_row(ex)
             db.execute(
                 """INSERT OR IGNORE INTO exercises
                    (name, aliases, muscle_group, equipment, mode, weight_kg,

@@ -173,8 +173,16 @@ def _pick(pool: list[dict[str, Any]], count: int, seed_key: str) -> list[dict[st
 
 
 def _balance_main(pool: list[dict[str, Any]], count: int,
-                  emphasis: list[str] | None = None) -> list[dict[str, Any]]:
-    """Hauptteil so wählen, dass die Muskelgruppen über die Woche abgedeckt sind."""
+                  emphasis: list[str] | None = None,
+                  dominate: bool = False) -> list[dict[str, Any]]:
+    """Hauptteil so wählen, dass die Muskelgruppen über die Woche abgedeckt sind.
+
+    dominate=True heisst: Der Schwerpunkt ist ausdruecklich gewuenscht (aus
+    einem Wunsch wie „Sixpack-Training"), nicht bloss vom Bedarf abgeleitet.
+    Dann kommt der Grossteil aus diesen Gruppen, statt reihum durch alle zu
+    gehen — wer eine Bauch-Einheit will, will nicht eine Bauchuebung von
+    sechsen.
+    """
     prefer_machines = get_setting("prefer_machines", "1") == "1"
     order = ["legs", "chest", "back", "shoulders", "arms", "core"]
     # Zuerst, was gerade am ehesten dran ist: der gerechnete Bedarf aus den
@@ -196,31 +204,69 @@ def _balance_main(pool: list[dict[str, Any]], count: int,
             0 if (prefer_machines and e["equipment"] in ("machine", "cable")) else 1,
             -_rest_days(e), e["sort_order"]))
     chosen: list[dict[str, Any]] = []
-    # Erst eine Übung pro Gruppe (Reihum), dann auffüllen
+
+    if dominate and focus:
+        # Erst die gewuenschten Gruppen ausschoepfen — bis auf einen Rest, der
+        # den Koerper nicht einseitig laesst. Zwei Uebungen fuer alles andere
+        # sind kein Ganzkoerpertraining, aber sie halten die Woche im Lot.
+        keep_free = 1 if count <= 4 else 2
+        room = max(1, count - keep_free)
+        # Reihum durch die gewuenschten Gruppen, damit bei zwei Gruppen nicht
+        # die erste alles bekommt.
+        pools = [list(by_group.get(g) or []) for g in focus]
+        while len(chosen) < room and any(pools):
+            for lst in pools:
+                if len(chosen) >= room:
+                    break
+                if lst:
+                    chosen.append(lst.pop(0))
+
+    # Danach (oder ohne Schwerpunkt) reihum: eine Übung pro Gruppe, dann auffüllen
     round_no = 0
+    taken = {e["id"] for e in chosen}
     while len(chosen) < count and round_no < 4:
         for g in order:
             if len(chosen) >= count:
                 break
-            lst = by_group.get(g) or []
+            lst = [e for e in (by_group.get(g) or []) if e["id"] not in taken]
             if len(lst) > round_no:
                 chosen.append(lst[round_no])
+                taken.add(lst[round_no]["id"])
         round_no += 1
-    chosen.sort(key=lambda e: e["sort_order"])
+
+    # Matte vor Maschine: Nach dem Aufwärmen liegt man ohnehin schon, und die
+    # Geräte sind später frei. Innerhalb dessen die eigene Reihenfolge.
+    chosen.sort(key=lambda e: (0 if e.get("equipment") == "bodyweight" else 1,
+                               e["sort_order"]))
     return chosen[:count]
 
 
 def build_gym_session(minutes: int | None = None, name: str | None = None,
-                      emphasis: list[str] | None = None) -> dict[str, Any]:
+                      emphasis: list[str] | None = None,
+                      dominate: bool = False) -> dict[str, Any]:
     """Eine komplette Gym-Einheit nach Thomas' Aufbau.
 
     emphasis nennt die Muskelgruppen, die zuerst drankommen sollen — der
     Autopilot leitet sie aus den Trends ab. Ohne Angabe bleibt es bei der
     ausgewogenen Reihum-Verteilung.
+
+    dominate=True heisst: Der Schwerpunkt kommt aus einem ausdruecklichen
+    Wunsch („Sixpack-Training"), nicht aus dem gerechneten Bedarf. Dann traegt
+    er den Hauptteil, statt nur vorne zu stehen.
     """
     minutes = minutes or int(get_setting("gym_minutes", "75") or 75)
     sizes = _block_sizes(minutes)
     lib = ex_lib.list_exercises(only_active=True)
+
+    # Bei einem ausdruecklichen Schwerpunkt schrumpfen Auftakt und
+    # Klimmzugarbeit zugunsten des Hauptteils: Wer eine Bauch-Einheit will,
+    # will kein halbes Ganzkoerpertraining mit angehaengten Sit-ups. Ein
+    # Kettlebell-Satz bleibt als Aufwaermen stehen.
+    if dominate:
+        freed = max(0, sizes["kettlebell"] - 1) + sizes["pullup"]
+        sizes["kettlebell"] = min(1, sizes["kettlebell"])
+        sizes["pullup"] = 0
+        sizes["main"] += freed
 
     # Gemeldete Beschwerden gehen direkt in den Plan: betroffene Muskelgruppen
     # fallen heraus, statt dass du sie selbst wegklickst. Bleibt danach zu
@@ -243,6 +289,10 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
     by_slot: dict[str, list[dict[str, Any]]] = {}
     for e in lib:
         by_slot.setdefault(e.get("slot") or "main", []).append(e)
+    # Matten-Übungen gehören auch ins Studio. Sit-ups, Planken und Seitstütz
+    # braucht kein Gerät — sie im Studio wegzulassen hiesse, eine Bauch-Einheit
+    # aus dem zu bauen, was zufällig an einer Maschine hängt.
+    by_slot["main"] = (by_slot.get("main") or []) + (by_slot.get("mat") or [])
 
     used: list[dict[str, Any]] = []
 
@@ -277,7 +327,8 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
             used.append(e)
 
         # 4. Hauptteil an den Maschinen
-        for e in _balance_main(by_slot.get("main", []), sz["main"], emphasis):
+        for e in _balance_main(by_slot.get("main", []), sz["main"], emphasis,
+                               dominate=dominate):
             out.extend(_exercise_to_steps(e))
             used.append(e)
 
@@ -378,8 +429,11 @@ def build_home_session(minutes: int = 30, groups: list[str] | None = None,
     # Der Block "home" ist die Grundlage. Eine ausdruecklich verlangte Uebung
     # darf aber aus jedem Block kommen: Wer auf den ersten Klimmzug hinarbeitet,
     # braucht negative Klimmzuege — egal, in welcher Schublade sie liegen.
+    # "mat" und "home" sind beides Übungen ohne Studio — der Unterschied ist
+    # nur, dass Matten-Übungen auch im Gym Sinn ergeben und deshalb dort
+    # ebenfalls auftauchen.
     lib = [e for e in everything
-           if (e.get("slot") == "home" or e["name"].lower() in wanted_names)
+           if (e.get("slot") in ("home", "mat") or e["name"].lower() in wanted_names)
            and (with_dumbbell or e.get("equipment") != "dumbbell"
                 or e["name"].lower() in wanted_names)]
 

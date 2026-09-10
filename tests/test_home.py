@@ -32,7 +32,10 @@ def check(name, actual, expected):
 init_db()
 ex_lib.seed_default_exercises()
 
-home = [e for e in ex_lib.list_exercises() if e.get("slot") == "home"]
+# "home" und "mat" sind beides Übungen ohne Studio. Matten-Übungen tauchen
+# zusätzlich im Gym auf — deshalb der eigene Block, nicht weil sie zuhause
+# nicht zählten.
+home = [e for e in ex_lib.list_exercises() if e.get("slot") in ("home", "mat")]
 ok("Es gibt Übungen für zuhause", len(home) >= 12, f"{len(home)} Übungen")
 ok("Rumpf und Rücken sind gut vertreten",
    sum(1 for e in home if e["muscle_group"] == "core") >= 4
