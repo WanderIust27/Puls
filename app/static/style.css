@@ -633,10 +633,17 @@ ol.plain li, ul.plain li { margin-bottom: 5px; }
 @media (min-width: 720px) {
   .grid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid-cards .wide { grid-column: 1 / -1; }
+  /* Selbst gewaehlte Breiten. Bei zwei Spalten ist alles ueber eins die volle
+     Breite — mehr Spalten gibt es hier nicht zu verteilen. */
+  .grid-cards > .card.w1 { grid-column: span 1; }
+  .grid-cards > .card.w2, .grid-cards > .card.w3 { grid-column: 1 / -1; }
 }
 @media (min-width: 1080px) {
   .grid-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .grid-cards .span2 { grid-column: span 2; }
+  .grid-cards > .card.w1 { grid-column: span 1; }
+  .grid-cards > .card.w2 { grid-column: span 2; }
+  .grid-cards > .card.w3 { grid-column: 1 / -1; }
 }
 .grid-cards > .card { margin: 0; }
 
@@ -973,3 +980,22 @@ ol.plain li, ul.plain li { margin-bottom: 5px; }
 .chain .c3 { color: var(--teal); font-weight: 600; }
 .chain .cl { color: var(--ink-3); }
 .chain .ca { color: var(--ink-3); margin: 0 2px; }
+
+/* Breite einer Karte wählen — neben dem Griff, gleiche Sichtbarkeit */
+.card > .wsel {
+  position: absolute; top: 6px; left: 28px; z-index: 2;
+  display: flex; gap: 2px; opacity: 0; transition: opacity .15s;
+}
+.card:hover > .wsel, .card > .wsel:focus-within { opacity: 1; }
+@media (hover: none) { .card > .wsel { opacity: 0.55; } }
+.card > .wsel button {
+  background: none; border: 1px solid var(--border); border-radius: 3px;
+  color: var(--ink-3); cursor: pointer; padding: 0; font-size: 9px;
+  width: 15px; height: 15px; line-height: 1; font-family: inherit;
+}
+.card > .wsel button:hover { border-color: var(--ink-3); color: var(--ink-2); }
+.card > .wsel button.on {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--ink);
+}
+/* Unter 720 px hat die Breitenwahl keine Wirkung — dann auch nicht anbieten. */
+@media (max-width: 719px) { .card > .wsel { display: none; } }

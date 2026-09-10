@@ -428,6 +428,14 @@
 
   <div class="card span2">
     <h3>Was sich seit dem letzten Mal geändert hat</h3>
+    <div class="row" style="margin-bottom:10px">
+      <select id="recalcDays" class="small">
+        <option value="7">letzte Woche</option>
+        <option value="30" selected>letzte 30 Tage</option>
+        <option value="90">letzte 90 Tage</option>
+      </select>
+      <button class="btn ghost" id="btnRecalc">An die letzten Trainings anpassen</button>
+    </div>
     <p class="muted">Nach jeder Einheit schreibt PULS die Vorgaben fort. Hier
       steht, was sich geändert hat und woraus es folgt — eine andere Zahl auf
       dem Zettel ohne Begründung sieht sonst aus wie ein Fehler.</p>

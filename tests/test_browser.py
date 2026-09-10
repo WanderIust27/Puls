@@ -425,6 +425,43 @@ try:
         ok("Zurücksetzen stellt die Vorgabe wieder her",
            card_titles() == before_order, str(card_titles()[:3]))
 
+        # --- Kartenbreite selbst wählen -----------------------------------
+        page.click('nav.bottom button[data-view="start"]')
+        page.wait_for_timeout(1500)
+        sels = page.eval_on_selector_all("#view-start .grid-cards > .card > .wsel",
+                                         "e => e.length")
+        ok("Jede Karte hat eine Breitenwahl",
+           sels == page.eval_on_selector_all("#view-start .grid-cards > .card",
+                                             "e => e.length"), f"{sels} Wähler")
+        first = "#view-start .grid-cards > .card:nth-child(2)"
+        page.click(f'{first} > .wsel [data-w="1"]')
+        page.wait_for_timeout(300)
+        ok("Die gewählte Breite steht an der Karte",
+           page.eval_on_selector(first, "el => el.classList.contains('w1')"))
+        ok("… und ist als aktiv markiert",
+           page.eval_on_selector(f'{first} > .wsel [data-w="1"]',
+                                 "el => el.classList.contains('on')"))
+        page.click(f'{first} > .wsel [data-w="3"]')
+        page.wait_for_timeout(300)
+        ok("Umwählen ersetzt die Breite",
+           page.eval_on_selector(first,
+             "el => el.classList.contains('w3') && !el.classList.contains('w1')"))
+
+        page.evaluate("localStorage.clear()")
+        page.reload(wait_until="networkidle")
+        page.wait_for_timeout(3000)
+        ok("Die Breite liegt auf dem Server, nicht im Browser",
+           page.eval_on_selector(first, "el => el.classList.contains('w3')"),
+           page.eval_on_selector(first, "el => el.className"))
+
+        # --- Trainingsdaten nachträglich anpassen -------------------------
+        page.click('nav.bottom button[data-view="strength"]')
+        page.wait_for_timeout(2000)
+        page.click("#btnRecalc")
+        page.wait_for_timeout(4000)
+        ok("Der Anpassen-Knopf antwortet",
+           bool(page.eval_on_selector("#changeList", "el => el.textContent.trim()")))
+
         # --- Vital: Schwelle und Stress -----------------------------------
         page.click('nav.bottom button[data-view="vital"]')
         page.wait_for_timeout(2500)

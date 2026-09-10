@@ -385,6 +385,39 @@ p, _ = probe([(6, 2.5)], 5, 10, inc=2.5)
 ok("Der Rückschritt bleibt bei null stehen",
    p is None or p["to_weight"] >= 0, str(p["to_weight"] if p else "–"))
 
+# --- Nachtraeglich auswerten --------------------------------------------
+# Der Sync wertet nur aus, was gerade hereinkommt. Was davor liegt, muss sich
+# nachholen lassen — sonst bleibt es fuer immer unberuecksichtigt.
+with get_db() as db:
+    db.execute("DELETE FROM exercise_sets")
+    db.execute("DELETE FROM progression_proposals")
+    drei = [r["id"] for r in db.execute(
+        "SELECT id FROM exercises WHERE slot='main' LIMIT 3").fetchall()]
+for back, weight in ((10, 30), (6, 35), (2, 40)):
+    tag = (TODAY - dt.timedelta(days=back)).isoformat()
+    for eid in drei:
+        for i in range(3):
+            ex_lib.record_set(eid, reps=15, weight_kg=weight, day=tag, set_index=i + 1)
+
+check("Vorher ist nichts offen", len(ex_lib.open_proposals()), 0)
+nachgeholt = []
+for back in (10, 6, 2):
+    nachgeholt += ex_lib.propose_for_day((TODAY - dt.timedelta(days=back)).isoformat())
+ok("Alle drei Tage werden ausgewertet", len(nachgeholt) == 9, str(len(nachgeholt)))
+
+offen = ex_lib.open_proposals()
+check("Je Übung bleibt genau einer offen", len(offen), 3)
+ok("… und zwar der vom jüngsten Tag",
+   all(o["day"] == (TODAY - dt.timedelta(days=2)).isoformat() for o in offen),
+   str({o["day"] for o in offen}))
+ok("… mit dem Gewicht des jüngsten Tages",
+   all(o["to_weight"] == 40.0 for o in offen),
+   str({o["to_weight"] for o in offen}))
+with get_db() as db:
+    ueberholt = db.execute("SELECT COUNT(*) c FROM progression_proposals "
+                           "WHERE status='superseded'").fetchone()["c"]
+check("Sechs Vorschläge wurden überholt", ueberholt, 6)
+
 # --- Der Referenzwert muss zur Waage passen -----------------------------
 from app.services import body as body_svc                            # noqa: E402
 with get_db() as db:

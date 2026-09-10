@@ -3114,22 +3114,57 @@ function cardHost(view) {
   return section.querySelector(":scope > .grid-cards") || section;
 }
 
+/* Gespeichert wird je Ansicht { order: [...], widths: {key: 1|2|3} }.
+   Ältere Stände hielten nur die Liste — die soll ein Update nicht verlieren. */
+function layoutOf(view) {
+  const fromServer = layoutFromServer && layoutFromServer[view];
+  if (fromServer) return Array.isArray(fromServer) ? { order: fromServer } : fromServer;
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAYOUT_KEY + view) || "null");
+    if (Array.isArray(raw)) return { order: raw };
+    return raw || {};
+  } catch (e) { return {}; }
+}
+
 function loadOrder(view) {
-  if (layoutFromServer && layoutFromServer[view]) return layoutFromServer[view];
-  try { return JSON.parse(localStorage.getItem(LAYOUT_KEY + view) || "[]"); }
-  catch (e) { return []; }
+  return layoutOf(view).order || [];
+}
+
+function loadWidths(view) {
+  return layoutOf(view).widths || {};
 }
 
 function saveOrder(view) {
   const host = cardHost(view);
   if (!host) return;
-  const keys = [...host.children].filter((c) => c.classList.contains("card"))
-    .map((c, i) => cardKey(c, i));
-  try { localStorage.setItem(LAYOUT_KEY + view, JSON.stringify(keys)); }
+  const cards = [...host.children].filter((c) => c.classList.contains("card"));
+  const keys = cards.map((c, i) => cardKey(c, i));
+  const widths = {};
+  cards.forEach((c, i) => {
+    const w = [1, 2, 3].find((n) => c.classList.contains("w" + n));
+    if (w) widths[cardKey(c, i)] = w;
+  });
+  const entry = { order: keys, widths };
+  try { localStorage.setItem(LAYOUT_KEY + view, JSON.stringify(entry)); }
   catch (e) { /* Kein Speicher — dann eben nur für diese Sitzung */ }
-  if (layoutFromServer) layoutFromServer[view] = keys;
-  api("/layout", { method: "POST", body: JSON.stringify({ view, order: keys }) })
+  if (layoutFromServer) layoutFromServer[view] = entry;
+  api("/layout", { method: "POST",
+    body: JSON.stringify({ view, order: keys, widths }) })
     .catch(() => toast("Anordnung konnte nicht gespeichert werden", true));
+}
+
+/* Die gespeicherten Breiten anwenden. Ohne gespeicherte Breite bleibt es bei
+   dem, was die Karte von Haus aus mitbringt (span2, wide oder einspaltig). */
+function applyWidths(view) {
+  const host = cardHost(view);
+  if (!host) return;
+  const widths = loadWidths(view);
+  [...host.children].filter((c) => c.classList.contains("card"))
+    .forEach((c, i) => {
+      const w = widths[cardKey(c, i)];
+      c.classList.remove("w1", "w2", "w3");
+      if (w) c.classList.add("w" + w);
+    });
 }
 
 /* Beim Start einmal holen und überall anwenden. */
@@ -3143,6 +3178,7 @@ async function syncLayout() {
       try { localStorage.setItem(LAYOUT_KEY + name,
         JSON.stringify(layoutFromServer[name])); } catch (e) { /* egal */ }
       applyOrder(name);
+      applyWidths(name);
     }
   });
 }
@@ -3179,6 +3215,31 @@ function makeSortable(view) {
     grip.setAttribute("aria-label", "Karte verschieben");
     grip.textContent = "⠿";
     card.prepend(grip);
+
+    // Breitenwahl: eins, zwei oder drei Spalten. Was die Karte tatsächlich
+    // bekommt, hängt am Fenster — bei zwei Spalten sind zwei und drei
+    // dasselbe. Angeboten wird sie deshalb erst ab der zweispaltigen Breite.
+    const sel = document.createElement("div");
+    sel.className = "wsel";
+    const current = () => [1, 2, 3].find((n) => card.classList.contains("w" + n))
+      || (card.classList.contains("wide") ? 3
+        : card.classList.contains("span2") ? 2 : 1);
+    const paintSel = () => {
+      sel.innerHTML = [1, 2, 3].map((n) =>
+        `<button type="button" data-w="${n}"${n === current() ? ' class="on"' : ""}
+          title="${n} Spalte${n > 1 ? "n" : ""} breit"
+          aria-label="${n} Spalten breit">${n}</button>`).join("");
+      sel.querySelectorAll("[data-w]").forEach((b) =>
+        b.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          card.classList.remove("w1", "w2", "w3");
+          card.classList.add("w" + b.dataset.w);
+          paintSel();
+          saveOrder(view);
+        }));
+    };
+    paintSel();
+    card.prepend(sel);
 
     grip.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
@@ -3229,6 +3290,22 @@ async function resetLayout(view) {
   try { await api(`/layout/${view}`, { method: "DELETE" }); } catch (e) { /* egal */ }
   location.reload();
 }
+
+/* Die letzten Trainingstage noch einmal auswerten.
+
+   Der Sync wertet nur aus, was gerade neu hereinkommt. Was davor liegt — weil
+   die Uhr spät synchronisiert hat, weil Sätze nachgetragen wurden oder weil
+   sich die Regel geändert hat — bliebe sonst für immer unberücksichtigt. */
+$("#btnRecalc").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
+  const days = +$("#recalcDays").value || 30;
+  const r = await api(`/exercises/proposals/recalculate?days=${days}`,
+    { method: "POST" });
+  toast(r.proposals
+    ? `${r.proposals} Vorschläge aus ${r.days} Trainingstagen`
+    : `${r.days} Trainingstage geprüft — die Vorgaben passen bereits`);
+  loadProposals();
+  loadChanges();
+}));
 
 /* ------------------------------------------------------ Einheit für zuhause */
 
@@ -3534,6 +3611,7 @@ async function loadStrengthView() {
   } catch (e) { /* Die Übungsliste steht trotzdem */ }
   loadTrends();
   loadChanges();
+  loadProposals();
 }
 
 /* Was nach der letzten Einheit an den Vorgaben angepasst wurde. */
@@ -3681,6 +3759,7 @@ function goto(view) {
   $$(".view").forEach((v) => v.classList.remove("active"));
   $("#view-" + view).classList.add("active");
   applyOrder(view);
+  applyWidths(view);
   makeSortable(view);
   $$("nav.bottom button").forEach((b) => {
     const on = b.dataset.view === view;
@@ -3711,6 +3790,7 @@ api("/settings").then((s) => applyFontScale(s.font_scale || 100)).catch(() => {}
 $$(".view").forEach((v) => {
   const name = v.id.replace("view-", "");
   applyOrder(name);
+  applyWidths(name);
   makeSortable(name);
 });
 syncLayout();

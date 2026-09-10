@@ -947,6 +947,14 @@ def _store_proposal(ex: dict[str, Any], day: str, from_weight: float,
                WHERE progression_proposals.status='open'""",
             (ex["id"], day, from_weight, to_weight, from_reps, to_reps,
              evidence, reason))
+        # Aeltere offene Vorschlaege derselben Uebung sind ueberholt: Der
+        # juengere Trainingstag weiss mehr. Sonst staende dieselbe Uebung
+        # dreimal mit drei Zahlen da, und man muesste raten, welche gilt.
+        db.execute(
+            "UPDATE progression_proposals SET status='superseded', "
+            "decided_at=datetime('now') "
+            "WHERE exercise_id=? AND day < ? AND status='open'",
+            (ex["id"], day))
     return {"exercise_id": ex["id"], "name": ex["name"],
             "from_weight": from_weight, "to_weight": to_weight,
             "from_reps": from_reps, "to_reps": to_reps,

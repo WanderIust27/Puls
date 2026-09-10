@@ -993,6 +993,25 @@ def exercise_proposals() -> list[dict[str, Any]]:
     return ex_lib.open_proposals()
 
 
+@router.post("/exercises/proposals/recalculate")
+def exercise_proposals_recalculate(days: int = 30) -> dict[str, Any]:
+    """Die letzten Trainingstage noch einmal auswerten.
+
+    Nuetzlich nach einem Update oder wenn Saetze nachtraeglich ankamen: Der
+    Sync wertet nur aus, was gerade neu hereinkam — was davor liegt, bleibt
+    sonst fuer immer unberuecksichtigt.
+    """
+    since = (dt.date.today() - dt.timedelta(days=max(1, min(365, days)))).isoformat()
+    with get_db() as db:
+        day_list = [r["day"] for r in db.execute(
+            "SELECT DISTINCT day FROM exercise_sets WHERE day >= ? ORDER BY day",
+            (since,)).fetchall()]
+    made: list[dict[str, Any]] = []
+    for day in day_list:
+        made.extend(ex_lib.propose_for_day(day))
+    return {"days": len(day_list), "proposals": len(made), "made": made}
+
+
 class ProposalDecision(BaseModel):
     accept: bool = True
 
@@ -1044,17 +1063,24 @@ def layout_get() -> dict[str, Any]:
         stored = json.loads(get_setting("layout_order", "{}") or "{}")
     except ValueError:
         stored = {}
-    return {"views": stored if isinstance(stored, dict) else {}}
+    if not isinstance(stored, dict):
+        return {"views": {}}
+    # Aeltere Staende speicherten nur die Reihenfolge als Liste. Die soll ein
+    # Update nicht verlieren, nur weil das Format gewachsen ist.
+    out = {k: (v if isinstance(v, dict) else {"order": v})
+           for k, v in stored.items()}
+    return {"views": out}
 
 
 class LayoutIn(BaseModel):
     view: str
     order: list[str]
+    widths: dict[str, int] | None = None
 
 
 @router.post("/layout")
 def layout_set(l: LayoutIn) -> dict[str, Any]:
-    """Reihenfolge einer Ansicht merken — geraeteuebergreifend."""
+    """Reihenfolge und Breite einer Ansicht merken — geraeteuebergreifend."""
     try:
         stored = json.loads(get_setting("layout_order", "{}") or "{}")
     except ValueError:
@@ -1066,7 +1092,11 @@ def layout_set(l: LayoutIn) -> dict[str, Any]:
         raise HTTPException(400, "Unbekannte Ansicht.")
     # Kennungen bewusst knapp halten: Sie stammen aus dem Browser, und was in
     # die Einstellungen wandert, soll klein und harmlos bleiben.
-    stored[view] = [str(k)[:60] for k in l.order][:60]
+    entry: dict[str, Any] = {"order": [str(k)[:60] for k in l.order][:60]}
+    if l.widths:
+        entry["widths"] = {str(k)[:60]: max(1, min(3, int(v)))
+                           for k, v in list(l.widths.items())[:60]}
+    stored[view] = entry
     set_setting("layout_order", json.dumps(stored, ensure_ascii=False))
     return {"views": stored}
 

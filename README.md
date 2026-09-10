@@ -569,13 +569,19 @@ Wandertag soll den Normalfall nicht verschieben.
 
 ## Das Layout gehört dir
 
-Jede Karte hat oben links einen Griff (⠿). Damit lässt sie sich verschieben;
+Jede Karte hat oben links einen Griff (⠿) und daneben drei Zahlen: **1, 2, 3**
+— so viele Spalten breit soll sie sein. Was davon ankommt, hängt am Fenster: In
+der dreispaltigen Ansicht sind alle drei Breiten verschieden, in der
+zweispaltigen sind zwei und drei dasselbe, und auf dem Telefon ist ohnehin jede
+Karte volle Breite — dort wird die Wahl deshalb gar nicht erst angeboten.
+
+Mit dem Griff lässt sich die Karte verschieben;
 die Reihenfolge bleibt **je Ansicht** gespeichert — und zwar auf dem Server,
 nicht im Browser: Am Telefon steht sie danach genauso wie am Rechner. Ohne Maus geht es auch:
 Griff anwählen, dann Pfeiltasten. Unter *Mehr → Darstellung* steht ein Knopf,
 der die Anordnung der gerade offenen Ansicht zurücksetzt.
 
-Gespeichert wird eine Liste von Karten-Kennungen. Karten, die mit einem Update
+Gespeichert werden Reihenfolge und Breiten je Ansicht. Karten, die mit einem Update
 dazukommen, hängen hinten an, statt zu verschwinden — eine gespeicherte
 Reihenfolge darf ein Update nicht überleben, indem sie neue Karten
 unterschlägt.
@@ -762,7 +768,15 @@ Spanne mit. Sonst stünde „10 Wiederholungen" bei einer Spanne von 12 bis 18 �
 und die nächste Fortschreibung rechnete gegen die eigene Vorgabe.
 
 Ein Tippen macht daraus die neue Vorgabe, „Alle übernehmen" erledigt die ganze
-Einheit auf einmal. Was abgelehnt wird, bleibt unverändert. Unter *Kraft* steht
+Einheit auf einmal.
+
+Ausgewertet wird beim Sync — also das, was gerade hereinkommt. Was davor liegt,
+weil die Uhr spät synchronisiert hat, Sätze nachgetragen wurden oder sich die
+Regel geändert hat, bliebe sonst für immer unberücksichtigt. Dafür steht unter
+*Kraft* der Knopf **„An die letzten Trainings anpassen"**: Er wertet die
+gewählte Zeitspanne noch einmal aus. Je Übung bleibt dabei nur der Vorschlag
+vom jüngsten Trainingstag offen — die älteren werden als überholt abgelegt,
+statt dieselbe Übung dreimal mit drei Zahlen anzubieten. Was abgelehnt wird, bleibt unverändert. Unter *Kraft* steht
 außerdem dauerhaft, **was sich seit dem letzten Mal geändert hat** und woraus es
 folgte — eine andere Zahl auf dem Zettel ohne Begründung sieht sonst aus wie ein
 Fehler.
