@@ -359,7 +359,8 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
 # ------------------------------------------------------------ Zuhause-Einheit
 
 def build_home_session(minutes: int = 30, groups: list[str] | None = None,
-                       with_dumbbell: bool = True) -> dict[str, Any]:
+                       with_dumbbell: bool = True,
+                       must: list[str] | None = None) -> dict[str, Any]:
     """Eine Einheit für die Matte — ohne Studio, höchstens mit kleiner Hantel.
 
     Gebaut wird nach demselben Grundsatz wie die Gym-Einheit: Erst die
@@ -371,9 +372,24 @@ def build_home_session(minutes: int = 30, groups: list[str] | None = None,
     if not wanted:
         wanted = ["core", "back"]
 
-    lib = [e for e in ex_lib.list_exercises(only_active=True)
-           if e.get("slot") == "home"
-           and (with_dumbbell or e.get("equipment") != "dumbbell")]
+    wanted_names = {n.lower() for n in (must or [])}
+    everything = ex_lib.list_exercises(only_active=True)
+
+    # Der Block "home" ist die Grundlage. Eine ausdruecklich verlangte Uebung
+    # darf aber aus jedem Block kommen: Wer auf den ersten Klimmzug hinarbeitet,
+    # braucht negative Klimmzuege — egal, in welcher Schublade sie liegen.
+    lib = [e for e in everything
+           if (e.get("slot") == "home" or e["name"].lower() in wanted_names)
+           and (with_dumbbell or e.get("equipment") != "dumbbell"
+                or e["name"].lower() in wanted_names)]
+
+    # Fertigkeits-Uebungen (Handstand, Kraehe …) tauchen nur auf, wenn ein Ziel
+    # sie ausdruecklich verlangt. In einer beliebigen Bauch-Einheit haben sie
+    # nichts verloren.
+    skills = {"Handstand an der Wand", "Pike-Liegestütz", "Krähe",
+              "Handgelenke vorbereiten", "Bär-Kriechen"}
+    lib = [e for e in lib
+           if e["name"] not in skills or e["name"].lower() in wanted_names]
     # Beschwerden gelten auch zuhause.
     adapt = mood.adaptations()
     spared = set(adapt["spare_groups"])
@@ -405,6 +421,14 @@ def build_home_session(minutes: int = 30, groups: list[str] | None = None,
             if len(by_group[g]) > round_no:
                 rotation.append(by_group[g][round_no])
         round_no += 1
+
+    # Verlangte Uebungen zuerst und in der genannten Reihenfolge: Bei einem
+    # Ziel ist die Reihenfolge Teil der Sache — Handgelenke vor Handstand,
+    # nicht umgekehrt.
+    if wanted_names:
+        by_name = {e["name"].lower(): e for e in focused}
+        head = [by_name[n] for n in (m.lower() for m in must) if n in by_name]
+        rotation = head + [e for e in rotation if e not in head]
 
     used: list[dict[str, Any]] = []
 

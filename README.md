@@ -129,6 +129,34 @@ Bewertet wird dann:
 - **Fortschritt.** Schneller bei gleichem Puls als im Schnitt der letzten Wochen — das
   ist der Vergleich, auf den es ankommt.
 
+## Einheit auf Zuruf
+
+Ein Eingabefeld unter *Plan*. Schreib hinein, was du willst:
+
+| Was du schreibst | Was daraus wird |
+|---|---|
+| „90 Minuten Ganzkörper" | 89-min-Gym-Einheit über alle Gruppen |
+| „30 Minuten zuhause, Fokus Bauch" | 30 min auf der Matte, nur Rumpf |
+| „45 min Push im Studio" | Brust, Schultern, Arme |
+| „60 Minuten zuhause für den Handstand" | Handgelenke → Handstand an der Wand → Pike-Liegestütz → Hohlkörper → Krähe |
+| „eine Stunde zuhause für den ersten Klimmzug" | Negative Klimmzüge, Rudern, Rumpfarbeit |
+
+Über dem Vorschlag steht, **wie der Satz gelesen wurde** („60 Minuten zuhause,
+auf Handstand hin — Schultern, Rumpf, Arme"). Wer eine Einheit bekommt, die
+nicht zum Wunsch passt, soll sehen, woran es lag.
+
+Die Arbeitsteilung ist die übliche: Das Modell liest Dauer, Ort, Schwerpunkt und
+ein etwaiges Ziel heraus — mehr nicht. Welche Übungen daraus werden, entscheidet
+der Code aus der Bibliothek. Ein Modell, das sich Übungen ausdenkt, erfindet
+auch Gewichte, und die stünden dann im Plan. Ohne laufendes Modell zerlegt PULS
+den Satz selbst; alle Beispiele oben funktionieren auch dann.
+
+Zielorientierte Übungen (Handstand an der Wand, Krähe, Pike-Liegestütz) tauchen
+**nur** auf, wenn ein Ziel sie verlangt. In einer beliebigen Bauch-Einheit haben
+sie nichts verloren. Umgekehrt darf eine verlangte Übung aus jedem Block kommen:
+Wer auf den ersten Klimmzug hinarbeitet, braucht negative Klimmzüge — egal, in
+welcher Schublade sie liegen.
+
 ## Zuhause trainieren
 
 Nicht jede Einheit braucht ein Studio. Unter *Plan → Zuhause trainieren* wählst
@@ -329,7 +357,19 @@ Woche neu.
 | Gym an Mo/Mi/Fr | Drei Krafteinheiten, jede mit dem Schwerpunkt, der gerade am ehesten dran ist |
 | Laufen an Di/Do | Zwei Läufe — welche Art, entscheidet, was zuletzt gefehlt hat |
 | Langer Lauf möglichst am | Liegt auf diesem Tag, wenn es ein Lauftag ist, sonst auf dem letzten |
+| Aufteilung der Krafteinheiten | Ganzkörper, Push/Pull, Push/Pull/Beine oder Oberkörper/Beine |
 | Abend-Yoga | Jeden Abend zwölf Minuten, oder gar nicht |
+
+**Die Aufteilung** bestimmt, was auf welchem Gym-Tag liegt. Ganzkörper ist für
+zwei bis drei Einheiten die Woche das Sinnvollste — jede Gruppe kommt mehrmals
+dran. Ab drei lohnt eine Teilung, weil sonst jede Einheit zu lang wird oder zu
+wenig je Gruppe übrigbleibt. Bei Mo/Mi/Fr und Push/Pull heißt das Push · Pull ·
+Push, bei Push/Pull/Beine entsprechend die Dreiteilung.
+
+Bei einer Teilung gibt der Zyklus den Schwerpunkt vor, nicht die Trends: Eine
+Push-Einheit ist eine Push-Einheit, auch wenn die Beine gerade am ehesten dran
+wären. Die Trends entscheiden dann *innerhalb* der Gruppe, welche Übung
+vorgezogen wird.
 
 Trägst du keine Tage ein, verteilt der Coach selbst — dann zählt nur der
 Schwerpunkt. Und wenn die Erholung kippt, fällt ein Tag weg; das steht dann
@@ -834,7 +874,7 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Zweiundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
+Dreiundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
 nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
 prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
 Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.

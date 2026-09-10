@@ -300,6 +300,7 @@
         <input id="autoGymMinutes" type="number" step="5" min="20" max="180"></div>
     </div>
     <p class="muted" id="autoFocusNote"></p>
+    <p class="muted" id="autoSplitNote"></p>
   </div>
 
   
@@ -318,6 +319,8 @@
     <div class="grid3" style="margin-top:12px">
       <div><label class="field">Langer Lauf möglichst am</label>
         <select id="autoLongDay"></select></div>
+      <div><label class="field">Aufteilung der Krafteinheiten</label>
+        <select id="autoSplit"></select></div>
       <div><label class="field">Abend-Yoga</label>
         <select id="autoMobility">
           <option value="1">jeden Abend</option>
@@ -351,6 +354,19 @@
 
   
 <div class="card">
+    <h3>Einheit auf Zuruf</h3>
+    <p class="muted">Schreib, was du willst — Dauer, Ort, Schwerpunkt oder ein
+      Ziel. „90 Minuten Ganzkörper", „30 Minuten zuhause, Fokus Bauch",
+      „60 Minuten zuhause für den Handstand".</p>
+    <div class="row">
+      <input id="wishText" class="grow"
+             placeholder="z. B. 45 Minuten Push im Studio">
+      <button class="btn ghost" id="btnWish">Vorschlagen</button>
+    </div>
+    <div id="wishPreview"></div>
+  </div>
+
+  <div class="card">
     <h3>Zuhause trainieren</h3>
     <p class="muted">Ohne Studio, nur Matte und höchstens eine kleine Hantel.
       Die Dauer wird eingehalten — Übungen kommen dazu oder fallen weg, bis sie

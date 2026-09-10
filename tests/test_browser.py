@@ -483,6 +483,32 @@ try:
         ok("Kraft: Anpassungen werden erklärt",
            bool(page.eval_on_selector("#changeList", "el => el.textContent.trim()")))
 
+        # --- Einheit auf Zuruf --------------------------------------------
+        page.click('nav.bottom button[data-view="plan"]')
+        page.wait_for_timeout(1800)
+        page.fill("#wishText", "60 Minuten zuhause für den Handstand")
+        page.click("#btnWish")
+        page.wait_for_timeout(4000)
+        wish = page.eval_on_selector("#wishPreview", "el => el.textContent")
+        ok("Zuruf: es steht da, wie der Satz gelesen wurde",
+           "Verstanden als" in wish, wish[:80])
+        ok("Zuruf: der Handstand kommt vor", "Handstand" in wish, wish[:120])
+        ok("Zuruf: mit Übungen", "Handgelenke" in wish, wish[:200])
+
+        # Aufteilung der Woche
+        opts = page.eval_on_selector_all("#autoSplit option",
+                                         "e => e.map(x => x.textContent.trim())")
+        ok("Aufteilungen wählbar", len(opts) == 4, str(opts))
+        page.select_option("#autoSplit", "push_pull")
+        page.wait_for_timeout(400)
+        ok("Die Aufteilung wird erklärt",
+           bool(page.eval_on_selector("#autoSplitNote", "el => el.textContent.trim()")))
+        page.click("#btnAutoPreview")
+        page.wait_for_timeout(9000)
+        preview = page.eval_on_selector("#autoPreview", "el => el.textContent")
+        ok("Push und Pull stehen in der Woche",
+           "Push" in preview and "Pull" in preview, preview[:120])
+
         # --- Zuhause: Einheit ohne Geräte ---------------------------------
         page.click('nav.bottom button[data-view="plan"]')
         page.wait_for_timeout(1800)

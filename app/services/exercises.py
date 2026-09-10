@@ -267,7 +267,47 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          mode="time", target_duration_s=60, weight_increment=0, sets=1, rest_s=0,
          slot="home", garmin_category="UNKNOWN", garmin_exercise="UNKNOWN",
          sort_order=370, notes="Ruhig atmen, Wirbel für Wirbel",
-         aliases=["cat cow"])
+         aliases=["cat cow"]),
+
+    # Uebungen, die auf eine Fertigkeit hinarbeiten. Sie stehen im selben Block
+    # "home", tauchen aber nur auf, wenn ein Ziel sie verlangt — ein
+    # Handstand-Halt gehoert nicht in eine beliebige Bauch-Einheit.
+    dict(name="Handstand an der Wand", muscle_group="shoulders", equipment="bodyweight",
+         mode="time", target_duration_s=30, weight_increment=0, sets=4, rest_s=90,
+         slot="home", garmin_category="SHOULDER_STABILITY",
+         garmin_exercise="HANDSTAND_PUSH_UP", sort_order=400,
+         notes="Bauch zur Wand, Schultern über den Händen, Rippen geschlossen",
+         aliases=["handstand", "wandhandstand", "handstand hold"]),
+    dict(name="Pike-Liegestütz", muscle_group="shoulders", equipment="bodyweight",
+         target_reps=8, rep_min=5, rep_max=15, weight_increment=0, sets=3, rest_s=75,
+         slot="home", garmin_category="PUSH_UP", garmin_exercise="PIKE_PUSH_UP",
+         sort_order=405, notes="Hüfte hoch, Kopf zwischen den Händen absenken",
+         aliases=["pike push up", "pike liegestuetz"]),
+    dict(name="Hohlkörper halten", muscle_group="core", equipment="bodyweight",
+         mode="time", target_duration_s=30, weight_increment=0, sets=3, rest_s=60,
+         slot="home", garmin_category="CORE", garmin_exercise="HOLLOW_HOLD",
+         sort_order=410, notes="Unterer Rücken bleibt am Boden — davon hängt alles ab",
+         aliases=["hollow body", "hohlkoerper", "hollow hold"]),
+    dict(name="Krähe", muscle_group="arms", equipment="bodyweight",
+         mode="time", target_duration_s=20, weight_increment=0, sets=4, rest_s=60,
+         slot="home", garmin_category="PLANK", garmin_exercise="FRONT_PLANK",
+         sort_order=415, notes="Knie auf die Oberarme, Blick nach vorn",
+         aliases=["crow", "kraehe", "crow pose", "bakasana"]),
+    dict(name="Schulterdrücken mit Kurzhantel", muscle_group="shoulders",
+         equipment="dumbbell", weight_kg=8, weight_increment=2, target_reps=10,
+         rep_min=6, rep_max=15, sets=3, rest_s=75, slot="home",
+         garmin_category="SHOULDER_PRESS", garmin_exercise="DUMBBELL_SHOULDER_PRESS",
+         sort_order=420, aliases=["shoulder press", "schulterdruecken"]),
+    dict(name="Handgelenke vorbereiten", muscle_group="arms", equipment="bodyweight",
+         mode="time", target_duration_s=60, weight_increment=0, sets=1, rest_s=0,
+         slot="home", garmin_category="UNKNOWN", garmin_exercise="UNKNOWN",
+         sort_order=425, notes="Kreisen, Beugen, Strecken — vor jeder Stützarbeit",
+         aliases=["handgelenke", "wrist prep"]),
+    dict(name="Bär-Kriechen", muscle_group="core", equipment="bodyweight",
+         mode="time", target_duration_s=40, weight_increment=0, sets=3, rest_s=60,
+         slot="home", garmin_category="TOTAL_BODY", garmin_exercise="BEAR_CRAWL",
+         sort_order=430, notes="Knie knapp über dem Boden, Rücken ruhig",
+         aliases=["bear crawl", "baer kriechen"])
 ]
 
 # Abend-Yoga: eigene Liste, weil es als Yoga-Workout auf die Uhr geht (nicht als

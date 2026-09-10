@@ -21,8 +21,9 @@ from ..services import (benchmark, body, coach_ai, fit_import, garmin_sync,
 from ..services import activity_details as activity_details_svc
 from ..services import (autopilot, boosters, feedback, gym_analysis,
                         insights, memory, mood, nutrition, recipes, score,
-                        sleep as sleep_svc, stats, steps as steps_svc, suggestions,
-                        supplements, trends, vitals)
+                        session_request, sleep as sleep_svc, stats,
+                        steps as steps_svc, suggestions, supplements, trends,
+                        vitals)
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
@@ -942,6 +943,7 @@ def autopilot_get() -> dict[str, Any]:
 class AutopilotIn(BaseModel):
     enabled: bool | None = None
     focus: str | None = None
+    split: str | None = None
     run_days: list[str] | None = None
     gym_days: list[str] | None = None
     available_days: list[str] | None = None
@@ -1033,6 +1035,27 @@ def exercise_proposals_all(d: ProposalDecision) -> dict[str, int]:
 def exercise_changes(days: int = 10) -> list[dict[str, Any]]:
     """Was seit der letzten Einheit an den Vorgaben geaendert wurde."""
     return ex_lib.recent_changes(days=days)
+
+
+class SessionWishIn(BaseModel):
+    text: str
+    planned_date: str | None = None
+    save: bool = False
+
+
+@router.post("/plan/wish")
+def plan_wish(w: SessionWishIn) -> dict[str, Any]:
+    """Eine Einheit aus einem Satz: „60 Minuten zuhause fuer den Handstand"."""
+    if not (w.text or "").strip():
+        raise HTTPException(400, "Schreib, was du trainieren willst.")
+    workout = session_request.build(w.text)
+    if not workout.get("steps"):
+        raise HTTPException(400, workout.get("hint")
+                            or "Daraus ließ sich keine Einheit bauen.")
+    if w.save:
+        workout["planned_date"] = w.planned_date or dt.date.today().isoformat()
+        workout["id"] = _insert_workout(workout, "coach")
+    return workout
 
 
 class HomeSessionIn(BaseModel):

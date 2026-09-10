@@ -27,6 +27,48 @@ WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 # Wie viel Prozent der Wunschdauer je nach Zustand geplant werden.
 DOSE = {"frisch": 1.0, "normal": 0.9, "muede": 0.75, "erschoepft": 0.55}
 
+# Wie die Krafteinheiten einer Woche aufgeteilt werden.
+#
+# Ganzkoerper ist fuer zwei bis drei Einheiten die Woche das Sinnvollste: Jede
+# Gruppe kommt mehrmals dran. Ab vier Einheiten lohnt eine Teilung, weil sonst
+# jede Einheit zu lang wird oder zu wenig je Gruppe uebrigbleibt.
+SPLITS: dict[str, dict[str, Any]] = {
+    "fullbody": {
+        "label": "Ganzkörper",
+        "cycle": [],                       # leer = Schwerpunkt aus den Trends
+        "note": "Jede Einheit deckt alles ab. Für zwei bis drei Einheiten die "
+                "Woche das Sinnvollste — jede Gruppe kommt mehrmals dran.",
+    },
+    "push_pull": {
+        "label": "Push / Pull",
+        "cycle": [
+            ("Push", ["chest", "shoulders", "arms"]),
+            ("Pull", ["back", "arms"]),
+        ],
+        "note": "Drücken und Ziehen im Wechsel. Beine und Rumpf laufen in "
+                "beiden Einheiten mit, damit sie nicht liegenbleiben.",
+    },
+    "push_pull_legs": {
+        "label": "Push / Pull / Beine",
+        "cycle": [
+            ("Push", ["chest", "shoulders", "arms"]),
+            ("Pull", ["back", "arms"]),
+            ("Beine", ["legs", "core"]),
+        ],
+        "note": "Die klassische Dreiteilung. Lohnt ab drei Krafteinheiten die "
+                "Woche, darunter kommt jede Gruppe zu selten dran.",
+    },
+    "upper_lower": {
+        "label": "Oberkörper / Beine",
+        "cycle": [
+            ("Oberkörper", ["chest", "back", "shoulders", "arms"]),
+            ("Beine & Rumpf", ["legs", "core"]),
+        ],
+        "note": "Zwei Einheiten im Wechsel. Weniger streng als Push/Pull und "
+                "verzeiht eine ausgefallene Einheit eher.",
+    },
+}
+
 FOCUS_PRESETS = {
     "run_faster": {
         "label": "Schneller laufen",
@@ -74,6 +116,9 @@ def settings() -> dict[str, Any]:
     return {
         "enabled": _get("autopilot", "0") == "1",
         "focus": _get("auto_focus", "balanced"),
+        "split": _get("auto_split", "fullbody"),
+        "splits": {k: {"label": v["label"], "note": v["note"]}
+                   for k, v in SPLITS.items()},
         "run_days": run_days,
         "gym_days": gym_days,
         "available_days": available or list(WEEKDAYS),
@@ -95,6 +140,8 @@ def save_settings(data: dict[str, Any]) -> dict[str, Any]:
         set_setting("autopilot", "1" if data["enabled"] else "0")
     if data.get("focus") in FOCUS_PRESETS:
         set_setting("auto_focus", data["focus"])
+    if data.get("split") in SPLITS:
+        set_setting("auto_split", data["split"])
     for field, key in (("run_days", "run_days"), ("gym_days", "gym_days"),
                        ("available_days", "auto_days")):
         if isinstance(data.get(field), list):
@@ -156,6 +203,11 @@ def _condition() -> dict[str, Any]:
              else "muede" if penalty <= 3 else "erschoepft")
     return {"state": state, "dose": DOSE[state], "reasons": reasons,
              "penalty": penalty}
+
+
+def ex_labels(groups: list[str]) -> list[str]:
+    from . import exercises as ex_lib
+    return [ex_lib.MUSCLE_LABELS.get(g, g) for g in groups]
 
 
 def _run_kinds(count: int, quality: int, long_run: bool,
@@ -248,6 +300,13 @@ def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]
     emphasis_labels = [g["label"] for g in trend["muscles"]["groups"]
                        if g["key"] in emphasis]
 
+    # Bei einer Teilung gibt der Zyklus den Schwerpunkt vor, nicht die Trends:
+    # Eine Push-Einheit ist eine Push-Einheit, auch wenn die Beine gerade am
+    # ehesten dran waeren. Die Trends entscheiden dann innerhalb der Gruppe,
+    # welche Uebung vorgezogen wird.
+    split = SPLITS.get(cfg["split"], SPLITS["fullbody"])
+    cycle = split["cycle"]
+
     days: list[dict[str, Any]] = []
     for offset in range(7):
         date = start + dt.timedelta(days=offset)
@@ -265,15 +324,23 @@ def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]
                 "why": _run_why(kind, trend["running"], goal)})
 
         if name in gym_days:
+            if cycle:
+                label, groups = cycle[gym_days.index(name) % len(cycle)]
+                session_emphasis, session_label = groups, label
+                why = (f"{label}: {', '.join(ex_labels(groups))}. "
+                       f"{split['note']}")
+            else:
+                session_emphasis, session_label = emphasis, "Ganzkörper"
+                why = (f"Schwerpunkt {', '.join(emphasis_labels)} — "
+                       + "; ".join(
+                           r for g in trend["muscles"]["groups"]
+                           if g["key"] in emphasis for r in g["reasons"][:1])
+                       if emphasis_labels
+                       else "Krafteinheit nach deiner Übungsbibliothek.")
             entry["sessions"].append({
                 "sport": "strength", "kind": "gym", "minutes": gym_minutes,
-                "emphasis": emphasis,
-                "why": (f"Schwerpunkt {', '.join(emphasis_labels)} — "
-                        + "; ".join(
-                            r for g in trend["muscles"]["groups"]
-                            if g["key"] in emphasis for r in g["reasons"][:1])
-                        if emphasis_labels
-                        else "Krafteinheit nach deiner Übungsbibliothek.")})
+                "emphasis": session_emphasis, "label": session_label,
+                "why": why})
 
         if cfg["evening_mobility"]:
             entry["sessions"].append({
@@ -334,6 +401,8 @@ def plan(start: dt.date | None = None, apply_it: bool = False) -> dict[str, Any]
         "minutes_per_session": minutes, "gym_minutes": gym_minutes,
         "total_minutes": total_minutes,
         "emphasis": emphasis, "emphasis_labels": emphasis_labels,
+        "split": cfg["split"], "split_label": split["label"],
+        "split_note": split["note"],
         "run_needs": trend["running"]["needs"],
         "goal": goal,
         "adapted": adapt["summary"] if adapt["complaints"] else [],

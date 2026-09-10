@@ -2511,6 +2511,15 @@ async function loadCoachPlan() {
     `<option value="${d}"${d === cfg.long_run_day ? " selected" : ""}>${d}</option>`
   ).join("");
   $("#autoMobility").value = cfg.evening_mobility ? "1" : "0";
+  $("#autoSplit").innerHTML = Object.entries(cfg.splits || {}).map(([k, v]) =>
+    `<option value="${k}"${k === cfg.split ? " selected" : ""}>${esc(v.label)}</option>`
+  ).join("");
+  const splitNote = () => {
+    $("#autoSplitNote").textContent =
+      (cfg.splits[$("#autoSplit").value] || {}).note || "";
+  };
+  splitNote();
+  $("#autoSplit").onchange = splitNote;
   $("#goalText").value = cfg.wishes || "";
   renderPlanDays();
 
@@ -2541,6 +2550,7 @@ function renderPlanDays() {
 async function saveCoachPlan() {
   return api("/autopilot", { method: "POST", body: JSON.stringify({
     focus: $("#autoFocus").value,
+    split: $("#autoSplit").value,
     run_days: planRunDays,
     gym_days: planGymDays,
     session_minutes: +$("#autoMinutes").value || 60,
@@ -3306,6 +3316,44 @@ $("#btnRecalc").addEventListener("click", (e) => withSpinner(e.currentTarget, as
   loadProposals();
   loadChanges();
 }));
+
+/* ------------------------------------------------- Einheit auf Zuruf */
+
+/* „60 Minuten zuhause für den Handstand" — das Modell liest Dauer, Ort,
+   Schwerpunkt und Ziel heraus, die Übungen kommen aus der Bibliothek. Was
+   verstanden wurde, steht über dem Vorschlag: Wer eine Einheit bekommt, die
+   nicht zum Satz passt, soll sehen woran es lag. */
+async function proposeWish(save) {
+  const text = $("#wishText").value.trim();
+  if (!text) { toast("Schreib, was du trainieren willst.", true); return; }
+  const w = await api("/plan/wish", { method: "POST",
+    body: JSON.stringify({ text, save }) });
+
+  if (save) {
+    $("#wishPreview").innerHTML = "";
+    $("#wishText").value = "";
+    toast(`${w.minutes} min eingeplant`);
+    loadPlan();
+    return;
+  }
+  $("#wishPreview").innerHTML = `
+    <div class="detail-section">
+      <div class="muted">Verstanden als: ${esc(w.read_as || "")}</div>
+      <h4>${esc(w.name)}</h4>
+      ${w.goal_note ? `<p class="muted">${esc(w.goal_note)}</p>` : ""}
+      <p class="muted">${esc(w.description || "")}</p>
+      <ul class="steps">${stepsToHtml(w.steps)}</ul>
+      <button class="btn" id="btnWishSave">So einplanen</button>
+    </div>`;
+  $("#btnWishSave").addEventListener("click", (e) =>
+    withSpinner(e.currentTarget, () => proposeWish(true)));
+}
+
+$("#btnWish").addEventListener("click", (e) =>
+  withSpinner(e.currentTarget, () => proposeWish(false)));
+$("#wishText").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") { ev.preventDefault(); $("#btnWish").click(); }
+});
 
 /* ------------------------------------------------------ Einheit für zuhause */
 
