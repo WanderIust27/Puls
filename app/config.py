@@ -12,8 +12,6 @@ OLLAMA_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "600"))  # CPU-Inferenz da
 
 SYNC_INTERVAL_HOURS = float(os.environ.get("SYNC_INTERVAL_HOURS", "3"))
 SYNC_LOOKBACK_DAYS = int(os.environ.get("SYNC_LOOKBACK_DAYS", "14"))
-RESEARCH_TIP_CRON_DOW = os.environ.get("RESEARCH_TIP_DOW", "mon")
-RESEARCH_TIP_CRON_HOUR = int(os.environ.get("RESEARCH_TIP_HOUR", "6"))
 
 TZ = os.environ.get("TZ", "Europe/Berlin")
 

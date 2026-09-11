@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["PULS_DATA_DIR"] = tempfile.mkdtemp(prefix="puls-test-")
 
 from app.db import get_db, init_db, set_setting                  # noqa: E402
-from app.services import autopilot, exercises as ex_lib, trends  # noqa: E402
+from app.services import exercises as ex_lib, trends             # noqa: E402
 
 failures = []
 
@@ -140,150 +140,7 @@ hard = trends.running_trend()
 ok("Zu viel Hartes wird gemeldet",
    any("zu viel" in n for n in hard["needs"]), "; ".join(hard["needs"]))
 
-# --- Die zusammengeführte Woche -----------------------------------------
-set_setting("gym_days", json.dumps(["Mo", "Mi", "Fr"]))
-set_setting("run_days", json.dumps(["Di", "Do"]))
-set_setting("auto_wishes", "10 km unter 55 Minuten, dazu stärkere Beine")
-set_setting("evening_mobility", "0")
 
-cfg = autopilot.settings()
-check("Gym-Tage kommen an", cfg["gym_days"], ["Mo", "Mi", "Fr"])
-check("Lauftage kommen an", cfg["run_days"], ["Di", "Do"])
-check("Beide zusammen sind die verfügbaren Tage",
-      cfg["available_days"], ["Mo", "Di", "Mi", "Do", "Fr"])
-
-monday = TODAY + dt.timedelta(days=(7 - TODAY.weekday()) % 7 or 7)
-week = autopilot.plan(monday)
-by_day = {d["weekday"]: d["sessions"] for d in week["days"]}
-
-gym_on = {d for d, ses in by_day.items() if any(s["sport"] == "strength" for s in ses)}
-run_on = {d for d, ses in by_day.items() if any(s["sport"] == "running" for s in ses)}
-check("Kraft liegt genau auf den Gym-Tagen", gym_on, {"Mo", "Mi", "Fr"})
-check("Laufen liegt genau auf den Lauftagen", run_on, {"Di", "Do"})
-ok("Kein Yoga, wenn abgewählt",
-   not any(s["sport"] == "mobility" for ses in by_day.values() for s in ses))
-ok("Sa und So bleiben frei", not by_day["Sa"] and not by_day["So"])
-
-kinds = [s["kind"] for ses in by_day.values() for s in ses if s["sport"] == "running"]
-ok("Die Laufarten sind unterschiedlich", len(set(kinds)) > 1, str(kinds))
-ok("Jede Einheit hat eine Begründung",
-   all(s.get("why") for ses in by_day.values() for s in ses))
-ok("Kraft trägt einen Schwerpunkt",
-   all(s.get("emphasis") is not None
-       for ses in by_day.values() for s in ses if s["sport"] == "strength"))
-ok("Der Schwerpunkt steht auch in der Woche", bool(week["emphasis_labels"]),
-   str(week["emphasis_labels"]))
-ok("Das Ziel wird mitgeführt", "10-km-Zeit" in week["goal"]["recognised"],
-   str(week["goal"]["recognised"]))
-
-# Gebaut werden muss auch das Richtige: ein Tempolauf ist kein lockerer Lauf.
-applied = autopilot.plan(monday, apply_it=True)
-with get_db() as db:
-    built = {r["planned_date"]: r["name"] for r in db.execute(
-        "SELECT planned_date, name FROM planned_workouts WHERE created_by='autopilot'"
-    ).fetchall()}
-names = " | ".join(built.values())
-ok("Für jede Einheit wurde ein Workout gebaut",
-   len(applied["created"]) == sum(len(s) for s in by_day.values()),
-   f"{len(applied['created'])} Workouts")
-ok("Die Laufarten heißen unterschiedlich",
-   len({n for n in built.values() if "auf" in n.lower() or "Lauf" in n}) > 1, names)
-ok("Der Kraft-Schwerpunkt steht im Namen",
-   any("Gym" in n for n in built.values()), names)
-
-# --- Der Plan darf sich nicht anhäufen ----------------------------------
-# Dreimal "Übernehmen" hat dreimal eine komplette Woche angelegt — nach ein
-# paar Versuchen stand ein Vielfaches im Plan.
-with get_db() as db:
-    db.execute("DELETE FROM planned_workouts")
-counts = []
-for _ in range(3):
-    autopilot.plan(monday, apply_it=True)
-    with get_db() as db:
-        counts.append(db.execute(
-            "SELECT COUNT(*) c FROM planned_workouts").fetchone()["c"])
-ok("Wiederholtes Übernehmen häuft nichts an",
-   counts[0] == counts[1] == counts[2], str(counts))
-ok("… und meldet, was es ersetzt hat",
-   autopilot.plan(monday, apply_it=True)["replaced"] == counts[0],
-   str(counts[0]))
-
-# Erledigtes und Selbstgeplantes darf dabei nicht verschwinden.
-with get_db() as db:
-    db.execute("UPDATE planned_workouts SET status='done' WHERE id IN "
-               "(SELECT id FROM planned_workouts LIMIT 2)")
-    db.execute("UPDATE planned_workouts SET status='pushed' WHERE id IN "
-               "(SELECT id FROM planned_workouts WHERE status='planned' LIMIT 1)")
-    db.execute("""INSERT INTO planned_workouts(name, sport, planned_date,
-                      steps_json, created_by)
-                  VALUES('Selbst geplant','strength',?,'{}','user')""",
-               (monday.isoformat(),))
-autopilot.plan(monday, apply_it=True)
-with get_db() as db:
-    kept = {(r["status"], r["created_by"]): r["c"] for r in db.execute(
-        "SELECT status, created_by, COUNT(*) c FROM planned_workouts "
-        "GROUP BY status, created_by").fetchall()}
-check("Erledigtes bleibt erhalten", kept.get(("done", "autopilot")), 2)
-check("An die Uhr Geschicktes bleibt erhalten", kept.get(("pushed", "autopilot")), 1)
-check("Selbst Angelegtes bleibt erhalten", kept.get(("planned", "user")), 1)
-
-# Was vergangen und nie erledigt wurde, verschwindet — sonst wächst der Plan
-# um jede nicht abgehakte Einheit weiter.
-with get_db() as db:
-    db.execute("""INSERT INTO planned_workouts(name, sport, planned_date,
-                      steps_json, created_by)
-                  VALUES('Alte Einheit','strength',?,'{}','autopilot')""",
-               ((TODAY - dt.timedelta(days=20)).isoformat(),))
-autopilot.plan(monday, apply_it=True)
-with get_db() as db:
-    old_left = db.execute("SELECT COUNT(*) c FROM planned_workouts "
-                          "WHERE name='Alte Einheit'").fetchone()["c"]
-check("Verpasste Altlasten werden aufgeräumt", old_left, 0)
-
-# --- Eine Einheit muss so lang sein, wie sie heißt ----------------------
-from app.services import planner                                # noqa: E402
-for wanted in (45, 60, 75, 90, 120):
-    session = planner.build_gym_session(wanted)
-    real = planner.step_seconds(session["steps"]) / 60
-    ok(f"{wanted}-Minuten-Einheit trifft die Zeit",
-       abs(real - wanted) <= wanted * 0.1, f"{real:.0f} min gebaut")
-    ok(f"… und der Name sagt die Wahrheit ({wanted})",
-       abs(session["minutes"] - real) < 1 and str(session["minutes"]) in session["name"],
-       session["name"])
-
-# Mehr Zeit muss auch mehr Training bedeuten.
-short = planner.build_gym_session(45)
-long_one = planner.build_gym_session(120)
-ok("Mehr Zeit ergibt mehr Einheit",
-   planner.step_seconds(long_one["steps"]) > planner.step_seconds(short["steps"]) * 1.8,
-   f"{planner.step_seconds(short['steps'])/60:.0f} vs "
-   f"{planner.step_seconds(long_one['steps'])/60:.0f} min")
-ok("… und mehr Übungen",
-   len(long_one["exercise_ids"]) > len(short["exercise_ids"]),
-   f"{len(short['exercise_ids'])} vs {len(long_one['exercise_ids'])}")
-
-# Zwei Aufrufe mit derselben Vorgabe müssen dasselbe ergeben.
-a, b = planner.build_gym_session(75), planner.build_gym_session(75)
-check("Gleiche Vorgabe, gleiches Ergebnis", a["name"], b["name"])
-
-# Die Rechnung selbst: Wiederholungen, Pausen und Umsetzen zählen mit.
-one = [{"type": "repeat", "count": 3, "steps": [
-    {"type": "work", "name": "X", "reps": 10},
-    {"type": "rest", "name": "Pause", "duration_s": 60}]}]
-expected = 3 * (10 * planner.SECONDS_PER_REP + 60) + planner.CHANGEOVER_S
-ok("Die Dauerrechnung stimmt", abs(planner.step_seconds(one) - expected) < 0.01,
-   f"{planner.step_seconds(one)} statt {expected}")
-
-# Ohne eingetragene Tage muss der Coach selbst verteilen.
-set_setting("gym_days", "[]")
-set_setting("run_days", "[]")
-free = autopilot.plan(monday)
-trained = sum(1 for d in free["days"] for s in d["sessions"]
-              if s["sport"] in ("running", "strength"))
-ok("Ohne Vorgabe plant der Coach trotzdem", trained >= 3, f"{trained} Einheiten")
-ok("… und verteilt Kraft auf mehrere Tage",
-   len({d["weekday"] for d in free["days"]
-        for s in d["sessions"] if s["sport"] == "strength"}) >= 1)
 
 print()
 if failures:

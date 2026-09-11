@@ -326,55 +326,39 @@ CREATE TABLE IF NOT EXISTS progression_log (
 """
 
 DEFAULT_SETTINGS = {
-    "goals": json.dumps(["muscle", "endurance", "general", "weight_gain"]),
-    "weekly_workout_target": "4",
-    "kcal_target": "",
-    "protein_target": "",
+    # Was du erreichen willst — Freitext. Der Coach liest daraus die
+    # Schwerpunkte und gewichtet damit, was als Naechstes drankommt.
+    "goal_text": "10 km unter 60 Minuten und mehr Klimmzüge",
     "profile": json.dumps({}),
     "garmin_linked": "0",
     "garmin_email": "",
-    "last_benchmark": "",
-    "last_run_benchmark": "",
-    "benchmark_interval_weeks": "10",
     "exercises_seeded": "0",
     "font_scale": "100",
     "ollama_model": "",
-    # Wochenstruktur (vom Nutzer einstellbar)
-    "run_days": json.dumps(["Di", "Do", "Sa"]),
-    "run_minutes": "45",
+    # Wochenstruktur
     "gym_days": json.dumps(["Mo", "Mi", "Fr"]),
     "gym_minutes": "75",
+    "run_days": json.dumps(["Di", "Do", "Sa"]),
+    "run_minutes": "45",
     "evening_mobility": "1",
-    # Wann du aufstehen willst — daraus rechnet PULS die Zubettgehzeit zurueck
-    "wake_target": "06:30",
     "prefer_machines": "1",
-    # Laufziel: 10 km unter 60 min
+    # Laufziel
     "run_goal_distance_km": "10",
     "run_goal_time_min": "60",
     "pullup_goal": "10",
-    "pullup_best": "",
-    # Laufleistung aus dem Benchmark (m in 12 min, Cooper)
-    "supplements_seeded": "0",
-    "step_goal": "10000",
-    # Vom Coach vorgeschlagener Schwerpunkt im Gym (auf Zeit)
-    "gym_focus_groups": "[]",
-    "gym_focus_until": "",
-    # Ernaehrung: Schwerpunkte fuer die Rezeptauswahl
-    "diet_style": json.dumps(["vegetarian_lean", "quick", "mealprep"]),
-    "diet_exclude": "",
-    # Waage: Referenzfenster fuer vergleichbare Messungen
-    "weigh_window_start": "06:00",
-    "weigh_window_end": "09:00",
-    "weigh_adjust_offwindow": "1",   # Messungen ausserhalb rechnerisch angleichen
-    "body_height_cm": "184",
-    "body_age": "24",
-    "body_sex": "male",
-    # Karte in der Laufansicht: 0 = nur GPS-Spur, 1 = OpenStreetMap-Hintergrund
-    "map_tiles": "0",
-    "cooper_distance_m": "",
     "easy_pace_s_per_km": "",
     "tempo_pace_s_per_km": "",
     "interval_pace_s_per_km": "",
+    "cooper_distance_m": "",
+    # Waage: Referenzfenster fuer vergleichbare Messungen
+    "weigh_window_start": "06:00",
+    "weigh_window_end": "09:00",
+    "weigh_adjust_offwindow": "1",
+    "body_height_cm": "184",
+    "body_age": "24",
+    "body_sex": "male",
+    # Karte in der Laufansicht: 0 = nur GPS-Spur, 1 = OpenStreetMap
+    "map_tiles": "0",
 }
 
 
@@ -588,8 +572,6 @@ def init_db() -> None:
                        (secrets.token_urlsafe(24),))
     from .services.exercises import seed_default_exercises
     seed_default_exercises()
-    from .services.supplements import seed_defaults
-    seed_defaults()
 
 
 @contextmanager

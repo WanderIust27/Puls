@@ -531,9 +531,10 @@ def _collect_step_hours(g: Garmin, day: str) -> None:
         except ValueError:
             continue
         per_hour[when.hour] = per_hour.get(when.hour, 0) + int(count)
-    if per_hour:
-        from . import steps as steps_svc
-        steps_svc.record_day(day, per_hour)
+    # Der Tagesverlauf der Schritte wird nicht mehr gefuehrt: Er hatte einen
+    # eigenen Reiter, und den gibt es nicht mehr. Die Tagessumme steht weiter
+    # in daily_metrics.
+    return
 
 
 DAILY_FIELDS = (

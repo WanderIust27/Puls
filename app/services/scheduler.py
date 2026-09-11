@@ -1,72 +1,41 @@
-"""Hintergrundjobs: Auto-Sync, tägliche Coach-Nachricht, Wochen-Forschungstipp."""
+"""Hintergrundjobs — nur noch zwei, und beide tun etwas Nachvollziehbares.
+
+Der Sync holt, was die Uhr aufgezeichnet hat. Danach werden aus den neuen
+Saetzen die Gewichtsvorschlaege abgeleitet — sie brauchen genau diese frischen
+Daten, und wer morgens die App oeffnet, soll sie schon vorfinden.
+"""
 from __future__ import annotations
 
+import datetime as dt
 import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from ..config import (RESEARCH_TIP_CRON_DOW, RESEARCH_TIP_CRON_HOUR,
-                      SYNC_INTERVAL_HOURS, TZ)
+from ..config import SYNC_INTERVAL_HOURS, TZ
 from ..db import get_setting
-from . import coach_ai, garmin_sync
+from . import garmin_sync
 
 log = logging.getLogger("puls.scheduler")
 scheduler = BackgroundScheduler(timezone=TZ)
 
 
 def _sync_job() -> None:
-    if get_setting("garmin_linked") == "1":
-        garmin_sync.full_sync()
-    # Nach jedem Sync prüfen, ob sich ein Vorschlag ergibt — die Regeln
-    # brauchen die frischen Daten.
+    if get_setting("garmin_linked") != "1":
+        return
+    garmin_sync.full_sync()
     try:
-        from . import suggestions
-        suggestions.generate()
-    except Exception as e:
+        from . import exercises as ex_lib
+        today = dt.date.today()
+        for back in range(0, 3):
+            ex_lib.propose_for_day((today - dt.timedelta(days=back)).isoformat())
+    except Exception as e:                                      # noqa: BLE001
         log.debug("Vorschläge übersprungen: %s", e)
-
-def _daily_message_job() -> None:
-    try:
-        coach_ai.daily_message()
-    except Exception as e:
-        log.warning("Tagesnachricht fehlgeschlagen: %s", e)
-
-
-def _research_job() -> None:
-    try:
-        coach_ai.research_tip()
-    except Exception as e:
-        log.warning("Forschungstipp fehlgeschlagen: %s", e)
-
-
-def _checkin_job(kind: str) -> None:
-    """Kurze Meldung im Tagesverlauf. Fehler hier duerfen den Scheduler
-    nicht anhalten — die naechste Runde kommt ohnehin."""
-    try:
-        from . import coach_ai
-        coach_ai.checkin(kind)
-    except Exception as e:
-        log.debug("Check-in %s uebersprungen: %s", kind, e)
 
 
 def start() -> None:
     scheduler.add_job(_sync_job, IntervalTrigger(hours=SYNC_INTERVAL_HOURS),
                       id="garmin_sync", max_instances=1, coalesce=True)
-    scheduler.add_job(_daily_message_job,
-                      CronTrigger(hour=7, minute=30, timezone=TZ),
-                      id="daily_message", max_instances=1, coalesce=True)
-    scheduler.add_job(_research_job,
-                      CronTrigger(day_of_week=RESEARCH_TIP_CRON_DOW,
-                                  hour=RESEARCH_TIP_CRON_HOUR, timezone=TZ),
-                      id="research_tip", max_instances=1, coalesce=True)
-    # Zwei kurze Meldungen ueber den Tag: mittags, wenn noch Zeit zum
-    # Nachsteuern bleibt, und abends, solange sich noch etwas erledigen laesst.
-    for hour, kind in ((13, "midday"), (19, "evening")):
-        scheduler.add_job(_checkin_job, CronTrigger(hour=hour, minute=0, timezone=TZ),
-                          id=f"checkin_{kind}", args=[kind],
-                          max_instances=1, coalesce=True)
     scheduler.start()
     log.info("Scheduler gestartet (Sync alle %s h).", SYNC_INTERVAL_HOURS)
 

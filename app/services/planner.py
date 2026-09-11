@@ -186,14 +186,8 @@ def _balance_main(pool: list[dict[str, Any]], count: int,
     prefer_machines = get_setting("prefer_machines", "1") == "1"
     order = ["legs", "chest", "back", "shoulders", "arms", "core"]
     # Zuerst, was gerade am ehesten dran ist: der gerechnete Bedarf aus den
-    # Trends, danach eine übernommene Empfehlung des Coaches.
+    # Trends.
     focus = [g for g in (emphasis or []) if g in order]
-    try:
-        from . import suggestions
-        focus += [g for g in suggestions.active_focus()
-                  if g in order and g not in focus]
-    except Exception:
-        pass
     if focus:
         order = focus + [g for g in order if g not in focus]
     by_group: dict[str, list[dict[str, Any]]] = {g: [] for g in order}
@@ -632,6 +626,16 @@ def plan_week(start: dt.date | None = None, include_runs: bool = True,
     if long_day == quality_day and len(non_gym) > 1:
         long_day = non_gym[-1]
 
+    # Woran es gerade fehlt, entscheidet den Schwerpunkt der Gym-Tage — nicht
+    # eine feste Aufteilung. Faellt der Trend aus, bleibt es bei der
+    # ausgewogenen Verteilung.
+    focus: list[str] = []
+    try:
+        from . import trends
+        focus = trends.summary()["muscles"]["focus"]
+    except Exception as e:                                      # noqa: BLE001
+        log.debug("Wochenplan ohne Trend: %s", e)
+
     out: list[dict[str, Any]] = []
     for offset in range(7):
         date = start + dt.timedelta(days=offset)
@@ -645,7 +649,7 @@ def plan_week(start: dt.date | None = None, include_runs: bool = True,
             out.append(run)
 
         if include_gym and wd in gym_days:
-            gym = build_gym_session(gym_minutes)
+            gym = build_gym_session(gym_minutes, emphasis=focus)
             gym["planned_date"] = iso
             gym["time_of_day"] = "abends"
             out.append(gym)

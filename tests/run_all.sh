@@ -29,17 +29,12 @@ echo "PULS — Testlauf"
 run "Körperdaten"     python3 tests/test_body.py
 run "Detaildaten"     python3 tests/test_activity_details.py
 run "Gym-Auswertung"  python3 tests/test_gym_analysis.py
-run "Gemüt & Supplements" python3 tests/test_mood.py
-run "Lernen & Gedächtnis" python3 tests/test_learning.py
-run "Zusammenhänge"    python3 tests/test_insights.py
-run "Essen & Nährwerte" python3 tests/test_food.py
-run "Coach-Vorschläge" python3 tests/test_suggestions.py
-run "Statistik & Autopilot" python3 tests/test_stats.py
+run "Gemüt"            python3 tests/test_mood.py
 run "Trends & Wochenplan" python3 tests/test_trends.py
-run "Schlaf & Sätze"    python3 tests/test_sleep_plan.py
-run "Schritte"         python3 tests/test_steps.py
+run "Training in Worten" python3 tests/test_logbook.py
+run "Tagesempfehlung"  python3 tests/test_today.py
 run "Zuhause-Einheit"   python3 tests/test_home.py
-run "Wunsch & Splits"   python3 tests/test_wish.py
+run "Wunsch & Bibliothek" python3 tests/test_wish.py
 run "Workout an die Uhr" python3 tests/test_workout_push.py
 run "Garmin-Sync"     python3 tests/test_garmin_sync.py
 run "API"             python3 tests/test_api.py

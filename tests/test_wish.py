@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["PULS_DATA_DIR"] = tempfile.mkdtemp(prefix="puls-test-")
 
 from app.db import get_db, init_db, set_setting                       # noqa: E402
-from app.services import (autopilot, exercises as ex_lib, planner,    # noqa: E402
+from app.services import (exercises as ex_lib, planner,              # noqa: E402
                           session_request as sr)
 
 failures = []
@@ -153,52 +153,6 @@ with get_db() as db:
     gruppen = {db.execute("SELECT muscle_group FROM exercises WHERE id=?", (i,)
                           ).fetchone()["muscle_group"] for i in w["exercise_ids"]}
 ok("Ganzkörper bleibt breit", len(gruppen) >= 5, str(sorted(gruppen)))
-
-# --- Aufteilung der Woche -------------------------------------------------
-set_setting("gym_days", json.dumps(["Mo", "Mi", "Fr"]))
-set_setting("run_days", json.dumps(["Di", "Do"]))
-monday = dt.date.today() + dt.timedelta(days=(7 - dt.date.today().weekday()) % 7 or 7)
-
-
-def gym_labels(split):
-    autopilot.save_settings({"split": split})
-    week = autopilot.plan(monday)
-    return [s.get("label") for d in week["days"] for s in d["sessions"]
-            if s["sport"] == "strength"], week
-
-
-labels, week = gym_labels("push_pull")
-check("Push und Pull wechseln sich ab", labels, ["Push", "Pull", "Push"])
-check("Die Aufteilung wird benannt", week["split_label"], "Push / Pull")
-ok("… und begründet", bool(week["split_note"]))
-
-labels, _ = gym_labels("push_pull_legs")
-check("Dreiteilung", labels, ["Push", "Pull", "Beine"])
-
-labels, _ = gym_labels("upper_lower")
-check("Oberkörper und Beine", labels, ["Oberkörper", "Beine & Rumpf", "Oberkörper"])
-
-labels, week = gym_labels("fullbody")
-check("Ganzkörper bleibt Ganzkörper", labels, ["Ganzkörper"] * 3)
-
-# Die Aufteilung muss auch in den Übungen ankommen, nicht nur im Namen.
-autopilot.save_settings({"split": "push_pull"})
-week = autopilot.plan(monday)
-push = next(s for d in week["days"] for s in d["sessions"]
-            if s["sport"] == "strength" and s.get("label") == "Push")
-pull = next(s for d in week["days"] for s in d["sessions"]
-            if s["sport"] == "strength" and s.get("label") == "Pull")
-ok("Push zielt auf Drücken", set(push["emphasis"]) == {"chest", "shoulders", "arms"},
-   str(push["emphasis"]))
-ok("Pull zielt auf Ziehen", set(pull["emphasis"]) == {"back", "arms"},
-   str(pull["emphasis"]))
-ok("Jede Einheit erklärt ihre Rolle",
-   "Push" in push["why"] and "Pull" in pull["why"])
-
-# Eine unbekannte Aufteilung darf nicht durchschlagen.
-autopilot.save_settings({"split": "quatsch"})
-check("Unbekannte Aufteilung wird nicht übernommen",
-      autopilot.settings()["split"], "push_pull")
 
 # --- Neue Übungen erreichen auch eine bestehende Bibliothek --------------
 # Gesät wird nur einmal. Kommen mit einem Update Übungen dazu, sähe sie sonst

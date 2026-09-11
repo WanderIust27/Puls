@@ -64,8 +64,6 @@ get_paths = sorted({r.path for r in router.routes
 
 with TestClient(app) as client:
     client.post("/api/mood", json={"mood": 2, "energy": 2, "stress": 4})
-    client.post("/api/body", json={"weight_kg": 78.0,
-                                   "measured_at": "2026-09-09T06:40:00"})
     # Erster Durchlauf: hier darf sich noch etwas einspielen (Tagesauswahl
     # der Maßnahmen etwa wird einmal je Tag festgelegt).
     for path in get_paths:
@@ -85,18 +83,12 @@ check(f"Keiner der {len(get_paths)} GET-Endpunkte verändert Daten",
 # Zweimal dasselbe abfragen muss dasselbe ergeben — sonst springt die
 # Oberfläche bei jedem Neuladen.
 with TestClient(app) as client:
-    for path in ("/api/boosters", "/api/dashboard", "/api/insights",
-                 "/api/score", "/api/nutrition/targets"):
-        a = client.get(path).json()
-        b = client.get(path).json()
-        if path == "/api/dashboard":
-            # Der Zeitstempel des Scores darf sich ändern, sonst nichts
-            for d in (a, b):
-                d.get("score", {}).pop("updated", None)
-        if path == "/api/score":
-            a.pop("updated", None)
-            b.pop("updated", None)
-        check(f"{path} liefert zweimal dasselbe", a == b, True)
+    for path in ("/api/today?phrase=false", "/api/plan", "/api/strength",
+                 "/api/running", "/api/mood", "/api/settings"):
+        a = client.get(path)
+        b = client.get(path)
+        check(f"{path} antwortet", a.status_code, 200)
+        check(f"{path} liefert zweimal dasselbe", a.json() == b.json(), True)
 
 # --- Der Versionsstempel muss bis in die Seite durchkommen --------------
 # Sonst laedt der Browser nach einem Update weiter die alte app.js aus

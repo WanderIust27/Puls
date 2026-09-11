@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["PULS_DATA_DIR"] = tempfile.mkdtemp(prefix="puls-test-")
 
 from app.db import get_db, init_db                        # noqa: E402
-from app.services import mood, planner, supplements       # noqa: E402
+from app.services import mood, planner                    # noqa: E402
 
 failures = []
 
@@ -108,47 +108,10 @@ plain = planner.build_gym_session(minutes=75)
 check("Ohne Beschwerden keine Anpassung", plain["adapted"], None)
 check("Ohne Beschwerden trotzdem ein voller Plan", len(plain["steps"]) > 5, True)
 
-# --- Supplements ----------------------------------------------------------
-supplements.seed_defaults()
-state = supplements.today()
-names = [i["name"] for i in state["items"]]
-check("Kreatin angelegt", "Kreatin" in names, True)
-check("Zink angelegt", "Zink" in names, True)
-kreatin = [i for i in state["items"] if i["name"] == "Kreatin"][0]
-check("Kreatin morgens", kreatin["at_time"], "08:00")
-check("Kreatin mit Dosis", kreatin["dose"], "5 g")
-zink = [i for i in state["items"] if i["name"] == "Zink"][0]
-check("Zink abends", zink["at_time"], "21:00")
-
-shake = [i for i in state["items"] if i["trigger_kind"] == "after_gym"][0]
-check("Eiweiss wartet auf die Einheit", shake["waiting_for"], "nach der Gym-Einheit")
-check("Wartendes gilt nicht als ueberfaellig", shake["overdue"], False)
-
-supplements.mark(kreatin["id"])
-after = supplements.today()
-check("Als genommen vermerkt",
-      [i for i in after["items"] if i["id"] == kreatin["id"]][0]["taken"], True)
-check("Offene Zahl sinkt", after["open"] < state["open"], True)
-supplements.mark(kreatin["id"], taken=False)
-check("Haken wieder entfernbar",
-      [i for i in supplements.today()["items"]
-       if i["id"] == kreatin["id"]][0]["taken"], False)
-
-# Nach einer Gym-Einheit wird der Shake faellig
-with get_db() as db:
-    db.execute("""INSERT INTO activities(source, name, sport, start_time, duration_s)
-                  VALUES('garmin','Gym','strength',?,4500)""", (f"{today}T17:00:00",))
-shake2 = [i for i in supplements.today()["items"]
-          if i["trigger_kind"] == "after_gym"][0]
-check("Nach dem Training faellig", shake2["waiting_for"], None)
-check("Faelligkeit steht auf dem Ende der Einheit",
-      shake2["due_at"].startswith(f"{today}T18:15"), True)
-
-check("Zeile fuer die Tagesnachricht", bool(supplements.context_line()), True)
 
 if failures:
     print(f"\n{len(failures)} Test(s) fehlgeschlagen:")
     for name in failures:
         print(f"  - {name}")
     sys.exit(1)
-print("\nAlle Gemuetszustand- und Supplement-Tests bestanden.")
+print("\nAlle Gemuetszustand-Tests bestanden.")

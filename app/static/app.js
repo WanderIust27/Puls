@@ -1,3855 +1,910 @@
-/* PULS Frontend — Vanilla JS, keine Abhängigkeiten. */
-"use strict";
+/* PULS — vier Reiter, eine Empfehlung.
+   Kein Framework, keine Abhängigkeiten. Jeder Reiter holt seine Daten mit
+   einem Aufruf und zeichnet sich daraus neu. */
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => [...document.querySelectorAll(sel)];
+const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const state = { settings: null, strength: null, preview: null, mood: {} };
 
-const SPORT_KIND = { running: "Lauf", strength: "Gym", cardio: "Cardio",
-  mobility: "Yoga", other: "Sonst", hiit: "HIIT" };
-const SPORT_CLASS = { running: "run", strength: "gym", cardio: "run",
-  mobility: "yoga", other: "", hiit: "gym" };
-function kindTag(sport) {
-  return `<div class="kind ${SPORT_CLASS[sport] || ""}">${SPORT_KIND[sport] || "–"}</div>`;
+/* ------------------------------------------------------------- Werkzeug */
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
 }
-const STEP_LABEL = { warmup: "Aufwärmen", cooldown: "Auslaufen", work: "Belastung", recovery: "Erholung", rest: "Pause" };
-const SPORT_LABEL = { running: "Laufen", strength: "Kraft", cardio: "Cardio", mobility: "Mobilität", other: "Sonstiges", hiit: "HIIT" };
-const GOALS = [
-  ["muscle", "Muskelaufbau"], ["endurance", "Ausdauer"],
-  ["general", "Fitness & Routine"], ["weight_gain", "Gewicht zunehmen"],
-  ["weight_loss", "Gewicht abnehmen"],
-];
 
-/* ------------------------------------------------------------------ Utils */
+function rowOf(...nodes) {
+  const box = el("div", "row");
+  nodes.filter(Boolean).forEach((n) => box.append(n));
+  return box;
+}
 
-async function api(path, opts = {}) {
-  const res = await fetch("/api" + path, {
-    headers: opts.body instanceof FormData ? {} : { "Content-Type": "application/json" },
-    ...opts,
+function toast(message, kind = "") {
+  const box = $("#toast");
+  box.textContent = message;
+  box.className = `show ${kind}`;
+  clearTimeout(box._timer);
+  box._timer = setTimeout(() => { box.className = ""; }, 4200);
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(`/api${path}`, {
+    headers: { "Content-Type": "application/json" }, ...options,
   });
   if (!res.ok) {
-    let msg = res.statusText;
-    try { msg = (await res.json()).detail || msg; } catch (e) { /* egal */ }
-    throw new Error(msg);
+    let detail = `Fehler ${res.status}`;
+    try { detail = (await res.json()).detail || detail; } catch (e) { /* egal */ }
+    throw new Error(detail);
   }
-  return res.json();
+  return res.status === 204 ? null : res.json();
 }
 
+const post = (path, body) =>
+  api(path, { method: "POST", body: JSON.stringify(body ?? {}) });
+const patch = (path, body) =>
+  api(path, { method: "PATCH", body: JSON.stringify(body ?? {}) });
+const del = (path) => api(path, { method: "DELETE" });
 
-/* Das Modell schreibt Markdown — **fett**, Listen, Absätze. Ungerendert steht
-   das als Sternchen im Text. Hier wird nur das übersetzt, was tatsächlich
-   vorkommt; alles andere bleibt Text. Der Eingabetext wird vorher maskiert,
-   damit aus einer Modellantwort kein Markup werden kann. */
-function mdToHtml(text) {
-  if (!text) return "";
-  const lines = esc(String(text)).split(/\r?\n/);
-  const out = [];
-  let list = null;
-
-  const inline = (t) => t
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,;:!?)]|$)/g, "$1<em>$2</em>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>");
-
-  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) { closeList(); continue; }
-
-    const heading = line.match(/^#{1,4}\s+(.*)$/);
-    if (heading) { closeList(); out.push(`<h4>${inline(heading[1])}</h4>`); continue; }
-
-    const bullet = line.match(/^[-*•]\s+(.*)$/);
-    if (bullet) {
-      if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; }
-      out.push(`<li>${inline(bullet[1])}</li>`);
-      continue;
-    }
-    const numbered = line.match(/^\d+[.)]\s+(.*)$/);
-    if (numbered) {
-      if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
-      out.push(`<li>${inline(numbered[1])}</li>`);
-      continue;
-    }
-    closeList();
-    out.push(`<p>${inline(line)}</p>`);
-  }
-  closeList();
-  return out.join("");
-}
-
-function toast(msg, err = false) {
-  const el = document.createElement("div");
-  el.className = "toast" + (err ? " err" : "");
-  el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), err ? 5200 : 2800);
-}
-
-async function withSpinner(btn, fn) {
-  const old = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span> Moment …';
-  try { return await fn(); }
-  catch (e) { toast(e.message || String(e), true); }
-  finally { btn.disabled = false; btn.innerHTML = old; }
-}
-
-function fmtDur(s) {
-  if (!s) return "–";
-  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
-  return h ? `${h}:${String(m).padStart(2, "0")} h` : `${m} min`;
-}
 function fmtDate(iso) {
-  if (!iso) return "–";
-  const d = new Date(iso);
-  return d.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "short" });
-}
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
-
-/* ------------------------------------------------------------------ Charts
-   Handgebaute SVG-Charts: eine Serie pro Chart, Tooltip beim Hover,
-   dezente Achsen, Tabellenansicht für Screenreader/Nachlesen. */
-
-const tooltip = $("#tooltip");
-function showTip(x, y, html) {
-  tooltip.innerHTML = html;
-  tooltip.style.left = x + "px";
-  tooltip.style.top = y + "px";
-  tooltip.style.display = "block";
-}
-function hideTip() { tooltip.style.display = "none"; }
-
-function barChart(container, points, { color = "var(--accent)", unit = "" } = {}) {
-  const W = 720, H = 170, padL = 34, padB = 22, padT = 8;
-  const max = Math.max(1, ...points.map((p) => p.value));
-  const iw = (W - padL - 8) / points.length;
-  const bw = Math.max(2, Math.min(9, iw - 3));
-  let bars = "", labels = "";
-  points.forEach((p, i) => {
-    const h = Math.round(((H - padB - padT) * p.value) / max);
-    const x = padL + i * iw + (iw - bw) / 2;
-    const y = H - padB - h;
-    bars += `<rect data-i="${i}" x="${x.toFixed(1)}" y="${h ? y : H - padB - 1}" width="${bw.toFixed(1)}"
-      height="${Math.max(h, p.value ? 2 : 1)}" rx="1" fill="${p.value ? color : "var(--border)"}"></rect>`;
-    if (p.label) labels += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" font-size="10"
-      fill="var(--ink-3)" text-anchor="middle">${p.label}</text>`;
-  });
-  const grid = [0.5, 1].map((f) => {
-    const y = H - padB - (H - padB - padT) * f;
-    return `<line x1="${padL}" y1="${y}" x2="${W - 4}" y2="${y}" stroke="var(--border)" stroke-width="1"></line>
-      <text x="2" y="${y + 3}" font-size="10" fill="var(--ink-3)">${Math.round(max * f)}</text>`;
-  }).join("");
-  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img">${grid}${bars}${labels}</svg>`;
-  container.querySelectorAll("rect").forEach((r) => {
-    r.addEventListener("pointerenter", (ev) => {
-      const p = points[+r.dataset.i];
-      const rect = r.getBoundingClientRect();
-      showTip(rect.left + rect.width / 2, rect.top,
-        `<span class="t-label">${esc(p.tip || p.label || "")}</span><br><b>${p.value}${unit}</b>`);
-    });
-    r.addEventListener("pointerleave", hideTip);
-  });
+  if (!iso) return "ohne Datum";
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const days = Math.round((d - today) / 86400000);
+  if (days === 0) return "heute";
+  if (days === 1) return "morgen";
+  if (days === -1) return "gestern";
+  return `${WEEKDAYS[(d.getDay() + 6) % 7]} ${d.getDate()}.${d.getMonth() + 1}.`;
 }
 
-function lineChart(container, points, { color = "var(--teal)", unit = "" } = {}) {
-  if (!points.length) { container.innerHTML = '<p class="muted">Noch keine Daten.</p>'; return; }
-  const W = 720, H = 170, padL = 40, padB = 20, padT = 10, padR = 10;
-  const vals = points.map((p) => p.value);
-  let min = Math.min(...vals), max = Math.max(...vals);
-  if (max - min < 1) { min -= 0.5; max += 0.5; }
-  const span = max - min;
-  min -= span * 0.1; max += span * 0.1;
-  const X = (i) => padL + (i * (W - padL - padR)) / Math.max(1, points.length - 1);
-  const Y = (v) => H - padB - ((v - min) * (H - padB - padT)) / (max - min);
-  const path = points.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(p.value).toFixed(1)}`).join(" ");
-  const area = `${path} L${X(points.length - 1).toFixed(1)},${H - padB} L${padL},${H - padB} Z`;
-  const grid = [min + (max - min) * 0.15, (min + max) / 2, max - (max - min) * 0.15].map((v) =>
-    `<line x1="${padL}" y1="${Y(v)}" x2="${W - padR}" y2="${Y(v)}" stroke="var(--border)"></line>
-     <text x="2" y="${Y(v) + 3}" font-size="10" fill="var(--ink-3)">${v.toFixed(1)}</text>`).join("");
-  const first = points[0], last = points[points.length - 1];
-  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img">
-    ${grid}
-    <path d="${area}" fill="${color}" opacity="0.07"></path>
-    <path d="${path}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"></path>
-    <circle cx="${X(points.length - 1)}" cy="${Y(last.value)}" r="3" fill="${color}"></circle>
-    <text x="${W - padR}" y="${Math.max(12, Y(last.value) - 8)}" font-size="11" font-weight="700"
-      fill="var(--ink)" text-anchor="end">${last.value}${unit}</text>
-    <text x="${padL}" y="${H - 4}" font-size="10" fill="var(--ink-3)">${esc(first.label || "")}</text>
-    <text x="${W - padR}" y="${H - 4}" font-size="10" fill="var(--ink-3)" text-anchor="end">${esc(last.label || "")}</text>
-    <rect id="hover" x="${padL}" y="0" width="${W - padL - padR}" height="${H}" fill="transparent"></rect>
-  </svg>`;
-  const svg = container.querySelector("svg");
-  const hover = svg.querySelector("#hover");
-  hover.addEventListener("pointermove", (ev) => {
-    const box = svg.getBoundingClientRect();
-    const relX = ((ev.clientX - box.left) / box.width) * W;
-    const i = Math.round(((relX - padL) / (W - padL - padR)) * (points.length - 1));
-    const p = points[Math.max(0, Math.min(points.length - 1, i))];
-    if (!p) return;
-    showTip(ev.clientX, box.top + (Y(p.value) / H) * box.height,
-      `<span class="t-label">${esc(p.tip || p.label || "")}</span><br><b>${p.value}${unit}</b>`);
-  });
-  hover.addEventListener("pointerleave", hideTip);
+function fmtDuration(seconds) {
+  if (!seconds) return "–";
+  const m = Math.round(seconds / 60);
+  return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} h` : `${m} min`;
 }
 
-/* ------------------------------------------- Zeitraum-Umschalter je Diagramm */
-
-/* Tag / Woche / Monat über jedem Verlaufsdiagramm. Die Wahl bleibt je
-   Diagramm gespeichert — wer sich den Monat ansieht, will nach dem Neuladen
-   nicht wieder auf der Woche stehen. */
-
-const RANGE_DAYS = { day: 1, week: 7, month: 30, quarter: 91, year: 365 };
-const RANGE_TITLE = { day: "Tag", week: "Woche", month: "Monat",
-                      quarter: "3 Monate", year: "Jahr" };
-
-function rangeOf(key, fallback = "month") {
-  try { return localStorage.getItem("puls.range." + key) || fallback; }
-  catch (e) { return fallback; }
+function fmtPace(secPerKm) {
+  if (!secPerKm) return "–";
+  return `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, "0")}/km`;
 }
 
-function setRange(key, value) {
-  try { localStorage.setItem("puls.range." + key, value); } catch (e) { /* egal */ }
+/* --------------------------------------------------------------- Reiter */
+
+const LOADERS = {
+  plan: loadPlan, strength: loadStrength, running: loadRunning, mood: loadMood,
+};
+
+function show(view) {
+  $$("nav.tabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  $$("main > section").forEach((s) => { s.hidden = s.id !== `view-${view}`; });
+  localStorage.setItem("puls.view", view);
+  LOADERS[view]?.().catch((e) => toast(e.message, "bad"));
 }
 
-/* Hängt den Umschalter in ein Element und ruft draw(range) bei jedem Wechsel. */
-function rangeTabs(host, key, options, draw, fallback) {
-  if (!host) return;
-  const current = () => {
-    const r = rangeOf(key, fallback || options[options.length - 1]);
-    return options.includes(r) ? r : options[options.length - 1];
-  };
-  const paint = () => {
-    host.className = "range-tabs";
-    host.innerHTML = options.map((o) =>
-      `<button data-range="${o}"${o === current() ? ' class="on"' : ""}>${
-        RANGE_TITLE[o]}</button>`).join("");
-    host.querySelectorAll("[data-range]").forEach((b) =>
-      b.addEventListener("click", () => {
-        setRange(key, b.dataset.range);
-        paint();
-        draw(b.dataset.range, RANGE_DAYS[b.dataset.range]);
-      }));
-  };
-  paint();
-  draw(current(), RANGE_DAYS[current()]);
-}
-
-/* Reihen mit einem Wert je Tag bekommen KEINEN Tages-Umschalter: Ein Tag wäre
-   ein einzelner Punkt, und einen Umschalter anzubieten, der nichts zeigen kann,
-   ist ein Versprechen, das die Daten nicht halten. */
-const DAILY_RANGES = ["week", "month", "quarter", "year"];
-
-/* Zeilen mit einem Feld `day` (YYYY-MM-DD) auf den Zeitraum beschneiden. */
-function daysBack(rows, days, field = "day") {
-  const from = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
-  return rows.filter((r) => (r[field] || "") >= from);
-}
-
-/* Achsenbeschriftung passend zur Spanne: Bei einer Woche der Wochentag, bei
-   einem Monat Tag und Monat, bei einem Jahr nur noch der Monat. */
-const MONTH_SHORT = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
-                     "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
-const DAY_SHORT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-
-function dayLabelFor(range) {
-  return (iso) => {
-    const d = new Date(iso + "T12:00:00");
-    if (isNaN(d)) return iso.slice(5);
-    if (range === "week") return `${DAY_SHORT[d.getDay()]} ${d.getDate()}.`;
-    if (range === "year") return MONTH_SHORT[d.getMonth()];
-    return `${d.getDate()}.${d.getMonth() + 1}.`;
-  };
-}
-
-/* Punkte auf den gewählten Zeitraum beschneiden. */
-function withinRange(points, range) {
-  const days = RANGE_DAYS[range] || 30;
-  const from = Date.now() - days * 864e5;
-  return points.filter((p) => p.t >= from);
-}
-
-function ringChart(svg, count, target) {
-  const r = 42, c = 2 * Math.PI * r;
-  const frac = Math.min(1, target ? count / target : 0);
-  svg.innerHTML = `
-    <circle cx="48" cy="48" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="3"></circle>
-    <circle cx="48" cy="48" r="${r}" fill="none" stroke="var(--accent)" stroke-width="3"
-      stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - frac)}"
-      style="transition: stroke-dashoffset .6s ease"></circle>`;
-}
-
-/* --------------------------------------------------------------- Dashboard */
-
-
-function renderComposition(c) {
-  const box = $("#compRow");
-  if (!box) return;
-  if (!c || !c.latest) {
-    box.innerHTML = '<div class="muted" style="grid-column:1/-1">Noch keine Messung.</div>';
-    return;
-  }
-  const l = c.latest, d = c.delta || {};
-  const cell = (value, unit, label, delta, betterUp) => {
-    if (value === null || value === undefined) return "";
-    let dTxt = "", cls = "";
-    if (delta !== null && delta !== undefined && Math.abs(delta) >= 0.05) {
-      const up = delta > 0;
-      cls = (up === betterUp) ? "up" : "down";
-      dTxt = `${up ? "+" : ""}${delta.toFixed(1)} ${unit} in 30 Tagen`;
-    }
-    return `<div class="comp">
-      <div class="v">${value}<small> ${unit}</small></div>
-      <div class="l">${label}</div>
-      ${dTxt ? `<div class="d ${cls}">${dTxt}</div>` : ""}
-    </div>`;
-  };
-  const cells = [
-    cell(l.weight_kg, "kg", "Gewicht", d.weight_kg, true),
-    cell(l.body_fat_pct, "%", "Körperfett", d.body_fat_pct, false),
-    cell(l.muscle_kg, "kg", "Muskelmasse", d.muscle_kg, true),
-    cell(l.water_pct, "%", "Wasser", d.water_pct, true),
-  ].filter(Boolean);
-  box.innerHTML = cells.join("");
-  if (!l.body_fat_pct) {
-    box.innerHTML += `<div class="muted" style="grid-column:1/-1;margin-top:4px">
-      Nur das Gewicht angekommen. Körperfett misst die Waage lediglich bei
-      barfüßigem Kontakt — Socken aus und ein paar Sekunden ruhig stehen bleiben.</div>`;
-  }
-}
-
-function renderGoals(gp) {
-  if (!gp) return;
-  const run = gp.run || {};
-  if (run.predicted_text) {
-    $("#goalRunNow").textContent = run.predicted_text;
-    const pct = Math.max(0, Math.min(100, run.progress_pct || 0));
-    const bar = $("#goalRunBar");
-    bar.style.width = pct + "%";
-    bar.classList.toggle("done", !!run.reached);
-    $("#goalRunHint").textContent = run.verdict || "";
-  } else {
-    $("#goalRunNow").textContent = "\u2013";
-    $("#goalRunHint").innerHTML = 'Noch nicht kalibriert — <a href="#" data-goto="plan" style="color:var(--accent)">Benchmark-Lauf machen</a>.';
-  }
-  const pu = gp.pullup || {};
-  if (pu.best) {
-    $("#goalPullNow").textContent = `${pu.best} / ${pu.goal}`;
-    const pct = Math.max(0, Math.min(100, (pu.best / pu.goal) * 100));
-    const bar = $("#goalPullBar");
-    bar.style.width = pct + "%";
-    bar.classList.toggle("done", pu.best >= pu.goal);
-    $("#goalPullHint").textContent = pu.hint || "";
-  } else {
-    $("#goalPullNow").textContent = `? / ${pu.goal || 10}`;
-    $("#goalPullHint").innerHTML = 'Trag dein Maximum ein \u2014 <a href="#" data-goto="plan" style="color:var(--accent)">unter Kalibrierung</a>.';
-  }
-}
-
-
-
-async function loadDashboard() {
-  loadSupplements();
-  const d = await api("/dashboard");
-  renderScore(d.score);
-  renderRecentActivities(d.recent_activities);
-  renderSleepAndHeart(d.recovery);
-  renderSuggestions(d.suggestions);
-  renderToday(d.today);
-  loadBedtime();
-  loadProposals();
-  loadSteps();
-  renderTodayTiles(d.recovery);
-  renderBoosters(d.boosters);
-  renderFeedback(d.pending_feedback);
-  renderInsights(d.insights);
-  loadReadout();
-  loadMemory();
-
-  ringChart($("#weekRing"), d.week.workouts, d.week.target);
-  $("#ringCount").textContent = d.week.workouts;
-  $("#ringTarget").textContent = d.week.target;
-  $("#statStreak").textContent = d.streak_weeks;
-  $("#statDuration").innerHTML = fmtDur(d.week.duration_s);
-  $("#statAcwr").textContent = d.acwr ?? "–";
-  $("#statAcwr").style.color = d.acwr > 1.5 ? "var(--bad)" : d.acwr >= 0.8 ? "var(--good)" : "var(--ink)";
-  $("#statReadiness").textContent = d.latest_daily?.training_readiness ?? "–";
-
-  if (d.coach_message) {
-    $("#coachMessage").innerHTML = esc(d.coach_message.content) +
-      `<div class="when">${fmtDate(d.coach_message.created_at)}</div>`;
-  }
-  if (d.research_tip) {
-    $("#researchTip").innerHTML = `<b>${esc(d.research_tip.topic || "")}</b><br>${esc(d.research_tip.content)}`;
-  }
-
-  rangeTabs($("#loadRange"), "load", DAILY_RANGES, (range, days) => {
-    const rows = daysBack(d.load_series, days);
-    const label = dayLabelFor(range);
-    const every = Math.max(1, Math.ceil(rows.length / 7));
-    barChart($("#loadChart"), rows.map((p, i) => ({
-      value: Math.round(p.load), tip: `${p.day} · ${p.count} Training(s)`,
-      label: i % every === 0 ? label(p.day) : "",
-    })));
-  }, "month");
-
-  renderComposition(d.body_composition);
-
-  const ws = d.weight_series.map((p) => ({ ...p, value: p.weight_kg }));
-  rangeTabs($("#weightRange"), "weight", DAILY_RANGES, (range, days) => {
-    const label = dayLabelFor(range);
-    lineChart($("#weightChart"), daysBack(ws, days)
-      .map((p) => ({ value: p.value, label: label(p.day), tip: p.day })),
-      { unit: " kg" });
-  }, "quarter");
-  if (ws.length >= 2) {
-    const diff = (ws[ws.length - 1].value - ws[0].value).toFixed(1);
-    $("#weightDelta").textContent =
-      `${diff > 0 ? "+" : ""}${diff} kg seit ${fmtDate(d.weight_series[0].day)}` +
-      (d.goals.includes("weight_gain") && diff > 0 ? " — geht in die richtige Richtung" : "");
-  }
-
-  // Heute anstehende Einheiten
-  const today = new Date().toISOString().slice(0, 10);
-  const todays = d.upcoming_workouts.filter((w) => w.planned_date === today);
-  $("#todayList").innerHTML = todays.length ? todays.map((w) => `
-    <div class="list-item">
-      ${kindTag(w.sport)}
-      <div class="grow"><div class="title">${esc(w.name)}</div>
-        <div class="meta">${esc(w.time_of_day || "")}${w.status === "pushed" ? " · auf der Uhr" : ""}</div></div>
-      <button class="btn small ghost" data-done-today="${w.id}">Erledigt</button>
-    </div>`).join("")
-    : 'Nichts geplant \u2014 <a href="#" data-goto="plan" style="color:var(--accent)">Woche planen</a>.';
-  $$("[data-done-today]").forEach((b) => b.addEventListener("click", async () => {
-    await api(`/workouts/${b.dataset.doneToday}`, { method: "PATCH",
-      body: JSON.stringify({ status: "done" }) });
-    toast("Erledigt"); loadDashboard();
-  }));
-
-  renderGoals(d.goal_progress);
-
-  $("#upcomingList").innerHTML = d.upcoming_workouts.length
-    ? '<div class="mini-list">' + d.upcoming_workouts.slice(0, 6).map((w) => `
-      <div class="mini${w.planned_date && w.planned_date <= today ? " due" : ""}">
-        ${kindTag(w.sport)}
-        <div class="mt">${esc(w.name)}</div>
-        <div class="mm">${w.status === "pushed" ? "auf der Uhr" : "geplant"}</div>
-        <div class="mr">${w.planned_date ? esc(relDay(w.planned_date)) : "ohne Datum"}</div>
-      </div>`).join("") + "</div>"
-    : 'Keine geplant — lass dir eine <a href="#" data-goto="plan" style="color:var(--accent)">vom Coach bauen</a>.';
-
-  const badge = $("#syncBadge");
-  if (!d.garmin_linked) { badge.textContent = "Garmin nicht verbunden"; badge.className = ""; }
-  else if (d.last_sync?.ok) { badge.textContent = "Sync " + new Date(d.last_sync.ts.replace(" ", "T") + "Z").toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); badge.className = "ok"; }
-  else { badge.textContent = "Sync-Fehler"; badge.className = "err"; }
-}
-
-$("#btnDaily").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/coach/daily", { method: "POST" });
-  $("#coachMessage").innerHTML = mdToHtml(r.message);
-}));
-$("#btnRest").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/coach/rest", { method: "POST" });
-  $("#coachMessage").innerHTML = mdToHtml(r.message);
-}));
-$("#btnResearch").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/coach/research", { method: "POST", body: "{}" });
-  $("#researchTip").innerHTML = mdToHtml(r.tip);
-}));
-$("#syncBadge").addEventListener("click", async () => {
-  try { toast("Sync läuft …"); const r = await api("/garmin/sync", { method: "POST" }); toast(r.ok ? "Sync fertig: " + r.detail : r.detail, !r.ok); loadDashboard(); }
-  catch (e) { toast(e.message, true); }
-});
-
-/* ------------------------------------------------------------------- Plan */
-
-const TOD_ORDER = { "morgens": 0, "abends": 1, "vor dem Schlafen": 2 };
-
-function stepsToHtml(steps, depth = 0) {
-  return (steps || []).map((s) => {
-    if (s.type === "repeat") {
-      return `<li>${s.count}× :<ul class="steps">${stepsToHtml(s.steps, depth + 1)}</ul></li>`;
-    }
-    const bits = [];
-    if (s.reps) bits.push(s.reps + " Wdh.");
-    if (s.duration_s) bits.push(Math.round(s.duration_s / 60 * 10) / 10 + " min");
-    if (s.distance_m) bits.push((s.distance_m / 1000).toFixed(1) + " km");
-    if (s.weight_kg) bits.push(s.weight_kg + " kg");
-    if (s.pace_min_km) bits.push("Pace " + s.pace_min_km.join("–"));
-    if (s.hr_zone) bits.push("HF-Zone " + s.hr_zone);
-    return `<li>${esc(s.name || STEP_LABEL[s.type] || s.type)} — ${bits.join(", ") || "frei"}` +
-      `${s.notes ? ` <span class="muted">(${esc(s.notes)})</span>` : ""}</li>`;
-  }).join("");
-}
-
-function renderWeekGrid(workouts) {
-  const today = new Date().toISOString().slice(0, 10);
-  const byDay = {};
-  workouts.forEach((w) => {
-    const d = w.planned_date || "ohne Datum";
-    (byDay[d] = byDay[d] || []).push(w);
-  });
-  const days = Object.keys(byDay).sort();
-  if (!days.length) return '<p class="muted">Noch nichts geplant — tipp auf „Woche planen".</p>';
-  return '<div class="week-grid">' + days.map((d) => {
-    const items = byDay[d].sort((a, b) =>
-      (TOD_ORDER[a.time_of_day] ?? 9) - (TOD_ORDER[b.time_of_day] ?? 9));
-    const date = d === "ohne Datum" ? null : new Date(d);
-    const wd = date ? date.toLocaleDateString("de-DE", { weekday: "short" }) : "–";
-    const dm = date ? date.toLocaleDateString("de-DE", { day: "numeric", month: "numeric" }) : "";
-    return `<div class="week-day ${d === today ? "today" : ""}">
-      <div class="wd">${wd}<small>${dm}</small></div>
-      <div class="week-items">${items.map((w) => `
-        <div class="week-item">
-          <span class="pill">${SPORT_KIND[w.sport] || ""}</span>
-          <span class="tod">${esc(w.time_of_day || "")}</span>
-          <span class="grow">${esc(w.name)}</span>
-          ${w.status === "pushed" ? '<span class="pill">Uhr</span>' : ""}
-        </div>`).join("")}</div>
-    </div>`;
-  }).join("") + "</div>";
-}
-
-async function loadPoses() {
-  let d;
-  try { d = await api("/yoga/poses"); } catch (e) { return; }
-  $("#poseList").innerHTML = d.poses.map((p) => `
-    <details class="pose">
-      <summary><b style="color:var(--ink)">${esc(p.name)}</b>
-        ${p.sanskrit ? `<span class="muted"> · ${esc(p.sanskrit)}</span>` : ""}
-        <span class="muted"> · ${Math.round(p.duration_s / 60 * 10) / 10} min</span></summary>
-      <div class="pose-body">
-        ${p.focus ? `<div class="pose-focus">Wirkt auf: ${esc(p.focus)}</div>` : ""}
-        <ol class="pose-steps">${(p.how || []).map((h) => `<li>${esc(h)}</li>`).join("")}</ol>
-        ${p.cue ? `<div class="pose-cue">Auf der Uhr: „${esc(p.cue)}"</div>` : ""}
-      </div>
-    </details>`).join("");
-}
+/* =========================================================== PLAN / HEUTE */
 
 async function loadPlan() {
-  const [overview, workouts, bench] = await Promise.all([
-    api("/plan/overview"), api("/workouts?limit=80&upcoming=1"), api("/benchmark/status"),
-  ]);
-
-  const open = workouts.filter((w) => ["planned", "pushed"].includes(w.status));
-  const wd = (arr) => (arr && arr.length ? arr.join(", ") : "keine");
-  // Die Wochen-Zusammenfassung steht jetzt im Plan-Reiter als Coach-Karte.
-
-  const b = bench;
-  const fmtLast = (x) => x.last ? `zuletzt vor ${x.days_ago} Tagen` : "noch nie";
-  $("#benchmarkStatus").innerHTML = `
-    <div>Lauf-Benchmark: ${fmtLast(b.run)}${b.run.due ? ' <span style="color:var(--warn)">— fällig</span>' : ""}
-      ${b.run.cooper_distance_m ? `<br><span class="muted">${b.run.cooper_distance_m} m im Cooper-Test · locker ${b.run.paces.easy}/km</span>` : ""}</div>
-    <div style="margin-top:6px">Kraft-Benchmark: ${fmtLast(b.strength)}${b.strength.due ? ' <span style="color:var(--warn)">— fällig</span>' : ""}</div>
-    ${b.pullup_best ? `<div style="margin-top:6px">Klimmzug-Maximum: ${b.pullup_best}</div>` : ""}`;
-
-  renderPlanned(open);
-  loadPoses();
+  await Promise.all([loadToday(), loadPlanned()]);
 }
 
-function renderPlanned(open) {
-  // Die Reihenfolge kommt vom Server (nächstes Datum zuerst). data-date macht
-  // sie prüfbar, ohne dass ein Test die Anzeigetexte parsen müsste.
-  $("#plannedList").innerHTML = open.length ? open.map((w) => `
-    <div class="list-item" style="align-items:flex-start"
-         data-date="${esc(w.planned_date || "9999-12-31")}">
-      ${kindTag(w.sport)}
-      <div class="grow">
-        <div class="title">${esc(w.name)}
-          ${w.status === "pushed" ? '<span class="badge pushed">auf der Uhr</span>' : ""}</div>
-        <div class="meta">${w.planned_date ? fmtDate(w.planned_date) : "kein Datum"}
-          ${w.time_of_day ? " · " + esc(w.time_of_day) : ""} · ${SPORT_LABEL[w.sport] || w.sport}</div>
-        ${w.description ? `<div class="muted">${esc(w.description)}</div>` : ""}
-        ${w.changes_note ? `<div class="chg-note">${esc(w.changes_note)}</div>` : ""}
-        <details><summary class="muted" style="cursor:pointer;font-size:12px;margin-top:4px">Ablauf anzeigen</summary>
-          <ul class="steps">${stepsToHtml(w.steps)}</ul></details>
-        <div class="ex-actions">
-          ${w.status !== "pushed" ? `<button class="btn small teal" data-push="${w.id}">An Garmin</button>` : ""}
-          <a class="btn small ghost" href="/api/workouts/${w.id}/fit" download>FIT</a>
-          <button class="btn small ghost" data-done="${w.id}">Erledigt</button>
-          <button class="btn small ghost" data-del="${w.id}">🗑</button>
-        </div>
-      </div>
-    </div>`).join("") : "Nichts geplant.";
+async function loadToday(phrase = true) {
+  const t = await api(`/today?phrase=${phrase ? "true" : "false"}`);
+  $("#todayHeadline").textContent = t.headline;
+  $("#todayText").textContent = t.text || t.plain;
 
-  $$("#plannedList [data-push]").forEach((b) => b.addEventListener("click", (e) =>
-    withSpinner(e.currentTarget, async () => {
-      await api(`/workouts/${b.dataset.push}/push`, {
-        method: "POST", body: JSON.stringify({}) });
-      toast("Ist auf dem Weg zu deiner Fenix");
-      loadPlan();
-    })));
-  $$("#plannedList [data-done]").forEach((b) => b.addEventListener("click", async () => {
-    await api(`/workouts/${b.dataset.done}`, { method: "PATCH", body: JSON.stringify({ status: "done" }) });
-    toast("Erledigt"); loadPlan();
-  }));
-  $$("#plannedList [data-del]").forEach((b) => b.addEventListener("click", async () => {
-    await api(`/workouts/${b.dataset.del}`, { method: "DELETE" }); loadPlan();
-  }));
-}
-
-$("#btnPlanWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/plan/week", { method: "POST", body: JSON.stringify({ replace: true }) });
-  toast(`${r.count} Einheiten geplant`); loadPlan();
-}));
-
-$("#btnPushAll").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const workouts = await api("/workouts?limit=80&upcoming=1");
-  const todo = workouts.filter((w) => w.status === "planned");
-  if (!todo.length) return toast("Nichts zu senden.");
-  let ok = 0, failed = 0;
-  for (const w of todo) {
-    try { await api(`/workouts/${w.id}/push`, { method: "POST", body: JSON.stringify({}) }); ok++; }
-    catch (err) { failed++; }
-  }
-  toast(`${ok} an Garmin gesendet${failed ? `, ${failed} fehlgeschlagen` : ""}`, failed > 0);
-  loadPlan();
-}));
-
-$$("[data-run]").forEach((b) => b.addEventListener("click", (e) =>
-  withSpinner(e.currentTarget, async () => {
-    const r = await api("/plan/run", { method: "POST",
-      body: JSON.stringify({ kind: b.dataset.run }) });
-    toast(`„${r.name}" erstellt`); loadPlan();
-  })));
-
-$("#btnGymSession").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/plan/gym-session", { method: "POST" });
-  toast(`„${r.name}" erstellt`); loadPlan();
-}));
-
-$("#btnYoga").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/plan/evening-yoga", { method: "POST" });
-  toast(`„${r.name}" erstellt`); loadPlan();
-}));
-
-/* -------------------------------------------------------------- Benchmark */
-
-$("#btnBenchRun").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/benchmark/run/create", { method: "POST" });
-  toast("Benchmark-Lauf erstellt — schick ihn an die Uhr");
-  loadPlan();
-}));
-
-$("#btnBenchStrength").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/benchmark/strength/create", { method: "POST" });
-  toast("Kraft-Test erstellt — schick ihn an die Uhr");
-  loadPlan();
-}));
-
-$("#btnCooperSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const m = +$("#cooperInput").value;
-  if (!m || m < 500) return toast("Bitte die Distanz in Metern eintragen.", true);
-  const r = await api("/benchmark/cooper", { method: "POST", body: JSON.stringify({ distance_m: m }) });
-  const g = r.goal;
-  const box = $("#benchResult");
-  box.hidden = false;
-  box.innerHTML = `
-    <div class="big-num">VO₂max ≈ ${r.vo2max}</div>
-    <div>Prognose ${g.distance_km} km: <b>${r.predicted_10k_text}</b>
-      (Ziel ${g.time_min} min, ${g.required_pace}/km)</div>
-    <div class="muted" style="margin-top:6px">${esc(g.verdict)}</div>
-    <table>
-      <tr><td>Locker / Grundlage</td><td>${r.paces.easy.text} /km</td></tr>
-      <tr><td>Langer Lauf</td><td>${r.paces.long.text} /km</td></tr>
-      <tr><td>Tempolauf (Schwelle)</td><td>${r.paces.tempo.text} /km</td></tr>
-      <tr><td>Intervalle</td><td>${r.paces.interval.text} /km</td></tr>
-    </table>
-    <div class="muted" style="margin-top:8px">Alle künftigen Laufeinheiten bekommen diese Tempi als Vorgabe auf die Uhr.</div>`;
-  toast("Laufprofil kalibriert");
-  loadPlan();
-}));
-
-$("#btnPullupSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const reps = +$("#pullupInput").value;
-  if (reps < 0 || $("#pullupInput").value === "") return toast("Bitte Anzahl eintragen.", true);
-  const r = await api("/benchmark/pullup", { method: "POST", body: JSON.stringify({ reps }) });
-  const box = $("#benchResult");
-  box.hidden = false;
-  box.innerHTML = `<div class="big-num">${r.max_reps} Klimmzüge</div>
-    <div>${esc(r.focus)}</div>`;
-  toast("Klimmzug-Plan angepasst");
-  loadPlan();
-}));
-
-/* --------------------------------------------------------------- Übungen */
-
-let exerciseData = { exercises: [], slot_labels: {}, muscle_labels: {}, equipment_labels: {} };
-let editingId = null;
-let setExerciseId = null;
-let setFeeling = null;
-
-function exTargetText(e) {
-  if (e.mode === "time") return `${e.target_duration_s || 30}<small> s</small>`;
-  const w = e.weight_kg ? `${e.weight_kg}<small> kg</small> × ` : "";
-  return `${w}${e.target_reps}<small> Wdh.</small>`;
-}
-
-async function loadExercises() {
-  exerciseData = await api("/exercises");
-  renderExercises();
-  loadActivityLog();
-}
-
-function renderExercises() {
-  const filter = $("#slotFilter").value;
-  const slots = ["cardio", "kettlebell", "pullup", "main", "stretch"];
-  const list = exerciseData.exercises;
-  let html = "";
-  for (const slot of slots) {
-    if (filter && filter !== slot) continue;
-    const items = list.filter((e) => (e.slot || "main") === slot);
-    if (!items.length) continue;
-    html += `<div class="slot-head">${esc(exerciseData.slot_labels[slot] || slot)}</div>`;
-    html += items.map((e) => `
-      <div class="ex-card ${e.active ? "" : "inactive"}">
-        <div class="ex-top">
-          <div class="grow">
-            <div class="name">${esc(e.name)}${e.active ? "" : " <span class='badge'>aus</span>"}</div>
-            <div class="ex-meta">
-              <span>${esc(exerciseData.muscle_labels[e.muscle_group] || e.muscle_group)}</span>
-              <span>${esc(exerciseData.equipment_labels[e.equipment] || e.equipment)}</span>
-              <span>${e.sets}×</span>
-              ${e.mode === "reps" ? `<span>Spanne ${e.rep_min}–${e.rep_max}</span>` : ""}
-              ${e.machine_setting ? `<span>${esc(e.machine_setting)}</span>` : ""}
-              ${e.days_since !== null && e.days_since !== undefined
-                ? `<span>vor ${e.days_since} T.</span>` : "<span>noch nie</span>"}
-            </div>
-          </div>
-          <div class="ex-target">${exTargetText(e)}</div>
-        </div>
-        <div class="ex-actions">
-          <button class="btn small ghost" data-ex-edit="${e.id}">Bearbeiten</button>
-          <button class="btn small ghost" data-ex-set="${e.id}">Satz eintragen</button>
-          <button class="btn small ghost" data-ex-hist="${e.id}">Verlauf</button>
-        </div>
-        <div class="ex-prog" id="exProg${e.id}"></div>
-      </div>`).join("");
-  }
-  $("#exerciseList").innerHTML = html || '<p class="muted">Keine Übungen in diesem Block.</p>';
-
-  $$("[data-ex-edit]").forEach((b) => b.addEventListener("click", () =>
-    openExerciseDialog(+b.dataset.exEdit)));
-  $$("[data-ex-set]").forEach((b) => b.addEventListener("click", () =>
-    openSetDialog(+b.dataset.exSet)));
-  $$("[data-ex-hist]").forEach((b) => b.addEventListener("click", async () => {
-    const id = +b.dataset.exHist;
-    const target = $("#exProg" + id);
-    if (target.dataset.open === "1") { target.innerHTML = ""; target.dataset.open = "0"; return; }
-    const h = await api(`/exercises/${id}/history`);
-    const prog = h.progression.slice(0, 4).map((p) =>
-      `<div>${fmtDate(p.ts)}: ${esc(p.reason || p.action)}</div>`).join("");
-    const sets = h.sets.slice(0, 8).map((s) =>
-      `<div>${fmtDate(s.day)} — Satz ${s.set_index}: ${s.reps ? s.reps + " Wdh." : ""}` +
-      `${s.weight_kg ? " @ " + s.weight_kg + " kg" : ""}${s.duration_s ? Math.round(s.duration_s) + " s" : ""}` +
-      ` <span class="muted">(${s.source})</span></div>`).join("");
-    target.innerHTML = (prog || sets)
-      ? `${prog}<div class="muted" style="margin-top:6px">${sets || "Noch keine Sätze."}</div>`
-      : '<span class="muted">Noch nichts aufgezeichnet.</span>';
-    target.dataset.open = "1";
-  }));
-}
-
-$("#slotFilter").addEventListener("change", renderExercises);
-
-function openExerciseDialog(id) {
-  editingId = id;
-  const e = id ? exerciseData.exercises.find((x) => x.id === id) : null;
-  $("#exDialogTitle").textContent = e ? e.name : "Neue Übung";
-  $("#exName").value = e?.name || "";
-  $("#exMuscle").value = e?.muscle_group || "legs";
-  $("#exEquipment").value = e?.equipment || "machine";
-  $("#exSlot").value = e?.slot || "main";
-  $("#exMode").value = e?.mode || "reps";
-  $("#exWeight").value = e?.weight_kg ?? "";
-  $("#exIncrement").value = e?.weight_increment ?? "";
-  $("#exSets").value = e?.sets ?? 3;
-  $("#exRepMin").value = e?.rep_min ?? 12;
-  $("#exRepMax").value = e?.rep_max ?? 15;
-  $("#exRest").value = e?.rest_s ?? 90;
-  $("#exDuration").value = e?.target_duration_s ?? 30;
-  $("#exSetting").value = e?.machine_setting || "";
-  $("#exNotes").value = e?.notes || "";
-  $("#exDelete").hidden = !id;
-  $("#exTimeRow").hidden = $("#exMode").value !== "time";
-  $("#exDialog").hidden = false;
-}
-
-$("#exMode").addEventListener("change", () => {
-  $("#exTimeRow").hidden = $("#exMode").value !== "time";
-});
-$("#exCancel").addEventListener("click", () => { $("#exDialog").hidden = true; });
-$("#exDialog").addEventListener("click", (e) => {
-  if (e.target.id === "exDialog") $("#exDialog").hidden = true;
-});
-
-$("#exSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const body = {
-    name: $("#exName").value.trim(),
-    muscle_group: $("#exMuscle").value,
-    equipment: $("#exEquipment").value,
-    slot: $("#exSlot").value,
-    mode: $("#exMode").value,
-    weight_kg: $("#exWeight").value === "" ? null : +$("#exWeight").value,
-    weight_increment: $("#exIncrement").value === "" ? null : +$("#exIncrement").value,
-    sets: +$("#exSets").value || 3,
-    rep_min: +$("#exRepMin").value || 12,
-    rep_max: +$("#exRepMax").value || 15,
-    rest_s: +$("#exRest").value || 90,
-    target_duration_s: +$("#exDuration").value || null,
-    machine_setting: $("#exSetting").value || null,
-    notes: $("#exNotes").value || null,
-  };
-  if (!body.name) return toast("Name fehlt.", true);
-  Object.keys(body).forEach((k) => body[k] === null && delete body[k]);
-  if (editingId) await api(`/exercises/${editingId}`, { method: "PATCH", body: JSON.stringify(body) });
-  else await api("/exercises", { method: "POST", body: JSON.stringify(body) });
-  $("#exDialog").hidden = true;
-  toast("Gespeichert");
-  loadExercises();
-}));
-
-$("#exDelete").addEventListener("click", async () => {
-  if (!editingId || !confirm("Übung wirklich löschen? Die aufgezeichneten Sätze gehen mit.")) return;
-  await api(`/exercises/${editingId}`, { method: "DELETE" });
-  $("#exDialog").hidden = true;
-  toast("Gelöscht"); loadExercises();
-});
-
-$("#btnNewExercise").addEventListener("click", () => openExerciseDialog(null));
-
-function openSetDialog(id) {
-  setExerciseId = id;
-  setFeeling = null;
-  const e = exerciseData.exercises.find((x) => x.id === id);
-  $("#setDialogTitle").textContent = e ? e.name : "Satz eintragen";
-  $("#setReps").value = e?.target_reps ?? "";
-  $("#setWeight").value = e?.weight_kg ?? "";
-  $("#setIndex").value = 1;
-  $$("#feelingRow [data-feeling]").forEach((b) => b.classList.remove("on"));
-  $("#setDialog").hidden = false;
-}
-
-$$("#feelingRow [data-feeling]").forEach((b) => b.addEventListener("click", () => {
-  setFeeling = b.dataset.feeling;
-  $$("#feelingRow [data-feeling]").forEach((x) => x.classList.toggle("on", x === b));
-}));
-
-$("#setCancel").addEventListener("click", () => { $("#setDialog").hidden = true; });
-$("#setDialog").addEventListener("click", (e) => {
-  if (e.target.id === "setDialog") $("#setDialog").hidden = true;
-});
-
-$("#setSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/sets", { method: "POST", body: JSON.stringify({
-    exercise_id: setExerciseId,
-    reps: +$("#setReps").value || null,
-    weight_kg: +$("#setWeight").value || null,
-    set_index: +$("#setIndex").value || 1,
-    feeling: setFeeling,
-  }) });
-  const next = (+$("#setIndex").value || 1) + 1;
-  $("#setIndex").value = next;
-  toast(`Satz ${next - 1} gespeichert`);
-  loadExercises();
-}));
-
-$("#btnAddActivity").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/activities", { method: "POST", body: JSON.stringify({
-    name: $("#actName").value || null, sport: $("#actSport").value,
-    duration_min: +$("#actDur").value || null, distance_km: +$("#actDist").value || null,
-    notes: $("#actNotes").value || null }) });
-  $("#actName").value = $("#actDur").value = $("#actDist").value = $("#actNotes").value = "";
-  toast("Training gespeichert"); loadExercises(); loadDashboard();
-}));
-
-$("#fitFile").addEventListener("change", async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  const fd = new FormData(); fd.append("file", f);
-  try { const r = await api("/activities/fit", { method: "POST", body: fd });
-    toast(`Importiert: ${r.name} (${fmtDur(r.duration_s)})`); loadExercises(); loadDashboard(); }
-  catch (err) { toast(err.message, true); }
-  e.target.value = "";
-});
-
-
-
-/* --------------------------------------------------------- Laufanalyse */
-
-const LEVEL_WORD = { good: "Gut", ok: "Okay", warn: "Achtung" };
-
-
-function renderDetailFeedback(activityId, existing) {
-  const box = $("#detailFeedback");
-  if (!box) return;
-  const draft = { rating: existing?.rating ?? null, effort: existing?.effort ?? null };
-  const dots = (label, field) => `<div class="fb-scale"><span class="lb">${label}</span>
-    ${[1, 2, 3, 4, 5].map((n) =>
-      `<button class="dot${draft[field] === n ? " on" : ""}" data-dfb="${field}"
-        data-value="${n}">${n}</button>`).join("")}</div>`;
-
-  const paint = () => {
-    box.innerHTML = dots("Wie war es?", "rating") + dots("Anstrengung", "effort") +
-      `<input class="grow" id="detailNote" placeholder="Notiz (optional)"
-        value="${esc(existing?.note || "")}">
-       <div class="row" style="margin-top:6px">
-         <button class="btn small" id="btnDetailFb">
-           ${existing ? "Aktualisieren" : "Speichern"}</button>
-       </div>`;
-    $$("[data-dfb]").forEach((b) => b.addEventListener("click", () => {
-      draft[b.dataset.dfb] = +b.dataset.value;
-      paint();
-    }));
-    $("#btnDetailFb").addEventListener("click", (e) =>
-      withSpinner(e.currentTarget, async () => {
-        await api(`/activities/${activityId}/feedback`, { method: "POST",
-          body: JSON.stringify({ ...draft,
-            note: $("#detailNote").value.trim() || null }) });
-        toast("Danke — das fließt in die Auswertung ein.");
-        loadDashboard();
-      }));
-  };
-  paint();
-}
-
-async function openRunAnalysis(activityId) {
-  $("#runContent").innerHTML = '<p class="muted"><span class="spin"></span> Wird ausgewertet …</p>';
-  $("#runDialog").hidden = false;
-
-  /* Bewertung und Detaildaten parallel holen — die Detaildaten dürfen fehlen,
-     ohne dass die Ansicht deswegen leer bleibt. */
-  let d, det = null;
-  try { d = await api(`/activities/${activityId}/analysis`); }
-  catch (e) { $("#runContent").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
-  try { det = await api(`/activities/${activityId}/details`); }
-  catch (e) { /* ohne Details geht es auch */ }
-
-  const a = d.activity, an = d.analysis;
-  const isGym = a.sport === "strength";
-  $("#runDialogTitle").textContent = a.name || (isGym ? "Gym-Einheit" : "Laufanalyse");
-
-  const km = a.distance_m ? (a.distance_m / 1000).toFixed(2) : null;
-  const facts = (isGym ? [
-    a.duration_s ? { v: fmtDur(a.duration_s), l: "Dauer" } : null,
-    d.gym?.sets ? { v: d.gym.sets, l: "Sätze" } : null,
-    d.gym?.volume_kg ? { v: Math.round(d.gym.volume_kg).toLocaleString("de-DE"), l: "Volumen kg" } : null,
-    d.gym?.exercises ? { v: d.gym.exercises, l: "Übungen" } : null,
-    a.avg_hr ? { v: Math.round(a.avg_hr), l: "Ø Puls" } : null,
-    a.calories ? { v: Math.round(a.calories), l: "Kalorien" } : null,
-  ] : [
-    km ? { v: km, l: "Kilometer" } : null,
-    a.duration_s ? { v: fmtDur(a.duration_s), l: "Dauer" } : null,
-    an?.pace_text ? { v: an.pace_text, l: "Tempo /km" } : null,
-    a.avg_hr ? { v: Math.round(a.avg_hr), l: "Ø Puls" } : null,
-    a.max_hr ? { v: Math.round(a.max_hr), l: "Max Puls" } : null,
-    a.avg_cadence ? { v: Math.round(a.avg_cadence), l: "Schritte/min" } : null,
-    a.avg_stride_m ? { v: a.avg_stride_m.toFixed(2), l: "Schrittlänge m" } : null,
-    a.elevation_gain ? { v: Math.round(a.elevation_gain), l: "Höhenmeter" } : null,
-    a.ground_contact_ms ? { v: Math.round(a.ground_contact_ms), l: "Bodenkontakt ms" } : null,
-    a.vertical_osc_cm ? { v: a.vertical_osc_cm.toFixed(1), l: "Vertikal cm" } : null,
-    a.aerobic_te ? { v: a.aerobic_te.toFixed(1), l: "Trainingseffekt" } : null,
-    a.avg_power ? { v: Math.round(a.avg_power), l: "Watt" } : null,
-  ]).filter(Boolean);
-
-  let html = "";
-  if (an) {
-    html += `<div class="run-verdict">
-      <span class="badge ${an.level === "good" ? "done" : ""}">${LEVEL_WORD[an.level] || ""}</span>
-      <span class="txt">${esc(an.verdict)}</span></div>`;
-  }
-  html += `<div class="run-facts">${facts.map((f) =>
-    `<div class="f"><div class="v">${esc(String(f.v))}</div><div class="l">${f.l}</div></div>`
-  ).join("")}</div>`;
-
-  if (a.hr_zones) {
-    const z = a.hr_zones;
-    const total = Object.values(z).reduce((s, x) => s + Number(x), 0);
-    if (total > 0) {
-      html += '<div class="zone-bar">' + [1, 2, 3, 4, 5].map((i) => {
-        const pct = (Number(z[i] || 0) / total) * 100;
-        return pct > 0 ? `<span class="z${i}" style="width:${pct}%"></span>` : "";
-      }).join("") + "</div>";
-      html += '<div class="zone-legend">' + [1, 2, 3, 4, 5].map((i) => {
-        const pct = Math.round((Number(z[i] || 0) / total) * 100);
-        return pct > 0 ? `<span>Zone ${i}: ${pct} %</span>` : "";
-      }).join("") + "</div>";
-    }
+  const ready = t.readiness || {};
+  $("#readyBox").hidden = ready.score === null || ready.score === undefined;
+  if (ready.score !== null && ready.score !== undefined) {
+    $("#readyNum").textContent = ready.score;
+    $("#readyNum").className = `ready-num ${ready.score >= 72 ? "good"
+      : ready.score >= 52 ? "" : ready.score >= 35 ? "warn" : "bad"}`;
+    $("#readyLabel").textContent = ready.label || "";
   }
 
-  const hasTrack = det?.track?.length > 1;
-  const hasSeries = det?.series?.t?.length > 1;
-  const hasSplits = det?.splits?.length > 1;
-
-  if (hasTrack) {
-    html += `<div class="detail-section"><h4>Strecke</h4>
-      <div id="runMap"></div>
-      <label class="map-toggle"><input type="checkbox" id="mapTiles">
-        Kartenhintergrund laden (fragt bei OpenStreetMap an)</label></div>`;
-  }
-  if (hasSeries) html += '<div class="detail-section"><h4>Verlauf</h4><div id="runProfile"></div></div>';
-  if (hasSplits) html += '<div class="detail-section"><h4>Kilometer</h4><div id="runSplits"></div></div>';
-
-  if (isGym && d.gym) {
-    const g = d.gym;
-    if (g.detail?.length) {
-      html += '<div class="detail-section"><h4>Übungen</h4><div class="gym-list">' +
-        g.detail.map((e) => {
-          const sets = e.reps.map((r, i) => {
-            const w = e.weights[i];
-            return r == null ? "–" : `${r}${w ? `×${w} kg` : ""}`;
-          }).join(" · ");
-          const ch = e.change;
-          const cls = !ch ? "" : ch.kind === "weight" || ch.kind === "reps" ? "up"
-            : ch.kind === "hold" ? "hold" : "down";
-          return `<div class="gym-ex">
-            <div class="n">${esc(e.name)}</div>
-            <div class="s">${esc(sets)}</div>
-            ${ch ? `<div class="c ${cls}">${esc(ch.text)}</div>` : ""}
-          </div>`;
-        }).join("") + "</div></div>";
-    }
-    if (g.tips?.length) {
-      html += '<div class="detail-section"><h4>Hinweise</h4>' + g.tips.map((t) =>
-        `<div class="finding ${t.level}"><div class="d">${esc(t.text)}</div></div>`
-      ).join("") + "</div>";
-    }
-  }
-
-  if (an?.findings?.length) {
-    html += '<div class="detail-section"><h4>Bewertung</h4>' + an.findings.map((f) => `
-      <div class="finding ${f.level}">
-        <div class="t">${esc(f.title)}${f.value ? ` — ${esc(f.value)}` : ""}</div>
-        <div class="d">${esc(f.detail)}</div>
-      </div>`).join("") + "</div>";
-  } else if (!isGym) {
-    html += '<p class="muted">Für eine Bewertung fehlen noch Daten. Nach dem nächsten Garmin-Sync klappt es.</p>';
-  }
-
-  if (det && !det.has_details && det.hint) {
-    html += `<p class="muted">${esc(det.hint)}</p>`;
-  }
-
-  /* Rückmeldung direkt hier, nicht nur auf dem Dashboard — hier ist man
-     ohnehin, wenn man über die Einheit nachdenkt. */
-  html += `<div class="detail-section"><h4>Wie hat es sich angefühlt?</h4>
-    <div id="detailFeedback"></div></div>`;
-  $("#runContent").innerHTML = html;
-
-  renderDetailFeedback(activityId, d.feedback);
-
-  /* --- Diagramme zeichnen, nachdem das Gerüst im Dokument steht --- */
-  let moveDot = null;
-  if (hasTrack) {
-    const paint = (tiles) => {
-      moveDot = routeMap($("#runMap"), det.track, det.bounds, {
-        tiles, values: det.series?.hr,
-        /* Im breiten Fenster darf die Karte mehr Höhe bekommen — auf dem
-           Handy bliebe sie sonst ein Briefschlitz. */
-        height: window.innerWidth >= 900 ? 460 : 340,
-      });
-    };
-    paint(localStorage.getItem("mapTiles") === "1");
-    const box = $("#mapTiles");
-    box.checked = localStorage.getItem("mapTiles") === "1";
-    box.addEventListener("change", () => {
-      localStorage.setItem("mapTiles", box.checked ? "1" : "0");
-      paint(box.checked);
-    });
-  }
-
-  if (hasSeries) {
-    const tracks = [
-      { key: "hr", label: "Puls", color: "var(--bad)", fill: true },
-      { key: "pace", label: "Tempo", color: "var(--teal)",
-        fmt: (v) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")} /km`,
-        fmtAxis: (v) => `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")}` },
-      { key: "ele", label: "Höhe", color: "var(--ink-3)", fill: true,
-        fmt: (v) => `${Math.round(v)} m` },
-      { key: "cadence", label: "Schrittfrequenz", color: "var(--accent)" },
-    ];
-    runProfile($("#runProfile"), det.series, {
-      tracks,
-      onHover: (i) => { if (moveDot) moveDot(i == null ? null : i / (det.series.t.length - 1)); },
-    });
-  }
-
-  if (hasSplits) splitChart($("#runSplits"), det.splits);
-}
-
-$("#runClose").addEventListener("click", () => { $("#runDialog").hidden = true; });
-$("#runDialog").addEventListener("click", (e) => {
-  if (e.target.id === "runDialog") $("#runDialog").hidden = true;
-});
-
-/* --------------------------------------------------------------- Ernährung */
-
-async function loadNutrition() {
-  loadRecipes();
-  loadMeals();
-  const [list, s] = await Promise.all([api("/nutrition?days=14"), api("/settings")]);
-  const kcalT = s.kcal_target, protT = s.protein_target;
-  $("#nutTargetInfo").textContent = kcalT || protT
-    ? `Ziel: ${kcalT ? kcalT + " kcal" : ""}${kcalT && protT ? " \u00b7 " : ""}${protT ? protT + " g Protein" : ""}`
-    : "";
-  $("#nutritionList").innerHTML = list.length ? `
-    <table class="datatable"><tr><th>Tag</th><th>kcal</th><th>Protein</th><th></th></tr>
-    ${list.map((n) => {
-      const okK = kcalT && n.kcal ? (n.kcal >= kcalT * 0.95 ? "erreicht" : "") : "";
-      return `<tr><td>${fmtDate(n.day)}</td><td>${n.kcal ?? "\u2013"}</td>
-        <td>${n.protein_g ?? "\u2013"} g</td><td>${okK}</td></tr>`;
-    }).join("")}</table>` : "Noch keine Eintr\u00e4ge.";
-}
-
-$("#btnSaveNutrition").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/nutrition", { method: "POST", body: JSON.stringify({
-    day: $("#nutDay").value || null, kcal: +$("#nutKcal").value || null,
-    protein_g: +$("#nutProt").value || null, notes: $("#nutNotes").value || null }) });
-  toast("Gespeichert"); loadNutrition();
-}));
-
-$("#btnNutritionAdvice").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/coach/nutrition", { method: "POST" });
-  $("#nutritionAdvice").innerHTML = mdToHtml(r.message);
-}));
-
-/* ------------------------------------------------------------------ K\u00f6rper */
-
-async function loadBody() {
-  const [summary, list] = await Promise.all([
-    api("/body/summary?days=365"), api("/body?days=365"),
-  ]);
-
-  /* Kopfzeile: aktuelle Werte mit Veränderung */
-  const arrow = (v) => v == null ? "" :
-    `<span class="d ${v < 0 ? "down" : v > 0 ? "up" : ""}">${v > 0 ? "+" : ""}${v.toFixed(1)} kg</span>`;
-  const l = summary.latest || {};
-  const est = new Set(summary.estimated_fields || []);
-  const cells = [
-    { v: summary.current_kg?.toFixed(1), u: "kg",
-      l: `Referenzwert (${summary.current_from_days ?? 7} Tage)`,
-      extra: arrow(summary.delta_7d) },
-    { v: l.body_fat_pct, u: "%", l: "Körperfett", f: "body_fat_pct" },
-    { v: l.muscle_kg, u: "kg", l: "Muskeln", f: "muscle_kg" },
-    { v: l.water_pct, u: "%", l: "Wasser", f: "water_pct" },
-    { v: l.bone_kg, u: "kg", l: "Knochen", f: "bone_kg" },
-    { v: l.visceral_fat, u: "", l: "Viszeralfett", f: "visceral_fat" },
-    { v: l.bmi, u: "", l: "BMI" },
-  ].filter((c) => c.v != null && c.v !== "");
-  /* Die Kette sichtbar machen: gemessen → umgerechnet → Referenzwert.
-     Wer 82,9 auf der Waage sieht und oben 81,4 liest, muss den Weg dazwischen
-     nachlesen können — sonst glaubt er der Anzeige zu Recht nicht. */
-  const lm = summary.last_measurement;
-  $("#bodyChain").innerHTML = lm ? `
-    <div class="chain">
-      <span class="c1">${lm.weight_kg?.toFixed(1)}\u2009kg</span>
-      <span class="cl">gemessen ${fmtDate(lm.measured_at)}, ${
-        esc((lm.measured_at || "").slice(11, 16))} Uhr</span>
-      ${lm.in_window || !lm.delta_kg ? "" : `
-        <span class="ca">→</span>
-        <span class="c2">${lm.adjusted_kg?.toFixed(1)}\u2009kg</span>
-        <span class="cl">umgerechnet auf ${esc(summary.window_label || "das Fenster")}
-          (${lm.delta_kg > 0 ? "+" : ""}${lm.delta_kg}\u2009kg)</span>`}
-      <span class="ca">→</span>
-      <span class="c3">${summary.current_kg?.toFixed(1)}\u2009kg</span>
-      <span class="cl">Referenzwert, Median über ${summary.current_from_days ?? 7} Tage</span>
-    </div>` : "";
-
-  $("#bodyFacts").innerHTML = cells.map((c) => `
-    <div class="f${est.has(c.f) ? " est" : ""}">
-      <div class="v">${esc(String(c.v))}<span class="u">${c.u}</span></div>
-      <div class="l">${c.l}${est.has(c.f) ? '<span title="aus der Impedanz geschätzt, nicht gemessen"> ≈</span>' : ""}</div>
-      ${c.extra || ""}
-    </div>`).join("") || '<p class="muted">Noch keine Messung.</p>';
-
-  /* Trendlinie aus den Referenzmessungen */
-  const bodyPoints = (summary.points || []).filter((p) => p.smooth_kg != null);
-  rangeTabs($("#bodyRange"), "body", DAILY_RANGES, (range, days) => {
-    const label = dayLabelFor(range);
-    lineChart($("#bodyChart"), daysBack(bodyPoints, days)
-      .map((p) => ({ value: p.smooth_kg, label: label(p.day),
-                     tip: `${p.day}${p.measured ? "" : " (umgerechnet)"}` })),
-      { unit: " kg" });
-  }, "quarter");
-
-  const disc = summary.discipline || {};
-  const deltas = [
-    summary.delta_30d != null ? `30 Tage ${summary.delta_30d > 0 ? "+" : ""}${summary.delta_30d.toFixed(1)} kg` : null,
-    summary.delta_90d != null ? `90 Tage ${summary.delta_90d > 0 ? "+" : ""}${summary.delta_90d.toFixed(1)} kg` : null,
-  ].filter(Boolean).join(" · ");
-  $("#bodyDiscipline").innerHTML = [
-    deltas,
-    disc.total ? `${disc.in_window} von ${disc.total} Messungen im Fenster ${esc(disc.window)}` : "",
-    disc.factor && disc.factor !== 1 ? `Tagesgang auf dich kalibriert (Faktor ${disc.factor})` : "",
-    disc.hint ? `<br>${esc(disc.hint)}` : "",
-  ].filter(Boolean).join(" · ");
-
-  /* Einzelmessungen — löschbar, mit Uhrzeit und Fenster-Kennzeichnung */
-  $("#bodyList").innerHTML = list.length ? `
-    <table class="datatable">
-      <tr><th>Zeitpunkt</th><th>Gewicht</th><th>Fett %</th><th>Quelle</th><th></th></tr>
-      ${list.slice(0, 30).map((b) => {
-        const when = b.time_known
-          ? `${fmtDate(b.day)}, ${b.measured_at.slice(11, 16)}`
-          : `${fmtDate(b.day)} <span class="muted">(Zeit unbekannt)</span>`;
-        const mark = b.in_window ? '<span class="in-win" title="im Referenzfenster">●</span> ' : "";
-        const adj = !b.in_window && b.time_known && b.weight_adj_kg != null
-          && Math.abs(b.weight_adj_kg - b.weight_kg) > 0.05
-          ? ` <span class="muted">→ ${b.weight_adj_kg.toFixed(1)}</span>` : "";
-        return `<tr>
-          <td>${mark}${when}</td>
-          <td>${b.weight_kg ?? "\u2013"} kg${adj}</td>
-          <td>${b.body_fat_pct ?? "\u2013"}</td>
-          <td>${b.source === "miscale" ? "Waage" : b.source === "garmin" ? "Garmin" : b.source}</td>
-          <td><button class="link-del" data-del-body="${b.id}" title="Messung löschen">×</button></td>
-        </tr>`;
-      }).join("")}
-    </table>
-    <p class="muted">● = im Referenzfenster gemessen. Der Pfeil zeigt den auf das
-      Fenster umgerechneten Wert.</p>` : "";
-
-  $$("[data-del-body]").forEach((btn) => btn.addEventListener("click", async () => {
-    if (!confirm("Diese Messung löschen?")) return;
-    try {
-      await api(`/body/${btn.dataset.delBody}`, { method: "DELETE" });
-      toast("Gelöscht"); loadBody(); loadDashboard();
-    } catch (e) { toast(e.message, true); }
-  }));
-
-  if (disc.window) {
-    const [a, b] = disc.window.split("\u2013");
-    if (a && b) { $("#winStart").value = a; $("#winEnd").value = b; }
-  }
-  return list;
-}
-
-$("#btnSaveBody").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const day = $("#bodyDay").value || null;
-  const time = $("#bodyTime").value;
-  await api("/body", { method: "POST", body: JSON.stringify({
-    day,
-    measured_at: day && time ? `${day}T${time}:00` : null,
-    weight_kg: +$("#bodyWeight").value || null,
-    body_fat_pct: +$("#bodyFat").value || null }) });
-  toast("Gespeichert"); loadBody(); loadDashboard();
-}));
-
-$("#btnSaveWindow").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/body/window", { method: "POST", body: JSON.stringify({
-    start: $("#winStart").value, end: $("#winEnd").value }) });
-  toast(`Fenster ${r.window} — ${r.recomputed} Messungen neu eingeordnet`);
-  loadBody();
-}));
-
-$("#bodyCsv").addEventListener("change", async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  const fd = new FormData(); fd.append("file", f);
-  try { const r = await api("/body/import", { method: "POST", body: fd });
-    toast(`${r.imported} Eintr\u00e4ge importiert`); loadBody(); }
-  catch (err) { toast(err.message, true); }
-  e.target.value = "";
-});
-
-/* ---------------------------------------------------- Verlaufs-Import */
-
-let backfillTimer = null;
-
-async function pollBackfill() {
-  let st;
-  try { st = await api("/garmin/backfill/status"); }
-  catch (e) { return; }
-  const box = $("#backfillProgress");
-  if (!st.running && !st.summary && !st.error) { box.hidden = true; return; }
-  box.hidden = false;
-
-  const counted = Object.entries(st.counts || {})
-    .filter(([, v]) => v).map(([k, v]) => `${v} ${k}`).join(" · ");
-
-  if (st.error) {
-    box.innerHTML = `<p class="muted">Abgebrochen: ${esc(st.error)}</p>` +
-      (counted ? `<p class="muted">Vorher geladen: ${esc(counted)}</p>` : "");
-  } else if (st.running) {
-    box.innerHTML = `
-      <div class="bf-head">
-        <span>Schritt ${st.phase_no}/${st.phase_count}: ${esc(st.phase)}</span>
-        <span>${st.percent} %</span>
-      </div>
-      <div class="bf-bar"><span style="width:${st.percent}%"></span></div>
-      <p class="muted">${esc(st.detail || "")}${counted ? ` — ${esc(counted)}` : ""}</p>
-      <button class="btn ghost small" id="btnBackfillCancel">Abbrechen</button>`;
-    const cancel = $("#btnBackfillCancel");
-    if (cancel) cancel.addEventListener("click", async () => {
-      try { await api("/garmin/backfill/cancel", { method: "POST" });
-        toast("Wird abgebrochen — das Geladene bleibt."); }
-      catch (e) { toast(e.message, true); }
-    });
-  } else {
-    box.innerHTML = `<p class="muted">${esc(st.summary || "Fertig.")}</p>`;
-  }
-
-  /* Solange etwas läuft, alle zwei Sekunden nachfragen. Die Phasen dauern
-     unterschiedlich lang — ohne Nachfragen sähe es aus, als hinge es. */
-  if (st.running && !backfillTimer) {
-    backfillTimer = setInterval(pollBackfill, 2000);
-  } else if (!st.running && backfillTimer) {
-    clearInterval(backfillTimer); backfillTimer = null;
-    loadDashboard();
-  }
-}
-
-$("#btnBackfill").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/garmin/backfill", { method: "POST" });
-  toast(r.status === "gestartet"
-    ? "Verlauf wird geladen — das dauert ein paar Minuten."
-    : "Der Import läuft bereits.");
-  pollBackfill();
-}));
-
-
-/* ------------------------------------------------------ Gemütszustand */
-
-const SCALE_WORDS = {
-  mood: ["mies", "gedrückt", "geht so", "gut", "bestens"],
-  energy: ["leer", "schlapp", "mittel", "frisch", "voll da"],
-  stress: ["ruhig", "entspannt", "mittel", "angespannt", "am Anschlag"],
-};
-let moodScales = { mood: null, energy: null, stress: null };
-let moodComplaints = [];
-let moodMeta = { regions: {}, kinds: {} };
-
-function renderScales() {
-  $$(".scale").forEach((box) => {
-    const key = box.dataset.scale;
-    const value = moodScales[key];
-    /* Das Wort steht UNTER den Punkten und hat feste Höhe — stünde es
-       daneben, würde die Reihe bei jeder Auswahl verrutschen. */
-    box.querySelector(".dots").innerHTML = [1, 2, 3, 4, 5].map((n) =>
-      `<button class="dot${value === n ? " on" : ""}" data-scale-set="${key}"
-        data-value="${n}" title="${SCALE_WORDS[key][n - 1]}">${n}</button>`
-    ).join("");
-    box.querySelector(".word").textContent = value ? SCALE_WORDS[key][value - 1] : "";
+  const reasons = $("#todayReasons");
+  reasons.replaceChildren();
+  (t.reasons || []).forEach((r) => {
+    const li = el("li");
+    li.append(el("b", null, r.label), document.createTextNode(` ${r.detail}`));
+    reasons.append(li);
   });
-  $$("[data-scale-set]").forEach((b) => b.addEventListener("click", () => {
-    const key = b.dataset.scaleSet;
-    /* Nochmal antippen hebt die Auswahl auf — nicht jeder Regler muss gesetzt sein */
-    moodScales[key] = moodScales[key] === +b.dataset.value ? null : +b.dataset.value;
-    renderScales();
-  }));
+
+  const parts = $("#readyParts");
+  parts.replaceChildren();
+  (ready.parts || []).forEach((p) => {
+    const li = el("li");
+    li.append(el("span", "pk", p.label), el("span", "pv", p.detail),
+              el("span", "ps", p.score));
+    parts.append(li);
+  });
+  $("#readyDetails").hidden = !(ready.parts || []).length;
+
+  const session = t.session;
+  $("#todayDetails").hidden = !session;
+  if (session) {
+    $("#todaySessionName").textContent =
+      `${session.name || "Die Einheit"} · ${t.minutes} min`;
+    const list = $("#todaySteps");
+    list.replaceChildren();
+    (session.steps || []).forEach((s) => list.append(stepLine(s)));
+  }
+  state.today = t;
 }
 
-/* Nur die Körperstellen, die im Alltag wirklich vorkommen — die vollständige
-   Liste kommt über „mehr“. */
-const QUICK_REGIONS = ["back_low", "neck", "shoulder", "knee", "thigh", "calf"];
-
-function renderComplaintPicker(all = false) {
-  const regions = all ? Object.keys(moodMeta.regions) : QUICK_REGIONS;
-  $("#complaintPicker").innerHTML = regions.map((r) =>
-    `<button class="chip" data-region="${r}">${esc(moodMeta.regions[r] || r)}</button>`
-  ).join("") + (all ? "" :
-    '<button class="chip ghost" id="moreRegions">mehr …</button>');
-
-  $$("[data-region]").forEach((b) => b.addEventListener("click", () => pickKind(b.dataset.region)));
-  const more = $("#moreRegions");
-  if (more) more.addEventListener("click", () => renderComplaintPicker(true));
+function stepLine(step, depth = 0) {
+  const li = el("li", depth ? "sub" : "");
+  if (step.type === "repeat" && step.steps) {
+    li.append(el("b", null, `${step.repeat || 1}× `));
+    li.append(document.createTextNode(step.name || "Runde"));
+    const inner = el("ol", "steps");
+    step.steps.forEach((s) => inner.append(stepLine(s, depth + 1)));
+    li.append(inner);
+    return li;
+  }
+  li.append(el("span", "sn", step.name || step.type || "Schritt"));
+  const bits = [];
+  if (step.reps) bits.push(`${step.reps} Wdh`);
+  if (step.weight_kg) bits.push(`${step.weight_kg} kg`);
+  if (step.duration_s) bits.push(`${Math.round(step.duration_s)} s`);
+  if (step.distance_m) bits.push(`${(step.distance_m / 1000).toFixed(1)} km`);
+  if (step.target) bits.push(step.target);
+  if (bits.length) li.append(el("span", "sv", bits.join(" · ")));
+  if (step.note) li.append(el("span", "note", step.note));
+  return li;
 }
 
-function pickKind(region) {
-  const kinds = Object.entries(moodMeta.kinds);
-  $("#complaintPicker").innerHTML =
-    `<span class="muted" style="align-self:center">${esc(moodMeta.regions[region])}:</span>` +
-    kinds.map(([k, label]) => `<button class="chip" data-kind="${k}">${esc(label)}</button>`).join("") +
-    '<button class="chip ghost" id="cancelKind">zurück</button>';
-  $$("[data-kind]").forEach((b) => b.addEventListener("click", () => {
-    if (!moodComplaints.some((c) => c.region === region && c.kind === b.dataset.kind)) {
-      moodComplaints.push({ region, kind: b.dataset.kind, severity: 2 });
+async function loadPlanned() {
+  const data = await api("/plan");
+  const list = $("#plannedList");
+  list.replaceChildren();
+  if (!data.workouts.length) {
+    list.append(el("p", "hint", "Nichts geplant. „Woche planen“ legt sie an."));
+  }
+  data.workouts.forEach((w) => {
+    const row = el("div", "item");
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title", w.name));
+    main.append(el("div", "item-sub",
+      [fmtDate(w.planned_date), w.minutes ? `${w.minutes} min` : null,
+       `${w.step_count} Schritte`, w.status === "pushed" ? "auf der Uhr" : null]
+        .filter(Boolean).join(" · ")));
+    row.append(main);
+    const push = el("button", "ghost small", w.status === "pushed" ? "erneut" : "an die Uhr");
+    push.onclick = () => post(`/plan/workouts/${w.id}/push`, {})
+      .then(() => { toast("Auf der Uhr."); loadPlanned(); })
+      .catch((e) => toast(e.message, "bad"));
+    const drop = el("button", "ghost small danger", "×");
+    drop.onclick = () => del(`/plan/workouts/${w.id}`).then(loadPlanned);
+    row.append(push, drop);
+    list.append(row);
+  });
+
+  const s = data.structure;
+  renderDays("#gymDays", s.gym_days);
+  renderDays("#runDays", s.run_days);
+  $("#gymMinutes").value = s.gym_minutes;
+  $("#runMinutes").value = s.run_minutes;
+}
+
+function renderDays(sel, active) {
+  const box = $(sel);
+  box.replaceChildren();
+  WEEKDAYS.forEach((d) => {
+    const b = el("button", `day${active.includes(d) ? " on" : ""}`, d);
+    b.onclick = () => { b.classList.toggle("on"); saveStructure(); };
+    box.append(b);
+  });
+}
+
+function pickedDays(sel) {
+  return $$(`${sel} .day.on`).map((b) => b.textContent);
+}
+
+async function saveStructure() {
+  await post("/settings", {
+    gym_days: pickedDays("#gymDays"), run_days: pickedDays("#runDays"),
+    gym_minutes: Number($("#gymMinutes").value) || 75,
+    run_minutes: Number($("#runMinutes").value) || 45,
+  });
+  toast("Wochenstruktur gespeichert.");
+}
+
+function renderWish(w) {
+  const box = $("#wishResult");
+  box.replaceChildren();
+  if (w.read_as) box.append(el("p", "lead", w.read_as));
+  if (w.goal_note) box.append(el("p", "hint", w.goal_note));
+  const list = el("ol", "steps");
+  (w.steps || []).forEach((s) => list.append(stepLine(s)));
+  box.append(list);
+  const save = el("button", null, "In den Plan legen");
+  save.onclick = async () => {
+    await post("/plan/workouts", {
+      name: w.name, sport: w.sport || "strength", steps: w.steps,
+      planned_date: new Date().toISOString().slice(0, 10),
+      description: w.read_as,
+    });
+    toast("Eingetragen.");
+    box.replaceChildren();
+    loadPlanned();
+  };
+  box.append(rowOf(save));
+}
+
+/* ================================================================ KRAFT */
+
+async function loadStrength() {
+  const data = await api("/strength");
+  state.strength = data;
+  renderProposals(data.proposals);
+  renderMuscles(data.muscles);
+  renderSessions(data.sessions);
+  renderExercises(data.exercises);
+}
+
+function renderProposals(props) {
+  $("#propCard").hidden = !props.length;
+  $("#propCount").textContent = props.length ? `${props.length}` : "";
+  const list = $("#propList");
+  list.replaceChildren();
+  props.forEach((p) => {
+    const row = el("div", "item prop");
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title", p.name));
+    const change = el("div", "change");
+    change.append(el("span", "from", `${p.from_weight ?? "–"} kg × ${p.from_reps}`),
+                  el("span", "arrow", "→"),
+                  el("span", "to", `${p.to_weight} kg × ${p.to_reps}`));
+    main.append(change);
+    main.append(el("div", "item-sub", p.reason));
+    row.append(main);
+    const yes = el("button", "small", "Übernehmen");
+    yes.onclick = () => post(`/strength/proposals/${p.id}`, { accept: true })
+      .then(() => { toast(`${p.name}: ${p.to_weight} kg × ${p.to_reps}.`); loadStrength(); });
+    const no = el("button", "ghost small", "Nein");
+    no.onclick = () => post(`/strength/proposals/${p.id}`, { accept: false })
+      .then(loadStrength);
+    row.append(yes, no);
+    list.append(row);
+  });
+}
+
+function renderMuscles(m) {
+  const box = $("#muscleList");
+  box.replaceChildren();
+  if (m.hint) { box.append(el("p", "hint", m.hint)); return; }
+  m.groups.forEach((g) => {
+    const row = el("div", "bar-row");
+    row.append(el("div", "bar-label", g.label));
+    const track = el("div", "bar");
+    const fill = el("div", `fill ${g.need >= 60 ? "hot" : g.need >= 30 ? "warm" : ""}`);
+    fill.style.width = `${Math.max(3, g.need)}%`;
+    track.append(fill);
+    row.append(track);
+    row.append(el("div", "bar-val", g.need));
+    const why = el("div", "bar-why",
+      g.reasons.length ? g.reasons[0] : `${g.sets_recent} Sätze in vier Wochen`);
+    const wrap = el("div", "bar-wrap");
+    wrap.append(row, why);
+    box.append(wrap);
+  });
+}
+
+function renderSessions(sessions) {
+  const list = $("#sessionList");
+  list.replaceChildren();
+  if (!sessions.length) {
+    list.append(el("p", "hint", "Noch keine Sätze. Trag oben ein Training nach."));
+  }
+  sessions.forEach((s) => {
+    const wrap = el("details", "session");
+    const sum = el("summary");
+    sum.append(el("b", null, fmtDate(s.day)),
+               el("span", "item-sub",
+                  ` ${s.exercises.length} Übungen · ${s.sets} Sätze`
+                  + (s.volume ? ` · ${s.volume.toLocaleString("de-DE")} kg` : "")));
+    wrap.append(sum);
+    s.exercises.forEach((e) => {
+      const line = el("div", "ex-line");
+      line.append(el("span", "sn", e.name), el("span", "sv", e.summary));
+      wrap.append(line);
+    });
+    list.append(wrap);
+  });
+}
+
+let exFilter = "";
+
+function renderExercises(items) {
+  const filters = $("#exFilters");
+  if (!filters.childElementCount) {
+    const labels = state.strength.muscle_labels;
+    [["", "alle"], ...Object.entries(labels)].forEach(([key, label]) => {
+      const b = el("button", `chip${key === exFilter ? " on" : ""}`, label);
+      b.onclick = () => {
+        exFilter = key;
+        $$("#exFilters .chip").forEach((c) => c.classList.remove("on"));
+        b.classList.add("on");
+        renderExercises(state.strength.exercises);
+      };
+      filters.append(b);
+    });
+  }
+  const list = $("#exerciseList");
+  list.replaceChildren();
+  items.filter((e) => !exFilter || e.muscle_group === exFilter).forEach((e) => {
+    const row = el("div", "item ex");
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title", e.name));
+    const target = e.mode === "time"
+      ? `${e.target_duration_s || 30} s`
+      : `${e.weight_kg ? `${e.weight_kg} kg × ` : ""}${e.target_reps}`;
+    main.append(el("div", "item-sub",
+      [target, `${e.sets} Sätze`,
+       e.days_since === null ? "noch nie" : e.days_since === 0 ? "heute"
+         : `vor ${e.days_since} Tagen`].join(" · ")));
+    row.append(main);
+    row.onclick = () => openExercise(e);
+    list.append(row);
+  });
+}
+
+/* ---------------------------------------------- Training in Worten lesen */
+
+async function readTraining() {
+  const text = $("#logText").value.trim();
+  if (!text) { toast("Schreib hin, was du gemacht hast.", "bad"); return; }
+  $("#btnRead").disabled = true;
+  $("#btnRead").textContent = "liest …";
+  try {
+    const pv = await post("/strength/describe", { text });
+    state.preview = pv;
+    renderPreview(pv);
+  } catch (e) {
+    toast(e.message, "bad");
+  } finally {
+    $("#btnRead").disabled = false;
+    $("#btnRead").textContent = "Lesen";
+  }
+}
+
+function renderPreview(pv) {
+  const box = $("#logPreview");
+  box.replaceChildren();
+  const ready = Boolean(pv.items.length || pv.runs.length);
+  $("#btnCommit").hidden = !ready;
+  // Sobald es etwas zu bestätigen gibt, ist „Eintragen“ die Handlung —
+  // zwei gleich betonte Knöpfe nebeneinander sagen nicht, welcher gemeint ist.
+  $("#btnRead").classList.toggle("ghost", ready);
+
+  if (pv.hint) box.append(el("p", "hint", pv.hint));
+  if (!pv.items.length && !pv.runs.length) return;
+
+  // „gestern (gestern)“ waere doppelt gemoppelt — die Herkunft steht nur
+  // dann daneben, wenn sie etwas hinzufuegt.
+  const how = pv.day_how && !pv.day_label.startsWith(pv.day_how)
+    ? ` — ${pv.day_how}` : "";
+  box.append(el("div", "preview-day", `Trainingstag: ${pv.day_label}${how}`));
+
+  pv.items.forEach((item, index) => {
+    const row = el("label", "item preview-item");
+    const tick = el("input");
+    tick.type = "checkbox";
+    tick.checked = true;
+    tick.onchange = () => { pv.items[index].skip = !tick.checked; row.classList.toggle("off", !tick.checked); };
+    row.append(tick);
+    const main = el("div", "item-main");
+    const title = el("div", "item-title");
+    title.append(document.createTextNode(item.name));
+    if (!item.known) title.append(el("span", "tag new", "neu"));
+    main.append(title);
+    main.append(el("div", "item-sub", item.summary));
+    main.append(el("div", "item-sub faint",
+      item.known ? `${item.muscle_label} · ${item.current}`
+                 : `wird angelegt als ${item.muscle_label}` +
+                   ` · gelesen als „${item.read_name}“`));
+    row.append(main);
+    box.append(row);
+  });
+
+  pv.runs.forEach((run, index) => {
+    const row = el("label", "item preview-item");
+    const tick = el("input");
+    tick.type = "checkbox";
+    tick.checked = true;
+    tick.onchange = () => { pv.runs[index].skip = !tick.checked; row.classList.toggle("off", !tick.checked); };
+    row.append(tick);
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title", `${run.name} (Lauf)`));
+    main.append(el("div", "item-sub",
+      [run.km ? `${run.km} km` : null, run.minutes ? `${run.minutes} min` : null]
+        .filter(Boolean).join(" · ")));
+    row.append(main);
+    box.append(row);
+  });
+
+  if (pv.unread.length) {
+    const un = el("details", "unread");
+    un.append(el("summary", null, `${pv.unread.length} Stelle(n) nicht verstanden`));
+    pv.unread.forEach((u) => un.append(el("div", "item-sub", `„${u}“`)));
+    box.append(un);
+  }
+}
+
+async function commitTraining() {
+  const pv = state.preview;
+  if (!pv) return;
+  $("#btnCommit").disabled = true;
+  try {
+    const res = await post("/strength/commit", {
+      day: pv.day, items: pv.items, runs: pv.runs,
+    });
+    const bits = [`${res.sets} Sätze eingetragen`];
+    if (res.created.length) bits.push(`${res.created.length} neue Übung(en): ${res.created.join(", ")}`);
+    if (res.runs) bits.push(`${res.runs} Lauf`);
+    toast(`${bits.join(" · ")}.`, "good");
+    $("#logText").value = "";
+    $("#logPreview").replaceChildren();
+    $("#btnCommit").hidden = true;
+    $("#btnRead").classList.remove("ghost");
+    state.preview = null;
+    await loadStrength();
+    if (res.proposals.length) {
+      $("#propCard").scrollIntoView({ behavior: "smooth", block: "center" });
     }
-    renderChosen(); renderComplaintPicker();
-  }));
-  $("#cancelKind").addEventListener("click", () => renderComplaintPicker());
+  } catch (e) {
+    toast(e.message, "bad");
+  } finally {
+    $("#btnCommit").disabled = false;
+  }
 }
 
-const SEVERITY_WORDS = ["", "leicht", "deutlich", "stark"];
+/* ------------------------------------------------------- Übungs-Dialog */
 
-function renderChosen() {
-  $("#complaintChosen").innerHTML = moodComplaints.map((c, i) => `
-    <span class="chip on">
-      ${esc(moodMeta.regions[c.region])}: ${esc(moodMeta.kinds[c.kind])}
-      <button class="sev" data-sev="${i}" title="Stärke ändern">${SEVERITY_WORDS[c.severity]}</button>
-      <button class="x" data-drop="${i}" title="Entfernen">×</button>
-    </span>`).join("");
-  $$("[data-drop]").forEach((b) => b.addEventListener("click", () => {
-    moodComplaints.splice(+b.dataset.drop, 1); renderChosen();
-  }));
-  $$("[data-sev]").forEach((b) => b.addEventListener("click", () => {
-    const c = moodComplaints[+b.dataset.sev];
-    c.severity = c.severity >= 3 ? 1 : c.severity + 1;
-    renderChosen();
-  }));
-}
+let editing = null;
 
-/* Freitext vom Modell lesen lassen — nur als Vorschlag. Erst nach einer Pause,
-   damit nicht bei jedem Tastendruck eine Anfrage losgeht. */
-let suggestTimer = null;
-function watchNote() {
-  clearTimeout(suggestTimer);
-  const text = $("#moodNote").value.trim();
-  if (text.length < 10) { $("#moodSuggest").hidden = true; return; }
-  suggestTimer = setTimeout(async () => {
-    let found = [];
-    try { found = (await api("/mood/suggest", { method: "POST",
-      body: JSON.stringify({ note: text }) })).complaints; }
-    catch (e) { return; }
-    const fresh = found.filter((f) =>
-      !moodComplaints.some((c) => c.region === f.region));
-    const box = $("#moodSuggest");
-    if (!fresh.length) { box.hidden = true; return; }
-    box.hidden = false;
-    box.innerHTML = "Aus deiner Notiz gelesen: " + fresh.map((f, i) =>
-      `<button class="chip" data-take="${i}">${esc(f.region_label)}: ${esc(f.kind_label)} +</button>`
-    ).join(" ");
-    $$("[data-take]").forEach((b) => b.addEventListener("click", () => {
-      moodComplaints.push(fresh[+b.dataset.take]);
-      renderChosen(); watchNote();
-    }));
-  }, 900);
-}
-
-/* Jeder Eintrag steht an seiner Uhrzeit, nicht auf einem Tagesraster: Drei
-   Einträge um 7, 13 und 22 Uhr sind kein Drittel-Drittel-Drittel, und zwei
-   Tage ohne Eintrag sind eine Lücke, kein nahtloser Strich. */
-function renderMoodChart(entries) {
-  const clean = entries
-    .filter((e) => e.recorded_at)
-    .map((e) => ({ t: new Date(e.recorded_at.replace(" ", "T")).getTime(), e }))
-    .filter((p) => !isNaN(p.t));
-
-  rangeTabs($("#moodRange"), "mood", ["day", "week", "month", "quarter"],
-    (range, days) => {
-      const from = Date.now() - days * 864e5;
-      const inRange = clean.filter((p) => p.t >= from);
-      const series = [
-        { key: "mood", label: "Stimmung", color: "var(--chart-1)" },
-        { key: "energy", label: "Energie", color: "var(--chart-2)" },
-        { key: "stress", label: "Stress", color: "var(--chart-4)" },
-      ].map((s) => ({ ...s, points: inRange
-        .filter((p) => p.e[s.key] != null)
-        .map((p) => ({ t: p.t, value: p.e[s.key] })) }))
-       .filter((s) => s.points.length);
-
-      $("#moodChartInfo").textContent = inRange.length
-        ? `${inRange.length} ${inRange.length === 1 ? "Eintrag" : "Einträge"}`
-        : "";
-      timeChart($("#moodChart"), series, {
-        from, to: Date.now(), min: 1, max: 5, unit: " von 5",
-        // Über einen Tag hinweg soll eine Nacht ohne Eintrag als Lücke
-        // sichtbar bleiben; über ein Vierteljahr wäre das nur Konfetti.
-        maxGapMs: days <= 1 ? 4 * 3600e3 : days <= 7 ? 36 * 3600e3 : 5 * 864e5,
-        empty: days <= 1
-          ? "Heute noch nichts eingetragen."
-          : "In diesem Zeitraum liegt noch nichts vor.",
-        label: "Gemütsverlauf",
+function openExercise(ex) {
+  editing = ex || null;
+  const labels = state.strength;
+  $("#exTitle").textContent = ex ? ex.name : "Neue Übung";
+  $("#exName").value = ex?.name || "";
+  fillSelect("#exGroup", labels.muscle_labels, ex?.muscle_group);
+  fillSelect("#exEquip", labels.equipment_labels, ex?.equipment);
+  $("#exWeight").value = ex?.weight_kg ?? "";
+  $("#exStep").value = ex?.weight_increment ?? 2.5;
+  $("#exReps").value = ex?.target_reps ?? 12;
+  $("#exSets").value = ex?.sets ?? 3;
+  $("#exSetting").value = ex?.machine_setting || "";
+  $("#btnExDelete").hidden = !ex;
+  $("#exHistory").replaceChildren();
+  $("#dlgExercise").showModal();
+  if (ex) {
+    api(`/exercises/${ex.id}/history`).then((h) => {
+      const box = $("#exHistory");
+      box.replaceChildren();
+      if (!h.sets.length) return;
+      box.append(el("h4", null, "Zuletzt"));
+      const byDay = {};
+      h.sets.forEach((s) => { (byDay[s.day] ||= []).push(s); });
+      Object.entries(byDay).slice(0, 6).forEach(([day, sets]) => {
+        const line = el("div", "ex-line");
+        line.append(el("span", "sn", fmtDate(day)),
+                    el("span", "sv", sets.map((s) =>
+                      s.duration_s ? `${Math.round(s.duration_s)} s`
+                        : `${s.reps ?? "–"}×${s.weight_kg ? ` ${s.weight_kg} kg` : ""}`
+                    ).join(" · ")));
+        box.append(line);
       });
-    }, "week");
+    });
+  }
 }
+
+function fillSelect(sel, labels, active) {
+  const node = $(sel);
+  node.replaceChildren();
+  Object.entries(labels).forEach(([key, label]) => {
+    const opt = el("option", null, label);
+    opt.value = key;
+    if (key === active) opt.selected = true;
+    node.append(opt);
+  });
+}
+
+async function saveExercise() {
+  const data = {
+    name: $("#exName").value.trim(),
+    muscle_group: $("#exGroup").value,
+    equipment: $("#exEquip").value,
+    weight_kg: Number($("#exWeight").value) || null,
+    weight_increment: Number($("#exStep").value) || 2.5,
+    target_reps: Number($("#exReps").value) || 12,
+    sets: Number($("#exSets").value) || 3,
+    machine_setting: $("#exSetting").value.trim() || null,
+  };
+  if (!data.name) { toast("Name fehlt.", "bad"); return; }
+  if (editing) await patch(`/exercises/${editing.id}`, data);
+  else await post("/exercises", data);
+  $("#dlgExercise").close();
+  toast("Gespeichert.");
+  loadStrength();
+}
+
+/* =============================================================== LAUFEN */
+
+async function loadRunning() {
+  const data = await api("/running");
+  const form = $("#runForm");
+  form.replaceChildren();
+  const paces = data.paces || {};
+  const bests = (data.form?.bests || []);
+  const kpis = [
+    ["Läufe (4 Wochen)", data.trend.runs_recent],
+    ["Kilometer/Woche", data.trend.km_per_week],
+    ["Tempo bei Puls 120–155", fmtPace(data.trend.pace_recent)],
+    ["Längster Lauf", data.trend.longest_recent ? `${data.trend.longest_recent} km` : "–"],
+  ];
+  kpis.forEach(([label, value]) => {
+    const box = el("div", "kpi");
+    box.append(el("div", "kpi-val", value ?? "–"), el("div", "kpi-lab", label));
+    form.append(box);
+  });
+
+  const goal = $("#runGoal");
+  goal.replaceChildren();
+  goal.append(el("div", "hint",
+    `Ziel: ${data.goal.distance_km} km unter ${data.goal.time_min} Minuten.`));
+  if (paces.easy) {
+    goal.append(el("div", "hint",
+      `Deine Tempi — locker ${fmtPace(paces.easy)}, Tempo ${fmtPace(paces.tempo)}, `
+      + `Intervall ${fmtPace(paces.interval)}.`));
+  }
+  bests.forEach((b) => {
+    goal.append(el("div", "hint",
+      `Bestes ${b.label}: ${fmtPace(b.pace_s)} am ${fmtDate(b.day)}.`));
+  });
+
+  const trend = $("#runTrend");
+  trend.replaceChildren();
+  if (data.trend.hint) trend.append(el("p", "hint", data.trend.hint));
+  if (data.trend.pace_gain_s) {
+    trend.append(el("p", "lead",
+      data.trend.pace_gain_s > 0
+        ? `${data.trend.pace_gain_s} s/km schneller bei gleichem Puls als im Monat davor.`
+        : `${Math.abs(data.trend.pace_gain_s)} s/km langsamer bei gleichem Puls als im Monat davor.`));
+  }
+  (data.trend.needs || []).forEach((n) => trend.append(el("li", "need", n)));
+  (data.form?.hints || []).forEach((h) =>
+    trend.append(el("p", `note ${h.level}`, h.text)));
+
+  const list = $("#runList");
+  list.replaceChildren();
+  if (!data.runs.length) list.append(el("p", "hint", "Noch keine Läufe."));
+  data.runs.forEach((r) => {
+    const row = el("div", "item");
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title", r.name || "Lauf"));
+    const km = r.distance_m ? (r.distance_m / 1000).toFixed(2) : null;
+    const pace = (r.distance_m && r.duration_s)
+      ? fmtPace(r.duration_s / (r.distance_m / 1000)) : null;
+    main.append(el("div", "item-sub",
+      [fmtDate(r.start_time), km ? `${km} km` : null, fmtDuration(r.duration_s),
+       pace, r.avg_hr ? `${Math.round(r.avg_hr)} bpm` : null]
+        .filter(Boolean).join(" · ")));
+    row.append(main);
+    row.onclick = () => openRun(r);
+    list.append(row);
+  });
+}
+
+async function openRun(run) {
+  $("#runTitle").textContent = run.name || "Lauf";
+  const box = $("#runDetail");
+  box.replaceChildren(el("p", "hint", "lädt …"));
+  $("#dlgRun").showModal();
+  try {
+    const [analysis, details] = await Promise.all([
+      api(`/activities/${run.id}/analysis`),
+      api(`/activities/${run.id}/details`),
+    ]);
+    box.replaceChildren();
+    (analysis.analysis?.findings || []).forEach((f) => {
+      box.append(el("p", `note ${f.level}`, `${f.title}: ${f.detail}`));
+    });
+    if (details.track && details.bounds && window.routeMap) {
+      const map = el("div");
+      box.append(map);
+      routeMap(map, details.track, details.bounds, {});
+    }
+    if (details.series && window.runProfile) {
+      const prof = el("div");
+      box.append(prof);
+      runProfile(prof, details.series, {});
+    }
+    if (details.splits?.length && window.splitChart) {
+      const sp = el("div");
+      box.append(sp);
+      splitChart(sp, details.splits, {});
+    }
+    if (!box.childElementCount) box.append(el("p", "hint", details.hint || "Keine Details."));
+    const drop = el("button", "ghost small danger", "Diese Einheit löschen");
+    drop.onclick = async () => {
+      await del(`/activities/${run.id}`);
+      $("#dlgRun").close();
+      loadRunning();
+    };
+    box.append(drop);
+  } catch (e) {
+    box.replaceChildren(el("p", "hint", e.message));
+  }
+}
+
+/* ================================================================ GEMÜT */
 
 async function loadMood() {
-  loadRecovery();
-  const d = await api("/mood?days=120");
-  moodMeta = { regions: d.regions, kinds: d.kinds };
-  renderScales(); renderComplaintPicker(); renderChosen();
+  const data = await api("/mood");
+  state.moodMeta = data;
+  renderScales();
 
-  renderMoodChart(d.entries || []);
-
-  $("#moodList").innerHTML = d.entries.length ? d.entries.slice(0, 20).map((e) => `
-    <div class="mood-row">
-      <div class="when">${fmtDate(e.day)}, ${e.recorded_at.slice(11, 16)}</div>
-      <div class="vals">${[
-        e.mood != null ? `Stimmung ${e.mood}` : null,
-        e.energy != null ? `Energie ${e.energy}` : null,
-        e.stress != null ? `Stress ${e.stress}` : null,
-      ].filter(Boolean).join(" · ")}</div>
-      ${e.complaint_labels.length ? `<div class="cmp">${e.complaint_labels.map(esc).join(" · ")}</div>` : ""}
-      ${e.note ? `<div class="note">${esc(e.note)}</div>` : ""}
-      <button class="link-del" data-del-mood="${e.id}" title="Eintrag löschen">×</button>
-    </div>`).join("") : '<p class="muted">Noch nichts eingetragen.</p>';
-
-  $$("[data-del-mood]").forEach((b) => b.addEventListener("click", async () => {
-    try { await api(`/mood/${b.dataset.delMood}`, { method: "DELETE" });
-      toast("Gelöscht"); loadMood(); }
-    catch (e) { toast(e.message, true); }
-  }));
-
-  const a = d.adaptations;
-  const card = $("#adaptCard");
-  if (a.complaints.length) {
-    card.hidden = false;
-    $("#adaptBody").innerHTML = `
-      <ul class="plain">${a.summary.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
-      ${a.relief_poses.length ? `<p>Beim Abend-Yoga zuerst: <b>${a.relief_poses.map(esc).join(", ")}</b>.</p>` : ""}
-      ${a.spare_groups.length ? '<p class="muted">Die betroffenen Muskelgruppen fallen aus der nächsten Gym-Einheit heraus — bleibt dann zu wenig übrig, plant PULS wieder normal.</p>' : ""}
-      ${a.nutrition.length ? a.nutrition.map((n) => `<p>${esc(n)}</p>`).join("") : ""}`;
+  const chart = $("#moodChart");
+  chart.replaceChildren();
+  const points = data.trend.points || [];
+  if (points.length && window.timeChart) {
+    timeChart(chart, [
+      { key: "mood", label: "Stimmung", points: points.filter((p) => p.mood != null)
+          .map((p) => ({ t: new Date(`${p.day}T12:00:00`).getTime(), value: p.mood })) },
+      { key: "energy", label: "Energie", points: points.filter((p) => p.energy != null)
+          .map((p) => ({ t: new Date(`${p.day}T12:00:00`).getTime(), value: p.energy })) },
+      { key: "stress", label: "Stress", points: points.filter((p) => p.stress != null)
+          .map((p) => ({ t: new Date(`${p.day}T12:00:00`).getTime(), value: p.stress })) },
+    ], { min: 1, max: 5 });
   } else {
-    card.hidden = true;
-  }
-}
-
-$("#btnSaveMood").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  if (moodScales.mood == null && moodScales.energy == null &&
-      moodScales.stress == null && !moodComplaints.length && !$("#moodNote").value.trim()) {
-    toast("Nichts einzutragen.", true); return;
-  }
-  await api("/mood", { method: "POST", body: JSON.stringify({
-    ...moodScales, note: $("#moodNote").value.trim() || null,
-    complaints: moodComplaints }) });
-  moodScales = { mood: null, energy: null, stress: null };
-  moodComplaints = []; $("#moodNote").value = ""; $("#moodSuggest").hidden = true;
-  toast("Eingetragen"); loadMood(); loadDashboard();
-}));
-
-$("#moodNote").addEventListener("input", watchNote);
-
-/* ------------------------------------------------------ Supplements */
-
-async function loadSupplements() {
-  let d;
-  try { d = await api("/supplements"); } catch (e) { return; }
-  const card = $("#suppCard");
-  if (!d.total) { card.hidden = true; return; }
-  card.hidden = false;
-  $("#suppList").innerHTML = d.items.map((i) => `
-    <label class="supp-row${i.taken ? " done" : ""}${i.overdue ? " over" : ""}">
-      <input type="checkbox" data-supp="${i.id}" ${i.taken ? "checked" : ""}
-        ${i.waiting_for ? "disabled" : ""}>
-      <span class="n">${esc(i.name)}${i.dose ? ` <span class="muted">${esc(i.dose)}</span>` : ""}</span>
-      <span class="t">${esc(i.due_label)}</span>
-    </label>`).join("") +
-    (d.overdue.length ? `<p class="muted">Überfällig: ${d.overdue.map(esc).join(", ")}.</p>` : "");
-
-  $$("[data-supp]").forEach((box) => box.addEventListener("change", async () => {
-    try {
-      await api(`/supplements/${box.dataset.supp}/taken?taken=${box.checked}`,
-                { method: "POST" });
-      loadSupplements();
-    } catch (e) { toast(e.message, true); box.checked = !box.checked; }
-  }));
-}
-
-const TRIGGER_WORDS = { time: "", after_gym: "nach dem Gym", after_run: "nach dem Lauf" };
-
-async function loadSupplementManager() {
-  let list;
-  try { list = await api("/supplements/all"); } catch (e) { return; }
-  $("#suppManage").innerHTML = list.length ? list.map((s) => `
-    <div class="list-item">
-      <div class="grow">
-        <div class="title">${esc(s.name)}${s.dose ? ` — ${esc(s.dose)}` : ""}</div>
-        <div class="meta">${s.trigger_kind === "time" ? esc(s.at_time || "")
-          : esc(TRIGGER_WORDS[s.trigger_kind] || s.trigger_kind)}
-          ${s.note ? ` · ${esc(s.note)}` : ""}</div>
-      </div>
-      <button class="link-del" data-del-supp="${s.id}" title="Entfernen">×</button>
-    </div>`).join("") : '<p class="muted">Noch keine angelegt.</p>';
-
-  $$("[data-del-supp]").forEach((b) => b.addEventListener("click", async () => {
-    if (!confirm("Dieses Supplement entfernen?")) return;
-    try { await api(`/supplements/${b.dataset.delSupp}`, { method: "DELETE" });
-      loadSupplementManager(); loadSupplements(); }
-    catch (e) { toast(e.message, true); }
-  }));
-}
-
-$("#btnAddSupp").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const kind = $("#suppTrigger").value;
-  await api("/supplements", { method: "POST", body: JSON.stringify({
-    name: $("#suppName").value.trim(),
-    dose: $("#suppDose").value.trim() || null,
-    trigger_kind: kind,
-    at_time: kind === "time" ? $("#suppTime").value : null,
-    note: $("#suppNote").value.trim() || null }) });
-  $("#suppName").value = ""; $("#suppDose").value = ""; $("#suppNote").value = "";
-  toast("Angelegt"); loadSupplementManager(); loadSupplements();
-}));
-
-$("#suppTrigger").addEventListener("change", () => {
-  $("#suppTime").disabled = $("#suppTrigger").value !== "time";
-});
-
-
-/* ----------------------------------------------------------- Erholung */
-
-function fmtSleep(sec) {
-  if (!sec) return "–";
-  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
-  return `${h}:${String(m).padStart(2, "0")} h`;
-}
-
-/* Ein Wert im Verhältnis zur eigenen Basislinie sagt mehr als die nackte
-   Zahl: 58 ms HRV sind gut oder schlecht, je nachdem, was für dich normal ist. */
-function baselineNote(b, invert = false) {
-  if (!b || b.delta == null) return "";
-  const better = invert ? b.delta < 0 : b.delta > 0;
-  const cls = Math.abs(b.delta) < 0.5 ? "" : better ? "down" : "up";
-  const sign = b.delta > 0 ? "+" : "";
-  return `<span class="d ${cls}">${sign}${b.delta} ggü. Schnitt</span>`;
-}
-
-async function loadRecovery() {
-  let d;
-  try { d = await api("/recovery?days=60"); } catch (e) { return; }
-  const series = d.series || [];
-  const l = d.latest || {};
-  const b = d.baselines || {};
-
-  const facts = [
-    { v: l.hrv_avg != null ? Math.round(l.hrv_avg) : null, u: "ms", l: "HRV",
-      extra: baselineNote(b.hrv_avg) },
-    { v: l.resting_hr != null ? Math.round(l.resting_hr) : null, u: "", l: "Ruhepuls",
-      extra: baselineNote(b.resting_hr, true) },
-    { v: l.sleep_seconds ? fmtSleep(l.sleep_seconds) : null, u: "", l: "Schlaf" },
-    { v: l.sleep_score != null ? Math.round(l.sleep_score) : null, u: "", l: "Schlafscore" },
-    { v: l.body_battery_max != null ? Math.round(l.body_battery_max) : null,
-      u: "", l: "Body Battery" },
-    { v: l.stress_avg != null ? Math.round(l.stress_avg) : null, u: "", l: "Stress Ø" },
-    { v: l.training_readiness != null ? Math.round(l.training_readiness) : null,
-      u: "", l: "Bereitschaft" },
-    { v: l.respiration_avg != null ? l.respiration_avg.toFixed(1) : null,
-      u: "/min", l: "Atmung" },
-  ].filter((f) => f.v != null);
-
-  $("#recoveryFacts").innerHTML = facts.length ? facts.map((f) => `
-    <div class="f"><div class="v">${esc(String(f.v))}<span class="u">${f.u}</span></div>
-      <div class="l">${f.l}</div>${f.extra || ""}</div>`).join("")
-    : `<p class="muted">${esc(d.hint || "Noch keine Erholungsdaten.")}</p>`;
-
-  $("#recoveryNotes").innerHTML = (d.observations || []).map((o) =>
-    `<div class="finding ${o.level}"><div class="d">${esc(o.text)}</div></div>`).join("");
-
-  const pick = (key) => series.filter((r) => r[key] != null)
-    .map((r) => ({ value: r[key], label: r.day.slice(5), tip: r.day }));
-
-  const dailyChart = (host, rangeHost, key, draw, fallback) =>
-    rangeTabs($(rangeHost), key, DAILY_RANGES,
-      (range, days) => draw($(host), daysBack(series, days), dayLabelFor(range)),
-      fallback || "month");
-
-  dailyChart("#hrvChart", "#hrvRange", "hrvRec", (el, rows, label) =>
-    lineChart(el, rows.filter((r) => r.hrv_avg != null)
-      .map((r) => ({ value: r.hrv_avg, label: label(r.day), tip: r.day })),
-      { unit: " ms" }));
-  dailyChart("#sleepChart", "#sleepRange", "sleepRec", (el, rows, label) =>
-    lineChart(el, rows.filter((r) => r.sleep_seconds)
-      .map((r) => ({ value: +(r.sleep_seconds / 3600).toFixed(2),
-                     label: label(r.day), tip: r.day })), { unit: " h" }));
-
-  /* Schlafphasen der letzten Nacht als Anteilsbalken */
-  const stages = [["sleep_deep_s", "Tief", "z4"], ["sleep_rem_s", "REM", "z3"],
-                  ["sleep_light_s", "Leicht", "z2"], ["sleep_awake_s", "Wach", "z1"]];
-  const total = stages.reduce((sum, [k]) => sum + (l[k] || 0), 0);
-  $("#sleepStages").innerHTML = total > 0 ? `
-    <div class="zone-bar">${stages.map(([k, , cls]) => {
-      const pct = ((l[k] || 0) / total) * 100;
-      return pct > 0.5 ? `<span class="${cls}" style="width:${pct}%"></span>` : "";
-    }).join("")}</div>
-    <div class="zone-legend">${stages.map(([k, label]) =>
-      l[k] ? `<span>${label}: ${fmtSleep(l[k])}</span>` : "").join("")}</div>` : "";
-
-  dailyChart("#stressChart", "#stressRange", "stress", (el, rows, label) =>
-    barChart(el, rows.filter((r) => r.stress_avg != null)
-      .map((r) => ({ value: Math.round(r.stress_avg), label: label(r.day),
-                     tip: `${r.day} — Stress Ø` })), { color: "var(--warn)" }));
-  dailyChart("#batteryChart", "#batteryRange", "battery", (el, rows, label) =>
-    lineChart(el, rows.filter((r) => r.body_battery_max != null)
-      .map((r) => ({ value: r.body_battery_max, label: label(r.day), tip: r.day })),
-      { color: "var(--good)" }));
-}
-
-/* ------------------------------------------------------------ Rezepte */
-
-let recipeCache = [];
-
-async function loadRecipes() {
-  const meal = $("#recipeMeal").value;
-  let d;
-  try { d = await api(`/recipes/suggest?count=3${meal ? `&meal=${meal}` : ""}`); }
-  catch (e) { return; }
-  recipeCache = d.recipes;
-  $("#recipeReason").textContent = d.reason || "";
-  $("#recipeList").innerHTML = d.recipes.map((r, i) => `
-    <div class="list-item recipe" data-recipe="${i}" style="cursor:pointer">
-      <div class="grow">
-        <div class="title">${esc(r.name)}</div>
-        <div class="meta">${r.kcal} kcal · ${r.protein} g Eiweiß ·
-          ${r.carbs} g KH · ${r.minutes} min
-          ${r.tags.includes("mealprep") ? ' · <span class="badge">vorkochbar</span>' : ""}
-          ${r.tags.includes("vegan") ? ' · <span class="badge">vegan</span>'
-            : r.tags.includes("veg") ? ' · <span class="badge">vegetarisch</span>' : ""}</div>
-      </div>
-      <span class="muted">Rezept ›</span>
-    </div>`).join("") || '<p class="muted">Keine passenden Rezepte gefunden.</p>';
-
-  $$("[data-recipe]").forEach((el) => el.addEventListener("click", () =>
-    openRecipe(recipeCache[+el.dataset.recipe])));
-}
-
-function openRecipe(r) {
-  if (!r) return;
-  $("#recipeTitle").textContent = r.name;
-  $("#recipeBody").innerHTML = `
-    <div class="run-facts">
-      <div class="f"><div class="v">${r.kcal}</div><div class="l">kcal</div></div>
-      <div class="f"><div class="v">${r.protein}</div><div class="l">g Eiweiß</div></div>
-      <div class="f"><div class="v">${r.carbs}</div><div class="l">g Kohlenhydrate</div></div>
-      <div class="f"><div class="v">${r.fat}</div><div class="l">g Fett</div></div>
-      <div class="f"><div class="v">${r.minutes}</div><div class="l">Minuten</div></div>
-    </div>
-    <div class="detail-section"><h4>Zutaten</h4>
-      <ul class="plain">${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>
-    <div class="detail-section"><h4>Zubereitung</h4>
-      <ol class="plain">${r.steps.map((i) => `<li>${esc(i)}</li>`).join("")}</ol></div>
-    ${r.note ? `<p class="muted">${esc(r.note)}</p>` : ""}
-    <div class="row" style="margin-top:12px">
-      <button class="btn" id="btnEatRecipe">Gegessen — eintragen</button>
-      <select id="eatPortions" class="small">
-        <option value="0.5">halbe Portion</option>
-        <option value="1" selected>1 Portion</option>
-        <option value="1.5">1,5 Portionen</option>
-        <option value="2">2 Portionen</option>
-      </select>
-    </div>`;
-  $("#btnEatRecipe").addEventListener("click", (e) =>
-    withSpinner(e.currentTarget, async () => {
-      await api("/nutrition/meals/from-recipe", { method: "POST",
-        body: JSON.stringify({ recipe_id: r.id,
-                               portions: +$("#eatPortions").value }) });
-      toast("Eingetragen");
-      $("#recipeDialog").hidden = true;
-      loadMeals(); loadDashboard();
-    }));
-  $("#recipeDialog").hidden = false;
-}
-
-$("#recipeClose").addEventListener("click", () => { $("#recipeDialog").hidden = true; });
-$("#recipeMeal").addEventListener("change", loadRecipes);
-$("#btnRecipeExplain").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const meal = $("#recipeMeal").value;
-  const r = await api(`/recipes/explain${meal ? `?meal=${meal}` : ""}`, { method: "POST" });
-  $("#recipeAdvice").hidden = false;
-  $("#recipeAdvice").innerHTML = mdToHtml(r.text);
-}));
-
-
-/* --------------------------------------------------------- Laufform */
-
-function paceStr(sec) {
-  if (!sec) return "–";
-  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
-}
-
-async function loadRunTrend() {
-  let t;
-  try { t = await api("/running/trend?days=365"); } catch (e) { return; }
-  const card = $("#runTrendCard");
-  if (!t.runs) {
-    card.hidden = false;
-    $("#trendFacts").innerHTML = `<p class="muted">${esc(t.hint || "Noch keine Läufe.")}</p>`;
-    $("#trendHints").innerHTML = "";
-    return;
-  }
-  card.hidden = false;
-
-  const totalKm = t.weeks.reduce((s, w) => s + w.km, 0);
-  const facts = [
-    { v: t.runs, u: "", l: "Läufe" },
-    { v: Math.round(totalKm), u: "km", l: "gesamt" },
-    t.change ? { v: `${t.change.percent > 0 ? "+" : ""}${t.change.percent}`, u: "%",
-                 l: "Effizienz", cls: t.change.percent >= 0 ? "down" : "up" } : null,
-    t.easy_share != null ? { v: t.easy_share, u: "%", l: "locker gelaufen" } : null,
-  ].filter(Boolean);
-  $("#trendFacts").innerHTML = facts.map((f) => `
-    <div class="f"><div class="v">${esc(String(f.v))}<span class="u">${f.u}</span></div>
-      <div class="l">${f.l}</div></div>`).join("");
-
-  $("#trendHints").innerHTML = (t.hints || []).map((h) =>
-    `<div class="finding ${h.level}"><div class="d">${esc(h.text)}</div></div>`).join("");
-
-  /* Die geglättete Linie zeigt den Trend, die Rohwerte wären zu unruhig */
-  lineChart($("#trendEffChart"), t.efficiency.map((p) => ({
-    value: p.smooth, label: p.day.slice(5),
-    tip: `${p.day} — ${p.km} km, ${paceStr(p.pace_s)}/km, ${p.hr || "?"} bpm`,
-  })));
-
-  barChart($("#trendWeekChart"), t.weeks.map((w) => ({
-    value: Math.round(w.km), label: w.week.slice(-2),
-    tip: `${w.week}: ${w.runs} Läufe`,
-  })), { color: "var(--teal)", unit: " km" });
-
-  $("#trendBests").innerHTML = t.bests.length ? `
-    <div class="bests">${t.bests.map((b) => `
-      <div class="best" data-run-id="${b.id}" style="cursor:pointer">
-        <div class="bl">${esc(b.label)}</div>
-        <div class="bv">${paceStr(b.pace_s)}<span class="u">/km</span></div>
-        <div class="bd">${fmtDate(b.day)}</div>
-      </div>`).join("")}</div>
-    <p class="muted">Bestes Durchschnittstempo über die jeweilige Distanz —
-      hochgerechnet, nicht als Wettkampfzeit gelaufen.</p>`
-    : '<p class="muted">Noch keine Distanz oft genug gelaufen.</p>';
-
-  $$("#trendBests [data-run-id]").forEach((el) => el.addEventListener("click", () =>
-    openRunAnalysis(+el.dataset.runId)));
-}
-
-/* -------------------------------------------------- Aktivitätsprotokoll */
-
-async function loadActivityLog() {
-  loadRunTrend();
-  const sport = $("#logSport").value;
-  const days = $("#logDays").value;
-  let d;
-  try { d = await api(`/activities/log?days=${days}${sport ? `&sport=${sport}` : ""}`); }
-  catch (e) { return; }
-
-  $("#logTotals").innerHTML = d.totals.map((t) =>
-    `${SPORT_LABEL[t.sport] || t.sport}: ${t.n}× · ${fmtDur(t.seconds)}` +
-    (t.meters ? ` · ${(t.meters / 1000).toFixed(0)} km` : "")).join(" &nbsp;·&nbsp; ")
-    || "Keine Einträge in diesem Zeitraum.";
-
-  $("#activityList").innerHTML = d.activities.length ? d.activities.map((a) => `
-    <div class="list-item" data-run-id="${a.id}" style="cursor:pointer">
-      ${kindTag(a.sport)}
-      <div class="grow">
-        <div class="title">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
-        <div class="meta">${fmtDate(a.start_time)} · ${fmtDur(a.duration_s)}
-          ${a.distance_m ? " · " + (a.distance_m / 1000).toFixed(1) + " km" : ""}
-          ${a.avg_hr ? " · Ø " + Math.round(a.avg_hr) + " bpm" : ""}
-          ${a.elevation_gain ? " · " + Math.round(a.elevation_gain) + " hm" : ""}
-          ${a.has_details ? ' · <span class="badge">Karte</span>' : ""}
-          · <span class="badge">${a.source === "garmin" ? "Garmin"
-            : a.source === "fit" ? "FIT" : "manuell"}</span></div>
-      </div>
-      <span class="muted">${a.sport === "strength" ? "Auswertung" : "Analyse"} ›</span>
-    </div>`).join("") : '<p class="muted">Nichts gefunden.</p>';
-
-  $$("[data-run-id]").forEach((el) => el.addEventListener("click", () =>
-    openRunAnalysis(+el.dataset.runId)));
-}
-
-$("#logSport").addEventListener("change", loadActivityLog);
-$("#logDays").addEventListener("change", loadActivityLog);
-
-
-
-/* ------------------------------------------------- Dashboard-Karten */
-
-function relDay(iso) {
-  if (!iso) return "";
-  const d = new Date(iso.slice(0, 10) + "T12:00:00");
-  const diff = Math.round((d - new Date(new Date().toDateString())) / 86400000);
-  if (diff === 0) return "heute";
-  if (diff === 1) return "morgen";
-  if (diff === -1) return "gestern";
-  if (diff > 1 && diff < 7) return d.toLocaleDateString("de-DE", { weekday: "long" });
-  if (diff < 0 && diff > -7) return `vor ${-diff} Tagen`;
-  return fmtDate(iso);
-}
-
-function renderRecentActivities(list) {
-  const box = $("#recentActivities");
-  if (!list || !list.length) {
-    box.innerHTML = '<p class="muted">Noch nichts aufgezeichnet.</p>';
-    return;
-  }
-  box.innerHTML = list.slice(0, 6).map((a) => `
-    <div class="mini" data-run-id="${a.id}">
-      ${kindTag(a.sport)}
-      <div class="mt">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
-      <div class="mm">${fmtDur(a.duration_s)}${a.distance_m
-        ? " · " + (a.distance_m / 1000).toFixed(1) + " km" : ""}${a.avg_hr
-        ? " · Ø " + Math.round(a.avg_hr) + " bpm" : ""}</div>
-      <div class="mr">${esc(relDay(a.start_time))}</div>
-    </div>`).join("");
-  $$("#recentActivities [data-run-id]").forEach((el) =>
-    el.addEventListener("click", () => openRunAnalysis(+el.dataset.runId)));
-}
-
-/* Eine Kachel: Wert, Einheit, Veränderung gegenüber der Basislinie, Verlauf.
-   Für einen einzelnen Wert ist das ehrlicher als ein Diagramm mit einem Balken. */
-/* Bei einer Skala von 0 bis 100 sagt die nackte Zahl nichts: 38 ist bei
-   Stress gut und bei Bereitschaft schlecht. Deshalb "38 von 100" plus ein
-   Balken, der die Lage auf der Skala zeigt. */
-function tile(value, unit, label, opts = {}) {
-  if (value == null) {
-    return `<div class="tile"><div class="tv">–</div><div class="tl">${esc(label)}</div></div>`;
-  }
-  let meter = "";
-  if (opts.max) {
-    const pct = Math.max(0, Math.min(100, (Number(value) / opts.max) * 100));
-    /* Farbe nach Bedeutung, nicht nach Höhe: viel Stress ist schlecht,
-       viel Bereitschaft ist gut. */
-    const good = opts.lowerIsBetter ? pct <= 40 : pct >= 65;
-    const bad = opts.lowerIsBetter ? pct >= 70 : pct <= 35;
-    const color = good ? "var(--good)" : bad ? "var(--warn)" : "var(--accent)";
-    meter = `<div class="meter" role="img"
-        aria-label="${esc(String(value))} von ${opts.max}">
-        <span style="width:${pct.toFixed(0)}%;background:${color}"></span></div>
-      <div class="tscale">von ${opts.max}${opts.band ? ` · ${esc(opts.band(value))}` : ""}</div>`;
-  }
-  let delta = "";
-  if (opts.delta != null && Math.abs(opts.delta) >= (opts.threshold || 0.5)) {
-    /* Bei Ruhepuls und Stress ist weniger besser — deshalb umkehrbar */
-    const better = opts.lowerIsBetter ? opts.delta < 0 : opts.delta > 0;
-    delta = `<div class="td ${better ? "good" : "bad"}">${opts.delta > 0 ? "+" : ""}${opts.delta}${opts.deltaUnit || ""} ggü. Schnitt</div>`;
-  }
-  return `<div class="tile">
-    <div class="tv">${esc(String(value))}${unit ? `<span class="u">${unit}</span>` : ""}</div>
-    <div class="tl">${esc(label)}</div>
-    ${meter}
-    ${delta}
-    ${opts.series ? `<div class="spark">${sparkline(opts.series, { color: opts.color })}</div>` : ""}
-  </div>`;
-}
-
-function renderSleepAndHeart(rec) {
-  if (!rec) return;
-  const series = rec.series || [];
-  const l = rec.latest || {};
-  const b = rec.baselines || {};
-  const col = (key) => series.map((r) => r[key]);
-
-  const hours = l.sleep_seconds ? +(l.sleep_seconds / 3600).toFixed(1) : null;
-  $("#sleepTiles").innerHTML =
-    tile(hours, " h", "letzte Nacht", {
-      series: series.map((r) => r.sleep_seconds ? r.sleep_seconds / 3600 : null),
-      color: "var(--teal)",
-      delta: b.sleep_seconds?.delta != null
-        ? +(b.sleep_seconds.delta / 3600).toFixed(1) : null,
-      deltaUnit: " h", threshold: 0.2 }) +
-    tile(l.sleep_score != null ? Math.round(l.sleep_score) : null, "", "Schlafscore",
-      { series: col("sleep_score"), color: "var(--teal)", max: 100,
-        band: (v) => v >= 80 ? "sehr gut" : v >= 60 ? "gut" : v >= 40 ? "mäßig" : "schlecht" });
-
-  /* Schlafphasen als Anteilsbalken — Teil vom Ganzen, keine Torte */
-  const stages = [["sleep_deep_s", "Tief", "z4"], ["sleep_rem_s", "REM", "z3"],
-                  ["sleep_light_s", "Leicht", "z2"], ["sleep_awake_s", "Wach", "z1"]];
-  const total = stages.reduce((sum, [k]) => sum + (l[k] || 0), 0);
-  $("#sleepStagesMini").innerHTML = total > 0 ? `
-    <div class="zone-bar">${stages.map(([k, , cls]) => {
-      const pct = ((l[k] || 0) / total) * 100;
-      return pct > 0.5 ? `<span class="${cls}" style="width:${pct}%"></span>` : "";
-    }).join("")}</div>
-    <div class="zone-legend">${stages.map(([k, label]) => l[k]
-      ? `<span>${label} ${Math.round(l[k] / 60)} min</span>` : "").join("")}</div>` : "";
-
-  /* Nur die zwei Werte, die wirklich etwas sagen — ohne Sparkline, weil
-     darunter das große Diagramm mit dem Normalband steht. */
-  $("#heartTiles").innerHTML =
-    tile(l.resting_hr != null ? Math.round(l.resting_hr) : null, " bpm", "Ruhepuls", {
-      delta: b.resting_hr?.delta, lowerIsBetter: true, threshold: 1 }) +
-    tile(l.hrv_avg != null ? Math.round(l.hrv_avg) : null, " ms", "HRV", {
-      delta: b.hrv_avg?.delta, threshold: 1 }) +
-    tile(l.body_battery_max != null ? Math.round(l.body_battery_max) : null, "",
-      "Body Battery", { series: col("body_battery_max"), color: "var(--good)",
-        max: 100, band: (v) => v >= 75 ? "voll" : v >= 50 ? "ordentlich" : v >= 25 ? "wenig" : "leer" }) +
-    tile(l.stress_avg != null ? Math.round(l.stress_avg) : null, "", "Stress Ø", {
-      lowerIsBetter: true, max: 100,
-      band: (v) => v <= 25 ? "ruhig" : v <= 50 ? "normal" : v <= 75 ? "erhöht" : "hoch" });
-
-  /* Verlauf vor dem Normalband: erst dadurch ist zu sehen, ob ein Wert
-     auffällig war oder im üblichen Rahmen lag. */
-  const banded = (host, rangeHost, key, field, opts) =>
-    rangeTabs($(rangeHost), key, DAILY_RANGES, (range, days) => {
-      const label = dayLabelFor(range);
-      baselineChart($(host),
-        daysBack(series, days).filter((r) => r[field] != null)
-          .map((r) => ({ value: opts.map ? opts.map(r) : r[field], label: label(r.day) })),
-        opts);
-    }, "month");
-
-  banded("#rhrChart", "#rhrRange", "rhr", "resting_hr",
-    { baseline: b.resting_hr?.baseline, spread: 2, color: "var(--bad)",
-      lowerIsBetter: true, label: "Ruhepuls", empty: "Noch zu wenige Ruhepuls-Werte." });
-  banded("#hrvDashChart", "#hrvDashRange", "hrvDash", "hrv_avg",
-    { baseline: b.hrv_avg?.baseline, spread: 5, color: "var(--good)",
-      label: "HRV", empty: "Noch zu wenige HRV-Werte." });
-  banded("#sleepChartDash", "#sleepDashRange", "sleepDash", "sleep_seconds",
-    { baseline: b.sleep_seconds?.baseline ? b.sleep_seconds.baseline / 3600 : null,
-      spread: 0.5, color: "var(--teal)", fmt: (v) => v.toFixed(1) + " h",
-      map: (r) => +(r.sleep_seconds / 3600).toFixed(2),
-      label: "Schlafdauer", empty: "Noch zu wenige Nächte aufgezeichnet." });
-}
-
-/* Die Verweise am Kartenfuß sollen wirklich zur Ansicht springen */
-$$("[data-goto]").forEach((b) => b.addEventListener("click", () => {
-  const target = $(`nav.bottom [data-view="${b.dataset.goto}"]`);
-  if (target) target.click();
-}));
-
-
-
-/* ------------------------------------------- Zustand, Schwung, Feedback */
-
-/* Puls, Schlaf, Stress und Bereitschaft in einer Reihe — die vier Werte,
-   nach denen sich entscheidet, was heute sinnvoll ist. */
-function renderTodayTiles(rec) {
-  if (!rec) return;
-  const l = rec.latest || {};
-  const b = rec.baselines || {};
-  const series = rec.series || [];
-  const col = (k) => series.map((r) => r[k]);
-
-  $("#todayTiles").innerHTML =
-    tile(l.resting_hr != null ? Math.round(l.resting_hr) : null, " bpm", "Ruhepuls",
-      { series: col("resting_hr"), color: "var(--bad)",
-        delta: b.resting_hr?.delta, lowerIsBetter: true, threshold: 1 }) +
-    tile(l.hrv_avg != null ? Math.round(l.hrv_avg) : null, " ms", "HRV",
-      { series: col("hrv_avg"), color: "var(--good)",
-        delta: b.hrv_avg?.delta, threshold: 1 }) +
-    tile(l.sleep_seconds ? +(l.sleep_seconds / 3600).toFixed(1) : null, " h", "Schlaf",
-      { series: series.map((r) => r.sleep_seconds ? r.sleep_seconds / 3600 : null),
-        color: "var(--teal)" }) +
-    tile(l.stress_avg != null ? Math.round(l.stress_avg) : null, "", "Stress Ø",
-      { series: col("stress_avg"), color: "var(--warn)", lowerIsBetter: true,
-        max: 100, band: (v) => v <= 25 ? "ruhig" : v <= 50 ? "normal" : v <= 75 ? "erhöht" : "hoch" }) +
-    tile(l.training_readiness != null ? Math.round(l.training_readiness) : null,
-      "", "Bereitschaft", { series: col("training_readiness"),
-        color: "var(--accent)", max: 100, band: (v) => v >= 75 ? "sehr gut" : v >= 50 ? "solide" : v >= 25 ? "mäßig" : "niedrig" }) +
-    tile(l.body_battery_wake != null ? Math.round(l.body_battery_wake) : null,
-      "", "Body Battery früh", { series: col("body_battery_wake"),
-        color: "var(--good)", max: 100, band: (v) => v >= 75 ? "voll" : v >= 50 ? "ordentlich" : v >= 25 ? "wenig" : "leer" });
-}
-
-async function loadReadout(force = false) {
-  const box = $("#readoutText");
-  if (!force && sessionStorage.getItem("readout")) {
-    box.innerHTML = mdToHtml(sessionStorage.getItem("readout"));
-    return;
-  }
-  box.innerHTML = '<span class="muted"><span class="spin"></span> Der Coach schaut auf die Zahlen …</span>';
-  try {
-    const r = await api("/coach/readout", { method: "POST" });
-    /* Die Einschätzung bis zum Neuladen behalten: auf der CPU dauert sie
-       spürbar, und sie ändert sich innerhalb einer Sitzung ohnehin kaum. */
-    sessionStorage.setItem("readout", r.message);
-    box.innerHTML = mdToHtml(r.message);
-  } catch (e) {
-    box.innerHTML = `<span class="muted">${esc(e.message)}</span>`;
-  }
-}
-
-$("#btnReadout").addEventListener("click", (e) =>
-  withSpinner(e.currentTarget, () => loadReadout(true)));
-
-const KIND_WORDS = { movement: "Bewegung", nutrition: "Ernährung", routine: "Gewohnheit" };
-
-function renderBoosters(d) {
-  const card = $("#boosterCard");
-  if (!d || !d.boosters || !d.boosters.length) { card.hidden = true; return; }
-  card.hidden = false;
-  $("#boosterSituation").textContent = (d.situation.reasons.length
-    ? "Weil: " + d.situation.reasons.join(", ") : "")
-    + (d.daypart ? ` · Vorschläge für ${d.daypart}` : "");
-
-  $("#boosterList").innerHTML = d.boosters.map((b) => `
-    <div class="booster">
-      <div class="bk">${KIND_WORDS[b.kind] || b.kind}${b.minutes ? ` · ${b.minutes} min` : ""}</div>
-      <div class="bn">${esc(b.name)}</div>
-      <div class="bt">${esc(b.text)}</div>
-      ${b.why ? `<div class="bk good">${esc(b.why)}</div>` : ""}
-      <div class="row">
-        <button class="btn small ghost" data-rate="${b.id}" data-help="1">Hat geholfen</button>
-        <button class="btn small ghost" data-rate="${b.id}" data-help="0">Bringt mir nichts</button>
-      </div>
-    </div>`).join("");
-
-  $("#boosterOpen").innerHTML = (d.open || []).length ? `
-    <div class="works">Von neulich noch offen — hat das etwas gebracht?
-      ${d.open.map((o) => `<button class="btn small ghost" data-rate="${o.tip_id}"
-        data-help="1">${esc(o.name)}: ja</button>
-        <button class="btn small ghost" data-rate="${o.tip_id}"
-        data-help="0">nein</button>`).join(" ")}</div>` : "";
-
-  $("#boosterWorks").innerHTML = (d.works || []).length ? `
-    <div class="works">Was bei dir bisher am besten wirkt:
-      ${d.works.slice(0, 3).map((w) =>
-        `<b>${esc(w.name)}</b> (${w.gut}/${w.bewertet})`).join(", ")}.</div>` : "";
-
-  $$("[data-rate]").forEach((b) => b.addEventListener("click", async () => {
-    try {
-      await api(`/boosters/${b.dataset.rate}/rate`, { method: "POST",
-        body: JSON.stringify({ helpful: b.dataset.help === "1" }) });
-      toast(b.dataset.help === "1" ? "Gemerkt — kommt öfter." : "Gemerkt — kommt seltener.");
-      loadDashboard();
-    } catch (e) { toast(e.message, true); }
-  }));
-}
-
-const fbDraft = {};
-
-function scaleRow(label, name, id) {
-  // Eine schon getroffene Wahl muss ein Neuzeichnen überstehen — das Dashboard
-  // lädt sich nebenbei nach, und eine verschwundene Auswahl sieht kaputt aus.
-  const chosen = (fbDraft[id] || {})[name];
-  return `<div class="fb-scale"><span class="lb">${label}</span>
-    ${[1, 2, 3, 4, 5].map((n) =>
-      `<button class="dot${chosen === n ? " on" : ""}" data-fb="${id}"
-        data-field="${name}" data-value="${n}" aria-label="${label} ${n} von 5"
-        >${n}</button>`
-    ).join("")}</div>`;
-}
-
-function renderFeedback(list) {
-  const card = $("#feedbackCard");
-  if (!list || !list.length) { card.hidden = true; return; }
-  card.hidden = false;
-  $("#feedbackBody").innerHTML = list.map((a) => `
-    <div class="fb-item">
-      <div class="fn">${esc(a.name || SPORT_LABEL[a.sport] || "Training")}</div>
-      <div class="fm">${fmtDate(a.start_time)} · ${fmtDur(a.duration_s)}${
-        a.distance_m ? " · " + (a.distance_m / 1000).toFixed(1) + " km" : ""}</div>
-      ${scaleRow("Wie war es?", "rating", a.id)}
-      ${scaleRow("Anstrengung", "effort", a.id)}
-      <input class="grow" data-note="${a.id}" placeholder="Notiz (optional)">
-      <div class="row" style="margin-top:6px">
-        <button class="btn small" data-fbsave="${a.id}">Speichern</button>
-      </div>
-    </div>`).join("");
-
-  $$("[data-fb]").forEach((b) => b.addEventListener("click", () => {
-    const id = b.dataset.fb, field = b.dataset.field;
-    fbDraft[id] = fbDraft[id] || {};
-    fbDraft[id][field] = +b.dataset.value;
-    $$(`[data-fb="${id}"][data-field="${field}"]`).forEach((x) =>
-      x.classList.toggle("on", +x.dataset.value === fbDraft[id][field]));
-  }));
-
-  $$("[data-fbsave]").forEach((b) => b.addEventListener("click", (e) =>
-    withSpinner(e.currentTarget, async () => {
-      const id = b.dataset.fbsave;
-      const note = $(`[data-note="${id}"]`);
-      await api(`/activities/${id}/feedback`, { method: "POST",
-        body: JSON.stringify({ ...(fbDraft[id] || {}),
-                               note: note ? note.value.trim() || null : null }) });
-      toast("Danke — das fließt in die Auswertung ein.");
-      delete fbDraft[id];
-      loadDashboard();
-    })));
-}
-
-/* --------------------------------------------- Chat auf der Startseite */
-
-function dashBubble(kind, text, who) {
-  const el = document.createElement("div");
-  el.className = "bubble " + kind;
-  el.innerHTML = (who ? `<div class="k">${esc(who)}</div>` : "") + mdToHtml(text);
-  $("#dashChatLog").appendChild(el);
-  $("#dashChatLog").scrollTop = $("#dashChatLog").scrollHeight;
-  return el;
-}
-
-async function dashAsk() {
-  const q = $("#dashChatInput").value.trim();
-  if (!q) return;
-  $("#dashChatInput").value = "";
-  dashBubble("user", q);
-  const pending = dashBubble("coach", "Denke nach … (lokale KI, kann dauern)", "PULS");
-  try {
-    const r = await api("/coach/ask", { method: "POST",
-      body: JSON.stringify({ question: q }) });
-    pending.innerHTML = '<div class="k">PULS</div>' + mdToHtml(r.answer);
-    loadMemory();
-  } catch (e) {
-    pending.innerHTML = '<div class="k">PULS</div>⚠️ ' + esc(e.message);
-  }
-}
-
-$("#btnDashAsk").addEventListener("click", dashAsk);
-$("#dashChatInput").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") dashAsk();
-});
-
-async function loadMemory() {
-  let list;
-  try { list = await api("/memory"); } catch (e) { return; }
-  $("#memoryList").innerHTML = list.length ? list.map((m) => `
-    <div class="mem-row">
-      <span class="mtopic">${esc(m.topic)}</span>
-      <span>${esc(m.fact)}</span>
-      <span>
-        <button class="pin${m.pinned ? " on" : ""}" data-forget="${m.id}"
-          title="Vergessen">×</button>
-      </span>
-    </div>`).join("") : '<p class="muted">Noch nichts gemerkt.</p>';
-  $$("[data-forget]").forEach((b) => b.addEventListener("click", async () => {
-    try { await api(`/memory/${b.dataset.forget}`, { method: "DELETE" });
-      loadMemory(); }
-    catch (e) { toast(e.message, true); }
-  }));
-}
-
-$("#btnMemAdd").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const topic = $("#memTopic").value.trim(), fact = $("#memFact").value.trim();
-  if (!topic || !fact) { toast("Thema und Inhalt bitte ausfüllen.", true); return; }
-  await api("/memory", { method: "POST",
-    body: JSON.stringify({ topic, fact, pinned: true }) });
-  $("#memTopic").value = ""; $("#memFact").value = "";
-  toast("Gemerkt"); loadMemory();
-}));
-
-
-/* ------------------------------------------------------- Zusammenhänge */
-
-function renderInsights(d) {
-  if (!d) return;
-  $("#insightHint").textContent = d.hint || "";
-  const foot = [];
-  if (d.days_with_mood) foot.push(`${d.days_with_mood} Tage mit Befinden-Einträgen`);
-  foot.push("Zusammenhang heißt nicht Ursache — aber es ist der Anfang.");
-  $("#insightFoot").textContent = foot.join(" · ");
-
-  if (d.helps?.length) {
-    $("#insightHelps").innerHTML = '<h4 class="ins-h">Womit es dir besser geht</h4>' +
-      '<div id="helpBars"></div>' +
-      d.helps.map((f) => `<div class="ins-t">${esc(f.text)}</div>`).join("");
-    splitBars($("#helpBars"), d.helps);
-  } else { $("#insightHelps").innerHTML = ""; }
-
-  if (d.hurts?.length) {
-    $("#insightHurts").innerHTML = '<h4 class="ins-h">Was mit schlechteren Tagen einhergeht</h4>' +
-      '<div id="hurtBars"></div>' +
-      d.hurts.map((f) => `<div class="ins-t">${esc(f.text)}</div>`).join("");
-    splitBars($("#hurtBars"), d.hurts);
-  } else { $("#insightHurts").innerHTML = ""; }
-}
-
-/* --------------------------------------------------------- Mahlzeiten */
-
-const SLOT_WORDS = { breakfast: "Frühstück", lunch: "Mittag", dinner: "Abend",
-                     snack: "Snack", other: "Sonstiges" };
-
-async function loadMeals() {
-  let d;
-  try { d = await api("/nutrition/day"); } catch (e) { return; }
-  const t = d.targets;
-
-  if (!t.ready) {
-    $("#mealTargets").innerHTML = `<p class="muted">${esc(t.hint || "")}</p>`;
-  } else {
-    /* Erreicht von Ziel — der Balken zeigt, wie weit der Tag ist */
-    const row = (key, label, unit, goalKey) => {
-      const have = Math.round(d.total[key] || 0);
-      const goal = t[goalKey];
-      return tile(have, unit, `${label} von ${goal}${unit}`,
-        { max: goal, band: () => d.remaining[key] > 0
-          ? `noch ${d.remaining[key]}${unit}`
-          : `${Math.abs(d.remaining[key])}${unit} drüber` });
-    };
-    $("#mealTargets").innerHTML =
-      row("kcal", "Kalorien", "", "kcal") +
-      row("protein_g", "Eiweiß", " g", "protein_g") +
-      row("carbs_g", "Kohlenhydrate", " g", "carbs_g") +
-      row("fat_g", "Fett", " g", "fat_g");
-    $("#targetExplain").textContent = t.explain || "";
+    chart.append(el("p", "hint", "Noch keine Einträge."));
   }
 
-  $("#mealList").innerHTML = d.meals.length ? `
-    <div class="mini-list">${d.meals.map((m) => `
-      <div class="mini" style="cursor:default">
-        <span class="kind">${esc((SLOT_WORDS[m.slot] || "").slice(0, 4))}</span>
-        <div class="mt">${esc(m.name)}${m.portions !== 1 ? ` ×${m.portions}` : ""}</div>
-        <div class="mm">${[m.kcal ? `${Math.round(m.kcal)} kcal` : null,
-          m.protein_g ? `${Math.round(m.protein_g)} g Eiweiß` : null]
-          .filter(Boolean).join(" · ")}</div>
-        <button class="link-del" data-del-meal="${m.id}" title="Löschen">×</button>
-      </div>`).join("")}</div>`
-    : '<p class="muted">Heute noch nichts eingetragen.</p>';
+  const adapt = $("#moodAdapt");
+  adapt.replaceChildren();
+  const a = data.adaptations;
+  if (!a.summary?.length) adapt.append(el("p", "hint", "Keine Beschwerden gemeldet — gut."));
+  (a.summary || []).forEach((line) => adapt.append(el("li", "need", line)));
+  (a.relief_poses || []).forEach((p) => adapt.append(el("p", "hint", `Hilft: ${p}`)));
 
-  $$("[data-del-meal]").forEach((b) => b.addEventListener("click", async () => {
-    try { await api(`/nutrition/meals/${b.dataset.delMeal}`, { method: "DELETE" });
-      loadMeals(); loadDashboard(); }
-    catch (e) { toast(e.message, true); }
-  }));
+  const list = $("#moodList");
+  list.replaceChildren();
+  data.entries.slice(0, 20).forEach((e) => {
+    const row = el("div", "item");
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title",
+      `${fmtDate(e.day)} · ${(e.recorded_at || "").slice(11, 16)}`));
+    main.append(el("div", "item-sub",
+      [e.mood ? `Stimmung ${e.mood}` : null, e.energy ? `Energie ${e.energy}` : null,
+       e.stress ? `Stress ${e.stress}` : null, e.note].filter(Boolean).join(" · ")));
+    row.append(main);
+    const drop = el("button", "ghost small danger", "×");
+    drop.onclick = () => del(`/mood/${e.id}`).then(loadMood);
+    row.append(drop);
+    list.append(row);
+  });
 }
 
-/* Freitext-Mahlzeit: erst rechnen und zeigen, dann auf Wunsch buchen. Was aus
-   einem Satz gelesen wurde, will man vorher sehen — geschätzt bleibt es
-   ohnehin, aber eine sichtbare Schätzung kann man korrigieren. */
-let mealEstimateText = "";
-
-async function estimateMeal(save) {
-  const text = $("#mealText").value.trim();
-  if (!text) { toast("Schreib auf, was du gegessen hast.", true); return; }
-  const box = $("#mealEstimate");
-  const r = await api("/nutrition/meals/estimate", { method: "POST",
-    body: JSON.stringify({ text, slot: $("#mealTextSlot").value, save }) });
-
-  if (save && r.meal) {
-    box.hidden = true;
-    $("#mealText").value = "";
-    toast("Eingetragen");
-    loadNutrition();
-    return;
-  }
-
-  mealEstimateText = text;
-  box.hidden = false;
-  const t = r.total;
-  box.innerHTML = `
-    <div class="est-box">
-      ${r.items.length ? `<table class="est-t"><tbody>${r.items.map((i) => `
-        <tr><td>${esc(i.matched)}</td><td class="n">${i.grams} g</td>
-            <td class="n">${i.kcal} kcal</td>
-            <td class="n muted">E ${i.protein_g} · K ${i.carbs_g} · F ${i.fat_g}</td></tr>
-        `).join("")}</tbody></table>` : ""}
-      <div class="est-sum"><b>${t.kcal} kcal</b> ·
-        ${t.protein_g} g Eiweiß · ${t.carbs_g} g Kohlenhydrate · ${t.fat_g} g Fett</div>
-      ${r.hint ? `<p class="muted">${esc(r.hint)}</p>` : ""}
-      <p class="muted">Geschätzt aus Durchschnittswerten je 100 g — keine
-        Packungsangabe. Wenn es genau sein muss, trag die Zahlen unten ein.</p>
-      ${r.items.length ? '<button class="btn" id="btnMealSave">So eintragen</button>' : ""}
-    </div>`;
-  const save_btn = $("#btnMealSave");
-  if (save_btn) {
-    save_btn.addEventListener("click", (e) =>
-      withSpinner(e.currentTarget, () => estimateMeal(true)));
-  }
-}
-
-$("#btnMealEstimate").addEventListener("click", (e) =>
-  withSpinner(e.currentTarget, () => estimateMeal(false)));
-$("#mealText").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") { ev.preventDefault(); $("#btnMealEstimate").click(); }
-});
-
-$("#btnAddMeal").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const name = $("#mealName").value.trim();
-  if (!name) { toast("Wie heißt die Mahlzeit?", true); return; }
-  await api("/nutrition/meals", { method: "POST", body: JSON.stringify({
-    name, slot: $("#mealSlot").value,
-    kcal: +$("#mealKcal").value || null,
-    protein_g: +$("#mealProtein").value || null,
-    carbs_g: +$("#mealCarbs").value || null,
-    fat_g: +$("#mealFat").value || null }) });
-  ["mealName", "mealKcal", "mealProtein", "mealCarbs", "mealFat"]
-    .forEach((id) => { $("#" + id).value = ""; });
-  toast("Eingetragen"); loadMeals(); loadDashboard();
-}));
-
-
-/* ------------------------------------------------------------ Statistik */
-
-let statsCache = null;
-let statsWeakLimit = 12;
-
-async function loadStats() {
-  const days = $("#statsDays").value || 365;
-  let d;
-  try { d = await api(`/stats/matrix?days=${days}`); }
-  catch (e) { $("#statsIntro").textContent = e.message; return; }
-  statsCache = d;
-
-  $("#statsIntro").innerHTML = d.hint ? esc(d.hint) : `
-    ${d.tested} Paare aus ${d.metrics_used} Messgrößen über ${d.rows} Tage geprüft.
-    <b>${d.robust.length}</b> davon halten der Korrektur für Mehrfachprüfung stand.
-    ${d.metrics_missing.length ? `<br><span class="muted">Noch zu wenig Daten für:
-      ${d.metrics_missing.slice(0, 8).map(esc).join(", ")}${
-      d.metrics_missing.length > 8 ? " …" : ""}</span>` : ""}`;
-
-  $("#statsRobust").innerHTML = d.robust.length ? d.robust.slice(0, 10).map((p) => `
-    <div class="corr-row">
-      <div class="ct">${esc(p.a_label)} <span class="muted">und</span> ${esc(p.b_label)}</div>
-      <div class="cm">${p.direction} · ${p.strength} · r=${p.r} · ${p.n} Tage
-        · p=${p.p < 0.001 ? "&lt;0,001" : p.p.toFixed(3).replace(".", ",")}</div>
-    </div>`).join("")
-    : '<p class="muted">Noch kein Zusammenhang belastbar. Das ist kein Fehler — es heißt, dass die Datenmenge dafür noch nicht reicht.</p>';
-  correlationBars($("#statsRobustBars"), d.robust, { limit: 10 });
-
-  const weak = d.pairs.filter((p) => !p.robust);
-  correlationBars($("#statsWeakBars"), weak, { limit: statsWeakLimit });
-  $("#btnStatsMore").hidden = weak.length <= statsWeakLimit;
-
-  loadStatsRecommendations(days);
-}
-
-async function loadStatsRecommendations(days) {
-  let d;
-  try { d = await api(`/stats/recommendations?days=${days}`); }
-  catch (e) { $("#statsRecs").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
-
-  if (!d.recommendations.length) {
-    $("#statsRecs").innerHTML = `<p class="muted">${esc(d.hint || "Noch nichts abzuleiten.")}</p>`;
-    return;
-  }
-  $("#statsRecs").innerHTML = d.recommendations.map((r) => `
-    <div class="rec">
-      <div class="rh">${esc(r.lever_label)} ${esc(r.direction)}
-        <b>${esc(r.threshold_text)}</b></div>
-      <div class="rb">
-        <span class="rl">${esc(r.outcome_label)}</span>
-        <span class="rv good">${esc(r.good_text)}</span>
-        <span class="muted">statt</span>
-        <span class="rv bad">${esc(r.bad_text)}</span>
-        ${r.gain_pct ? `<span class="rd">+${r.gain_pct} %</span>` : ""}
-      </div>
-      <div class="rm">${r.days_good} gegen ${r.days_bad} Tage · r=${r.r}
-        · korrigiertes p=${String(r.p_adjusted).replace(".", ",")}</div>
-    </div>`).join("") + `
-    <p class="muted" style="margin-top:10px">Die Richtung bleibt offen: Dass an
-      Tagen mit dem einen Wert der andere besser liegt, heißt nicht, dass das
-      eine das andere bewirkt. Als Ansatzpunkt taugt es trotzdem — probier eine
-      Änderung zwei Wochen aus und sieh hier nach.</p>`;
-}
-
-$("#statsDays").addEventListener("change", loadStats);
-$("#btnStatsMore").addEventListener("click", () => {
-  statsWeakLimit += 20;
-  if (statsCache) correlationBars($("#statsWeakBars"),
-    statsCache.pairs.filter((p) => !p.robust), { limit: statsWeakLimit });
-});
-$("#btnStatsExplain").addEventListener("click", (e) =>
-  withSpinner(e.currentTarget, async () => {
-    const days = $("#statsDays").value || 365;
-    const r = await api(`/stats/explain?days=${days}`, { method: "POST" });
-    $("#statsAdvice").hidden = false;
-    $("#statsAdvice").innerHTML = mdToHtml(r.message);
-  }));
-
-async function loadStatsMetrics() {
-  let list;
-  try { list = await api("/stats/metrics"); } catch (e) { return; }
-  const groups = {};
-  list.forEach((m) => (groups[m.group] = groups[m.group] || []).push(m));
-  $("#statsMetric").innerHTML = '<option value="">Größe wählen …</option>' +
-    Object.entries(groups).map(([g, items]) =>
-      `<optgroup label="${esc(g)}">${items.map((m) =>
-        `<option value="${m.key}">${esc(m.label)}</option>`).join("")}</optgroup>`
-    ).join("");
-}
-
-$("#statsMetric").addEventListener("change", async () => {
-  const key = $("#statsMetric").value;
-  if (!key) { $("#statsMetricChart").innerHTML = ""; $("#statsMetricRelated").innerHTML = ""; return; }
-  let d;
-  try { d = await api(`/stats/metric/${key}?days=${$("#statsDays").value || 365}`); }
-  catch (e) { toast(e.message, true); return; }
-  rangeTabs($("#statsMetricRange"), "statsMetric", DAILY_RANGES, (range, days) => {
-    const label = dayLabelFor(range);
-    lineChart($("#statsMetricChart"), daysBack(d.series, days)
-      .map((p) => ({ value: p.value, label: label(p.day), tip: p.day })),
-      { unit: d.unit });
-  }, "quarter");
-  $("#statsMetricRelated").innerHTML = d.related.length
-    ? '<h4 class="ins-h">Hängt zusammen mit</h4>' + d.related.map((p) => `
-        <div class="corr-row${p.robust ? "" : " weak"}">
-          <div class="ct">${esc(p.other_label)}</div>
-          <div class="cm">${p.direction} · r=${p.r} · ${p.n} Tage${
-            p.robust ? "" : " · schwach"}</div>
-        </div>`).join("")
-    : '<p class="muted">Für diese Größe zeigt sich noch kein Zusammenhang.</p>';
-});
-
-/* ----------------------------------------------------------- Heute */
-
-function renderToday(d) {
-  if (!d) return;
-  const pct = d.percent;
-  const color = pct >= 100 ? "var(--good)" : pct >= 50 ? "var(--accent)" : "var(--ink-3)";
-  const r = 26, c = 2 * Math.PI * r;
-  $("#todayRing").innerHTML = `<svg viewBox="0 0 64 64" width="64" height="64">
-    <circle cx="32" cy="32" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="6"></circle>
-    <circle cx="32" cy="32" r="${r}" fill="none" stroke="${color}" stroke-width="6"
-      stroke-linecap="round" stroke-dasharray="${(c * pct / 100).toFixed(1)} ${c.toFixed(1)}"
-      transform="rotate(-90 32 32)"></circle>
-    <text x="32" y="37" text-anchor="middle" font-size="16"
-      font-family="var(--serif)" fill="var(--ink)">${d.done}</text>
-  </svg>`;
-  $("#todaySummary").textContent = d.done >= d.total
-    ? "Alles erledigt."
-    : `${d.done} von ${d.total} — offen: ${d.open.slice(0, 2).join(", ")}`;
-
-  $("#todayList").innerHTML = '<div class="mini-list">' + d.items.map((i) => `
-    <div class="mini today-item${i.done ? " done" : ""}" style="cursor:default">
-      <span class="tick">${i.done ? "✓" : "○"}</span>
-      <div class="mt">${esc(i.label)}</div>
-      ${i.progress != null && !i.done
-        ? `<div class="mm"><span class="tiny-bar"><span style="width:${i.progress}%"></span></span>
-           ${i.detail ? esc(i.detail) : i.progress + " %"}</div>` : '<div class="mm"></div>'}
-    </div>`).join("") + "</div>";
-}
-
-$("#btnCheckin").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/coach/checkin?kind=midday", { method: "POST" });
-  $("#coachMessage").innerHTML = mdToHtml(r.message);
-}));
-
-$("#btnSleepAdvice").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/coach/sleep", { method: "POST" });
-  $("#sleepAdvice").hidden = false;
-  $("#sleepAdvice").innerHTML = mdToHtml(r.message);
-}));
-
-
-/* ------------------------------------------------ Coach: Ziel, Woche, Trends */
-
-const AUTO_WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-let planRunDays = [], planGymDays = [];
-
-async function loadCoachPlan() {
-  let cfg;
-  try { cfg = await api("/autopilot"); }
-  catch (e) { toast("Wochenplanung nicht erreichbar: " + e.message, true); return; }
-
-  planRunDays = cfg.run_days || [];
-  planGymDays = cfg.gym_days || [];
-
-  $("#autoFocus").innerHTML = Object.entries(cfg.presets).map(([k, v]) =>
-    `<option value="${k}"${k === cfg.focus ? " selected" : ""}>${esc(v.label)}</option>`
-  ).join("");
-  $("#autoFocusNote").textContent = cfg.presets[cfg.focus]?.note || "";
-  $("#autoMinutes").value = cfg.session_minutes;
-  $("#autoGymMinutes").value = cfg.gym_minutes;
-  $("#autoLongDay").innerHTML = AUTO_WEEKDAYS.map((d) =>
-    `<option value="${d}"${d === cfg.long_run_day ? " selected" : ""}>${d}</option>`
-  ).join("");
-  $("#autoMobility").value = cfg.evening_mobility ? "1" : "0";
-  $("#autoSplit").innerHTML = Object.entries(cfg.splits || {}).map(([k, v]) =>
-    `<option value="${k}"${k === cfg.split ? " selected" : ""}>${esc(v.label)}</option>`
-  ).join("");
-  const splitNote = () => {
-    $("#autoSplitNote").textContent =
-      (cfg.splits[$("#autoSplit").value] || {}).note || "";
-  };
-  splitNote();
-  $("#autoSplit").onchange = splitNote;
-  $("#goalText").value = cfg.wishes || "";
-  renderPlanDays();
-
-  $("#autoFocus").onchange = () => {
-    $("#autoFocusNote").textContent = cfg.presets[$("#autoFocus").value]?.note || "";
-  };
-  loadTrends();
-}
-
-function renderPlanDays() {
-  const draw = (id, chosen, attr) => {
-    $(id).innerHTML = AUTO_WEEKDAYS.map((d) =>
-      `<button class="chip${chosen.includes(d) ? " on" : ""}" data-${attr}="${d}">${d}</button>`
-    ).join("");
-    $$(`${id} [data-${attr}]`).forEach((b) => b.addEventListener("click", () => {
-      const day = b.dataset[attr];
-      const list = attr === "gymday" ? planGymDays : planRunDays;
-      const next = list.includes(day) ? list.filter((x) => x !== day) : [...list, day];
-      next.sort((a, z) => AUTO_WEEKDAYS.indexOf(a) - AUTO_WEEKDAYS.indexOf(z));
-      if (attr === "gymday") planGymDays = next; else planRunDays = next;
-      renderPlanDays();
-    }));
-  };
-  draw("#gymDayPick", planGymDays, "gymday");
-  draw("#runDayPick", planRunDays, "runday");
-}
-
-async function saveCoachPlan() {
-  return api("/autopilot", { method: "POST", body: JSON.stringify({
-    focus: $("#autoFocus").value,
-    split: $("#autoSplit").value,
-    run_days: planRunDays,
-    gym_days: planGymDays,
-    session_minutes: +$("#autoMinutes").value || 60,
-    gym_minutes: +$("#autoGymMinutes").value || 75,
-    long_run_day: $("#autoLongDay").value,
-    evening_mobility: $("#autoMobility").value === "1",
-    wishes: $("#goalText").value.trim() }) });
-}
-
-/* ------------------------------------------------------------------ Trends */
-
-function trendArrow(direction) {
-  return direction === "steigt" ? '<span class="ta up">▲</span>'
-    : direction === "fällt" ? '<span class="ta down">▼</span>'
-    : '<span class="ta flat">—</span>';
-}
-
-function signed(value, unit) {
-  if (value === null || value === undefined) return "–";
-  return `${value > 0 ? "+" : ""}${value}${unit || ""}`;
-}
-
-async function loadTrends() {
-  let d;
-  try { d = await api("/trends"); }
-  catch (e) { $("#trendMuscles").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
-
-  $("#goalRead").innerHTML = d.goal.recognised.length
-    ? `Daraus gelesen: <b>${d.goal.recognised.map(esc).join(", ")}</b>.`
-    : (d.goal.text
-       ? "Daraus konnte noch kein Schwerpunkt gelesen werden — nenne ruhig eine Strecke, eine Zeit oder eine Übung."
-       : "Noch kein Ziel hinterlegt.");
-
-  const m = d.muscles;
-  const seit = (d) => d === null ? "in vier Wochen nicht"
-    : d === 0 ? "heute" : d === 1 ? "gestern" : `vor ${d} Tagen`;
-
-  $("#trendMuscles").innerHTML = m.hint
-    ? `<p class="muted">${esc(m.hint)}</p>`
-    : `<p class="muted" style="margin-bottom:8px">Der Balken zeigt, wie
-        <b>dringend</b> eine Gruppe dran wäre — nicht, wie viel du trainiert
-        hast. Was du gerade trainiert hast, sinkt hier also, und das ist so
-        gewollt: Oben steht, was als Nächstes drankommen sollte.</p>` +
-      m.groups.map((g) => `
-      <div class="trend${g.need >= 40 ? " hot" : ""}">
-        <div class="th">${trendArrow(g.direction)} ${esc(g.label)}
-          <span class="tn">${g.need >= 40 ? "dringend" : g.need >= 20 ? "bald"
-            : "versorgt"} · Bedarf ${g.need}/100</span></div>
-        <div class="tbar"><i style="width:${g.need}%"></i></div>
-        <div class="tm">zuletzt ${seit(g.days_since)} ·
-          ${g.sets_recent} Sätze in ${g.sessions} Einheiten ·
-          ${g.share} % vom Volumen (ausgewogen wären ${g.target_share} %) ·
-          Kraft ${signed(g.strength_change, " %")}</div>
-        ${g.reasons.length
-          ? `<div class="tr">${g.reasons.map(esc).join(" · ")}</div>`
-          : '<div class="tr">Gut versorgt — nichts, was gerade fehlt.</div>'}
-      </div>`).join("");
-
-  const r = d.running;
-  $("#trendRunning").innerHTML = r.hint
-    ? `<p class="muted">${esc(r.hint)}</p>`
-    : `
-      <div class="trend">
-        <div class="th">${trendArrow(r.direction)} Tempo bei gleichem Puls
-          <span class="tn">${r.pace_recent ? paceStr(r.pace_recent) + "/km" : "–"}</span></div>
-        <div class="tm">${r.pace_gain_s !== null
-          ? `${Math.abs(r.pace_gain_s)} s/km ${r.pace_gain_s > 0 ? "schneller" : "langsamer"} als in den vier Wochen davor`
-          : "Für den Vergleich fehlen noch Läufe im lockeren Pulsbereich"}</div>
-      </div>
-      <div class="trend">
-        <div class="th">Umfang <span class="tn">${r.km_per_week} km/Woche</span></div>
-        <div class="tm">${r.km_recent} km in vier Wochen (davor ${r.km_before} km,
-          ${signed(r.km_change, " %")}) · ${r.runs_recent} Läufe ·
-          davon ${r.hard_runs} hart</div>
-      </div>
-      <div class="trend">
-        <div class="th">Längste Einheit <span class="tn">${r.longest_recent} km</span></div>
-        <div class="tm">davor ${r.longest_before} km${
-          r.days_since !== null ? ` · letzter Lauf vor ${r.days_since} Tagen` : ""}</div>
-      </div>
-      ${r.needs.length ? `<div class="tr" style="margin-top:8px">${
-        r.needs.map((n) => `<div>${esc(n)}</div>`).join("")}</div>` : ""}`;
-}
-
-/* -------------------------------------------------------- Die kommende Woche */
-
-const RUN_KIND = { easy: "locker", tempo: "Tempo", interval: "Intervalle",
-                   long: "lang", gym: "Kraft", yoga: "Yoga" };
-
-function renderAutoWeek(w) {
-  const cond = w.condition;
-  $("#autoPreview").innerHTML = `
-    <div class="detail-section">
-      <h4>${esc(w.focus)} · ${w.runs} Läufe, ${w.gyms} Gym${
-        w.mobility_count ? ` · ${w.mobility_count}× Abend-Yoga à 12 min` : ""}</h4>
-      <p class="muted">${w.runs + w.gyms} Trainingseinheiten in der Woche${
-        w.mobility_count ? `, dazu das kurze Abend-Yoga — das lässt sich oben abschalten` : ""}.</p>
-      <p class="muted">Zustand: <b>${esc(cond.state)}</b>${
-        cond.reasons.length ? " — " + cond.reasons.map(esc).join(", ") : " — die Werte passen"}.
-        ${cond.dose < 1 ? `Dosis auf ${Math.round(cond.dose * 100)} % reduziert.` : ""}
-        ${w.dropped_days && w.dropped_days.length
-          ? `Ausgelassen: ${w.dropped_days.map(esc).join(", ")}.` : ""}</p>
-      ${w.emphasis_labels.length ? `<p class="muted">Kraft-Schwerpunkt diese Woche:
-        <b>${w.emphasis_labels.map(esc).join(", ")}</b>.</p>` : ""}
-      ${w.run_needs.length ? `<p class="muted">${w.run_needs.map(esc).join(" ")}</p>` : ""}
-      ${w.adapted.length ? `<p class="muted">Beschwerden berücksichtigt: ${
-        w.adapted.map(esc).join("; ")}</p>` : ""}
-      ${w.days.map((d) => `
-        <div class="auto-day${d.sessions.length ? "" : " rest"}">
-          <div class="ad">${esc(d.weekday)}</div>
-          <div>
-            ${d.sessions.length ? d.sessions.map((se) => `
-              <div class="as">${esc(SPORT_LABEL[se.sport] || se.sport)} ·
-                ${esc(RUN_KIND[se.kind] || se.kind)} · ${se.minutes} min</div>
-              <div class="aw">${esc(se.why)}</div>`).join("")
-              : '<div class="as">frei</div>'}
-          </div>
-        </div>`).join("")}
-    </div>`;
-}
-
-$("#btnAutoSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await saveCoachPlan(); await loadTrends(); toast("Gespeichert");
-}));
-
-$("#btnAutoPreview").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await saveCoachPlan();
-  renderAutoWeek(await api("/autopilot/preview"));
-  loadTrends();
-  const r = await api("/autopilot/explain", { method: "POST" });
-  $("#autoAdvice").hidden = false;
-  $("#autoAdvice").innerHTML = mdToHtml(r.message);
-}));
-
-$("#btnAutoApply").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await saveCoachPlan();
-  const w = await api("/autopilot/apply", { method: "POST" });
-  renderAutoWeek(w);
-  toast(w.replaced
-    ? `${w.created.length} Einheiten eingeplant, ${w.replaced} ersetzt`
-    : `${w.created.length} Einheiten eingeplant`);
-  loadDashboard();
-}));
-
-/* -------------------------------------------------- Coach-Vorschläge */
-
-function renderSuggestions(list) {
-  const card = $("#suggestCard");
-  if (!list || !list.length) { card.hidden = true; return; }
-  card.hidden = false;
-  $("#suggestList").innerHTML = list.map((v) => `
-    <div class="suggest" data-sid="${v.id}">
-      <div class="st">${esc(v.title)}</div>
-      <div class="sd">${esc(v.detail || "")}</div>
-      ${v.trigger ? `<div class="sw">Anlass: ${esc(v.trigger)}</div>` : ""}
-      <div class="row">
-        ${v.payload && v.payload.action !== "advice"
-          ? `<button class="btn small" data-apply="${v.id}">Übernehmen</button>` : ""}
-        <button class="btn small ghost" data-dismiss="${v.id}">
-          ${v.payload && v.payload.action !== "advice" ? "Verwerfen" : "Verstanden"}</button>
-      </div>
-    </div>`).join("");
-
-  $$("[data-apply]").forEach((b) => b.addEventListener("click", (e) =>
-    withSpinner(e.currentTarget, async () => {
-      const r = await api(`/suggestions/${b.dataset.apply}/apply`, { method: "POST" });
-      toast(r.planned_date
-        ? `Eingeplant für ${fmtDate(r.planned_date)}`
-        : "Übernommen — die nächste Einheit berücksichtigt es.");
-      loadDashboard();
-    })));
-  $$("[data-dismiss]").forEach((b) => b.addEventListener("click", async () => {
-    try { await api(`/suggestions/${b.dataset.dismiss}/dismiss`, { method: "POST" });
-      loadDashboard(); }
-    catch (e) { toast(e.message, true); }
-  }));
-}
-
-/* -------------------------------------------------------------- Score */
-
-function scoreRing(el, value) {
-  const size = 108, r = 44, c = 2 * Math.PI * r;
-  const pct = value == null ? 0 : Math.max(0, Math.min(100, value)) / 100;
-  /* Farbe folgt dem Wert, nicht der Laune: unter 55 warnend, ab 80 gut */
-  const color = value == null ? "var(--border)"
-    : value >= 80 ? "var(--good)" : value >= 55 ? "var(--accent)" : "var(--warn)";
-  el.innerHTML = `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
-    <circle cx="54" cy="54" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="9"></circle>
-    <circle cx="54" cy="54" r="${r}" fill="none" stroke="${color}" stroke-width="9"
-      stroke-linecap="round" stroke-dasharray="${(c * pct).toFixed(1)} ${c.toFixed(1)}"
-      transform="rotate(-90 54 54)"></circle>
-    <text x="54" y="58" text-anchor="middle" font-size="26" font-family="var(--serif)"
-      fill="var(--ink)">${value == null ? "–" : value}</text>
-    <text x="54" y="74" text-anchor="middle" font-size="9" fill="var(--ink-3)">von 100</text>
-  </svg>`;
-}
-
-function renderScore(d) {
-  if (!d) return;
-  scoreRing($("#scoreRing"), d.score);
-  $("#scoreMood").textContent = `Der Coach ist ${d.mood}`;
-  $("#scoreVerdict").textContent = d.verdict;
-
-  $("#scorePillars").innerHTML = d.pillars.map((p) => {
-    /* Achtung: 0 ist ein gültiger Wert — nicht mit || abfangen */
-    const has = p.value != null;
-    const cls = !has ? "none" : p.value >= 80 ? "good" : p.value >= 55 ? "ok" : "low";
-    return `<div class="pillar ${cls}">
-      <div class="pl">${esc(p.label)}</div>
-      <div class="pv">${has ? p.value : "–"}</div>
-      <div class="pbar"><span style="width:${has ? p.value : 0}%"></span></div>
-      <div class="pw">${esc(p.why || "")}</div>
-    </div>`;
-  }).join("");
-
-  $("#scorePotential").innerHTML = d.potential.slice(0, 3).map((p) => `
-    <div class="finding ${p.missing ? "info" : p.gain > 8 ? "warn" : "info"}">
-      <div class="t">${esc(p.title)}${p.gain > 0 ? ` <span class="muted">bis zu +${p.gain} Punkte</span>` : ""}</div>
-      <div class="d">${esc(p.text)}</div>
-      ${p.why ? `<div class="d muted">Aktuell: ${esc(p.why)}</div>` : ""}
-    </div>`).join("");
-}
-
-/* ------------------------------------------------------ Garmin-Diagnose */
-
-$("#btnDiagnose").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const d = await api("/garmin/diagnose");
-  const mark = (ok) => ok === true ? "✓" : ok === false ? "✗" : "·";
-  $("#diagnoseBody").innerHTML = `
-    <div class="diag">${d.steps.map((s) => `
-      <div class="row ${s.ok === false ? "bad" : s.ok === true ? "good" : ""}">
-        <span class="m">${mark(s.ok)}</span>
-        <span class="n">${esc(s.name)}</span>
-        <span class="v">${esc(s.detail || "")}</span>
-      </div>`).join("")}</div>
-    <div class="detail-section"><h4>In der Datenbank</h4>
-      <div class="diag">${Object.entries(d.counts).map(([k, v]) =>
-        `<div class="row"><span class="m"></span><span class="n">${esc(k)}</span>
-         <span class="v">${esc(String(v))}</span></div>`).join("")}</div>
-      ${d.range && d.range.von ? `<p class="muted">Zeitraum: ${esc(d.range.von)} bis ${esc(d.range.bis)}</p>` : ""}
-    </div>
-    <div class="detail-section"><h4>Letzte Läufe</h4>
-      <div class="diag">${(d.log || []).map((l) =>
-        `<div class="row ${l.ok ? "" : "bad"}"><span class="m">${l.ok ? "✓" : "✗"}</span>
-         <span class="n">${esc((l.ts || "").slice(5, 16))}</span>
-         <span class="v">${esc(l.detail || "")}</span></div>`).join("")
-        || '<p class="muted">Noch nichts protokolliert.</p>'}</div></div>`;
-}));
-
-$("#btnBackfillReset").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/garmin/backfill/reset", { method: "POST" });
-  toast("Zurückgesetzt — der Import lässt sich wieder starten.");
-  pollBackfill();
-}));
-
-/* ------------------------------------------------------------------- Coach */
-
-/* Das Wissens-Archiv steht jetzt unter „Mehr“ — aufgerufen aus loadSettings. */
-async function loadTipArchive() {
-  const tips = await api("/coach/research-tips?limit=10");
-  $("#tipArchive").innerHTML = tips.length ? tips.map((t) =>
-    `<div class="list-item"><div class="grow"><div class="title">${esc(t.topic || "Tipp")}</div>
-     <div class="tip">${esc(t.content)}</div>
-     <div class="meta">${fmtDate(t.created_at)}</div></div></div>`).join("") : "Noch keine Häppchen.";
-}
-
-/* ------------------------------------------------------------ Einstellungen */
-
-let selectedGoals = [];
-
-function renderGoalChips() {
-  $("#goalChips").innerHTML = GOALS.map(([key, label]) =>
-    `<button class="btn small ghost ${selectedGoals.includes(key) ? "on" : ""}" data-goal="${key}">${label}</button>`).join("");
-  $$("#goalChips [data-goal]").forEach((b) => b.addEventListener("click", () => {
-    const g = b.dataset.goal;
-    selectedGoals = selectedGoals.includes(g) ? selectedGoals.filter((x) => x !== g) : [...selectedGoals, g];
-    renderGoalChips();
-  }));
-}
-
-
-/* ------------------------------------------------- Schriftgröße & Modell */
-
-const FONT_SIZES = [
-  { pct: 90, label: "Klein" }, { pct: 100, label: "Normal" },
-  { pct: 112, label: "Groß" }, { pct: 125, label: "Größer" },
-  { pct: 140, label: "Sehr groß" },
-];
-
-function applyFontScale(pct) {
-  document.documentElement.style.setProperty("--fs", (16 * pct / 100).toFixed(1) + "px");
-}
-
-function renderFontChips(current) {
-  $("#fontChips").innerHTML = FONT_SIZES.map((f) =>
-    `<button class="btn small ghost ${f.pct === current ? "on" : ""}" data-font="${f.pct}">${f.label}</button>`).join("");
-  $$("#fontChips [data-font]").forEach((b) => b.addEventListener("click", async () => {
-    const pct = +b.dataset.font;
-    applyFontScale(pct);
-    renderFontChips(pct);
-    try { await api("/settings", { method: "POST", body: JSON.stringify({ font_scale: pct }) }); }
-    catch (e) { toast(e.message, true); }
-  }));
-}
-
-let modelPoller = null;
-
-async function loadModels() {
-  let d;
-  try { d = await api("/system/models"); }
-  catch (e) { $("#modelList").textContent = "Modelle nicht abrufbar."; return; }
-
-  if (!d.ollama_reachable) {
-    $("#modelList").innerHTML = '<p class="muted">Ollama ist nicht erreichbar — läuft der Container puls-ollama?</p>';
-    return;
-  }
-
-  $("#modelList").innerHTML = d.presets.map((m) => `
-    <div class="model-item">
-      <div class="info">
-        <div class="name">${esc(m.label)}${m.active ? '<span class="cur">aktiv</span>' : ""}</div>
-        <div class="meta">${m.size_gb} GB · ${esc(m.speed)}${m.installed ? " · geladen" : ""}</div>
-        <div class="note">${esc(m.note)}</div>
-      </div>
-      ${m.active ? "" : `<button class="btn small ghost" data-model="${esc(m.name)}">
-        ${m.installed ? "Verwenden" : "Laden"}</button>`}
-    </div>`).join("");
-
-  $$("[data-model]").forEach((b) => b.addEventListener("click", (e) =>
-    withSpinner(e.currentTarget, async () => {
-      const r = await api("/system/model", { method: "POST",
-        body: JSON.stringify({ name: b.dataset.model }) });
-      toast(r.status === "laedt"
-        ? "Modell wird geladen — das dauert ein paar Minuten."
-        : "Modell gewechselt.");
-      loadModels();
-      if (r.status === "laedt") startModelPolling();
-    })));
-
-  updatePullBar(d.pull);
-}
-
-function updatePullBar(p) {
-  const bar = $("#pullBar");
-  if (!p || p.status === "idle") { bar.hidden = true; $("#pullStatus").textContent = ""; return; }
-  if (p.status === "laden") {
-    bar.hidden = false;
-    bar.firstElementChild.style.width = (p.percent || 0) + "%";
-    $("#pullStatus").textContent =
-      `${p.model} wird geladen — ${p.percent || 0} %${p.detail ? " (" + p.detail + ")" : ""}`;
-  } else if (p.status === "fertig") {
-    bar.hidden = true;
-    $("#pullStatus").textContent = `${p.model} ist bereit.`;
-  } else if (p.status === "fehler") {
-    bar.hidden = true;
-    $("#pullStatus").textContent = `Download fehlgeschlagen: ${p.error || ""}`;
-  }
-}
-
-function startModelPolling() {
-  if (modelPoller) clearInterval(modelPoller);
-  modelPoller = setInterval(async () => {
-    if (!$("#view-settings").classList.contains("active")) {
-      clearInterval(modelPoller); modelPoller = null; return;
+function renderScales() {
+  $$(".scale").forEach((scale) => {
+    const key = scale.dataset.key;
+    const dots = $(".dots", scale);
+    if (dots.childElementCount) return;
+    for (let i = 1; i <= 5; i += 1) {
+      const b = el("button", "dot", i);
+      b.onclick = () => {
+        state.mood[key] = i;
+        $$(".dot", dots).forEach((d, index) => d.classList.toggle("on", index < i));
+      };
+      dots.append(b);
     }
+  });
+}
+
+async function saveMood() {
+  const note = $("#moodNote").value.trim();
+  const payload = { ...state.mood };
+  if (note) payload.note = note;
+  if (!Object.keys(payload).length) { toast("Nichts ausgewählt.", "bad"); return; }
+  if (note) {
     try {
-      const p = await api("/system/model/progress");
-      updatePullBar(p);
-      if (p.status === "fertig" || p.status === "fehler") {
-        clearInterval(modelPoller); modelPoller = null; loadModels();
+      const s = await post("/mood/suggest", { text: note });
+      if (s.complaints?.length) payload.complaints = s.complaints;
+    } catch (e) { /* ohne Modell eben ohne Beschwerden */ }
+  }
+  await post("/mood", payload);
+  state.mood = {};
+  $("#moodNote").value = "";
+  $$(".dot").forEach((d) => d.classList.remove("on"));
+  toast("Eingetragen.", "good");
+  loadMood();
+}
+
+/* ======================================================== EINSTELLUNGEN */
+
+async function openSettings() {
+  const s = await api("/settings");
+  state.settings = s;
+  $("#setGoal").value = s.goal_text;
+  $("#setGoalKm").value = s.run_goal_distance_km;
+  $("#setGoalMin").value = s.run_goal_time_min;
+  $("#setPullup").value = s.pullup_goal;
+  $("#setSchwelle").value = s.progression.schwelle;
+  $("#setOben").value = s.progression.oben;
+  $("#setUnten").value = s.progression.unten;
+  $("#setRunter").value = s.progression.runter_kg;
+  $("#setFont").value = s.font_scale;
+  updateProgPreview();
+  $("#versionLine").textContent = `Kennung ${s.version} · Stand ${s.built_at}`;
+  await Promise.all([renderGarmin(), renderModels()]);
+  $("#dlgSettings").showModal();
+}
+
+function updateProgPreview() {
+  $("#pvSchwelle").textContent = $("#setSchwelle").value;
+  $("#pvOben").textContent = $("#setOben").value;
+  $("#pvUnten").textContent = $("#setUnten").value;
+  $("#pvRunter").textContent = $("#setRunter").value;
+}
+
+async function saveSettings() {
+  await post("/settings", {
+    goal_text: $("#setGoal").value,
+    run_goal_distance_km: Number($("#setGoalKm").value) || 10,
+    run_goal_time_min: Number($("#setGoalMin").value) || 60,
+    pullup_goal: Number($("#setPullup").value) || 10,
+    prog_schwelle: Number($("#setSchwelle").value),
+    prog_oben: Number($("#setOben").value),
+    prog_unten: Number($("#setUnten").value),
+    prog_runter_kg: Number($("#setRunter").value),
+    font_scale: Number($("#setFont").value),
+  });
+  document.documentElement.style.setProperty("--fs", `${$("#setFont").value / 100 * 16}px`);
+  toast("Gespeichert.", "good");
+  $("#dlgSettings").close();
+}
+
+async function renderGarmin() {
+  const box = $("#garminBox");
+  box.replaceChildren();
+  const st = await api("/garmin/status");
+  if (st.linked) {
+    box.append(el("p", "hint", `Verbunden als ${st.email}.`));
+    if (st.last_sync) {
+      box.append(el("p", "hint",
+        `Zuletzt ${st.last_sync.ts}: ${st.last_sync.detail || ""}`));
+    }
+    const unlink = el("button", "ghost small", "Trennen");
+    unlink.onclick = () => post("/garmin/unlink").then(renderGarmin);
+    const backfill = el("button", "ghost small", "Verlauf nachladen");
+    backfill.onclick = () => post("/garmin/backfill")
+      .then(() => toast("Läuft im Hintergrund."));
+    box.append(rowOf(unlink, backfill));
+    return;
+  }
+  const mail = el("input"); mail.placeholder = "Garmin-E-Mail"; mail.type = "email";
+  const pass = el("input"); pass.placeholder = "Passwort"; pass.type = "password";
+  const go = el("button", "small", "Verbinden");
+  go.onclick = async () => {
+    try {
+      const res = await post("/garmin/login", { email: mail.value, password: pass.value });
+      if (res.mfa_required) {
+        const code = prompt("Code aus der Garmin-App:");
+        if (code) await post("/garmin/mfa", { code });
       }
-    } catch (e) { /* still */ }
-  }, 2000);
+      toast("Verbunden.", "good");
+      renderGarmin();
+    } catch (e) { toast(e.message, "bad"); }
+  };
+  box.append(mail, pass, rowOf(go));
 }
 
-const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-
-async function loadSettings() {
-  const [s, g, h] = await Promise.all([api("/settings"), api("/garmin/status"), api("/health")]);
-  $("#versionInfo").innerHTML = h.version
-    ? `Kennung <b>${esc(h.version)}</b> · Stand ${esc(h.built_at || "unbekannt")}`
-    : "Diese Version meldet noch keine Kennung — das Update ist nicht angekommen.";
-  pollBackfill();
-  loadTipArchive().catch(() => { /* nur ein Archiv, kein Drama */ });
-  loadSupplementManager();      // zeigt einen laufenden Verlaufs-Import auch nach Neuladen
-  selectedGoals = s.goals; renderGoalChips();
-  $("#setWeeklyTarget").value = s.weekly_workout_target;
-  $("#setKcal").value = s.kcal_target;
-  $("#setProtein").value = s.protein_target;
-  $("#setProfile").value = s.profile.text || "";
-  $("#setStepGoal").value = s.step_goal || 10000;
-  const pr = s.progression || {};
-  $("#setProgSchwelle").value = pr.schwelle ?? 10;
-  $("#setProgOben").value = pr.oben ?? 10;
-  $("#setProgUnten").value = pr.unten ?? 15;
-  $("#setProgRunter").value = pr.runter_kg ?? 5;
-  $("#setWakeTarget").value = s.wake_target || "06:30";
-  $("#setPullupGoal").value = s.pullup_goal;
-  $("#setRunGoalKm").value = s.run_goal_distance_km;
-  $("#setRunGoalMin").value = s.run_goal_time_min;
-  $("#setPreferMachines").checked = !!s.prefer_machines;
-  $("#apiToken").value = s.api_token || "";
-  applyFontScale(s.font_scale || 100);
-  renderFontChips(s.font_scale || 100);
-  loadModels();
-
-  $("#garminStatus").textContent = g.linked
-    ? `Verbunden als ${g.email}. ${g.last_sync ? "Letzter Sync: " + new Date(g.last_sync.ts.replace(" ", "T") + "Z").toLocaleString("de-DE") + (g.last_sync.ok ? " – ok" : " – Fehler: " + g.last_sync.detail) : ""}`
-    : "Nicht verbunden.";
-  $("#garminLoginForm").hidden = g.linked;
-  $("#garminLinkedBox").hidden = !g.linked;
-  $("#systemStatus").innerHTML =
-    `Lokale KI (Ollama): ${h.ollama ? "erreichbar" : "nicht erreichbar"}<br>` +
-    `Aktives Modell: ${esc(h.model || "–")}${h.model_present ? " (geladen)" : h.ollama ? " (wird noch geladen)" : ""}<br>` +
-    `Garmin: ${h.garmin_linked ? "verknüpft" : "–"}`;
-
-  await loadBody();
-  startScalePolling();
-}
-
-$("#btnCopyToken").addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText($("#apiToken").value); toast("Token kopiert"); }
-  catch (e) { $("#apiToken").select(); toast("Bitte manuell kopieren", true); }
-});
-
-$("#btnSaveWeek").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/settings", { method: "POST", body: JSON.stringify({
-    step_goal: +$("#setStepGoal").value || 10000,
-    prog_schwelle: +$("#setProgSchwelle").value || 10,
-    prog_oben: +$("#setProgOben").value || 10,
-    prog_unten: +$("#setProgUnten").value || 15,
-    prog_runter_kg: +$("#setProgRunter").value || 5,
-    wake_target: $("#setWakeTarget").value || "06:30",
-    pullup_goal: +$("#setPullupGoal").value || 10,
-    run_goal_distance_km: +$("#setRunGoalKm").value || 10,
-    run_goal_time_min: +$("#setRunGoalMin").value || 60,
-    prefer_machines: $("#setPreferMachines").checked,
-  }) });
-  toast("Gespeichert"); loadDashboard();
-}));
-
-$("#btnSaveSettings").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/settings", { method: "POST", body: JSON.stringify({
-    goals: selectedGoals,
-    weekly_workout_target: +$("#setWeeklyTarget").value || 4,
-    kcal_target: $("#setKcal").value, protein_target: $("#setProtein").value,
-    profile: { text: $("#setProfile").value } }) });
-  toast("Gespeichert"); loadDashboard();
-}));
-
-$("#btnGarminLogin").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/garmin/login", { method: "POST", body: JSON.stringify({
-    email: $("#garminEmail").value, password: $("#garminPassword").value }) });
-  if (r.status === "needs_mfa") { $("#garminMfaForm").hidden = false; toast("MFA-Code nötig — schau in Mails oder App"); }
-  else { toast("Garmin verbunden"); $("#garminPassword").value = ""; loadSettings(); }
-}));
-$("#btnGarminMfa").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/garmin/mfa", { method: "POST", body: JSON.stringify({ code: $("#garminMfa").value }) });
-  $("#garminMfaForm").hidden = true; $("#garminPassword").value = "";
-  toast("Garmin verbunden"); loadSettings();
-}));
-$("#btnSyncNow").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/garmin/sync", { method: "POST" });
-  toast(r.ok ? "Sync fertig: " + r.detail : "Sync-Problem: " + r.detail, !r.ok);
-  loadSettings(); loadDashboard();
-}));
-$("#btnUnlink").addEventListener("click", async () => {
-  if (!confirm("Garmin-Verbindung wirklich trennen?")) return;
-  await api("/garmin/unlink", { method: "POST" }); loadSettings();
-});
-
-
-/* ------------------------------------------------- Live-Status der Waage */
-
-let scalePoller = null;
-
-const SCALE_STATES = {
-  offline:      { dot: "err",  title: "Dienst nicht erreichbar" },
-  no_adapter:   { dot: "err",  title: "Kein Bluetooth-Adapter" },
-  not_scanning: { dot: "warn", title: "Scan steht" },
-  searching:    { dot: "warn pulse", title: "Scan läuft — warte auf die Waage" },
-  scale_found:  { dot: "ok pulse", title: "Waage wird empfangen" },
-  ok:           { dot: "ok",   title: "Alles verbunden" },
-};
-
-async function refreshScale() {
-  let d;
-  try { d = await api("/scale/status"); }
-  catch (e) { return; }
-  const meta = SCALE_STATES[d.state] || SCALE_STATES.offline;
-  $("#scaleDot").className = "live-dot " + meta.dot;
-  $("#scaleTitle").textContent = meta.title;
-  $("#scaleHint").textContent = d.hint || "";
-
-  const rep = d.report || {};
-  const hasReport = d.age_s !== null && d.age_s < 60;
-  $("#scaleMetrics").hidden = !hasReport;
-  if (hasReport) {
-    $("#scaleAdv").textContent = rep.advertisements ?? 0;
-    $("#scaleFrames").textContent = rep.scale_frames ?? 0;
-    $("#scaleMeas").textContent = rep.measurements ?? 0;
-  }
-
-  const last = d.last_measurement;
-  $("#scaleLast").innerHTML = last
-    ? `Letzte Messung: <b style="color:var(--ink)">${last.weight_kg} kg</b>` +
-      `${last.body_fat_pct ? ` · ${last.body_fat_pct} % Körperfett` : ""}` +
-      ` · ${fmtDate(last.day)}`
-    : "Noch keine Messung eingegangen.";
-
-  const devs = rep.devices || [];
-  $("#scaleDeviceList").innerHTML = devs.length ? devs.map((x) => `
-    <div class="dev-row ${x.is_scale ? "is-scale" : ""}">
-      <span class="mac">${esc(x.mac)}</span>
-      <span>${esc(x.name || "")}</span>
-      ${x.is_scale ? '<span class="tag">Waage</span>' : ""}
-      ${x.last_weight ? `<span>${x.last_weight} kg</span>` : ""}
-      <span class="rssi">${x.rssi ?? "–"} dBm · vor ${x.seconds_ago}s</span>
-    </div>`).join("")
-    : "Noch keine Geräte empfangen.";
-
-  if (rep.adapter && rep.adapter.address) {
-    $("#scaleDeviceList").insertAdjacentHTML("beforebegin", "");
-  }
-}
-
-function startScalePolling() {
-  refreshScale();
-  if (scalePoller) clearInterval(scalePoller);
-  scalePoller = setInterval(() => {
-    if ($("#view-settings").classList.contains("active")) refreshScale();
-    else { clearInterval(scalePoller); scalePoller = null; }
-  }, 3000);
-}
-
-/* -------------------------------------------------------------- Navigation */
-
-/* ----------------------------------------------- Karten selbst anordnen */
-
-/* Jede Karte lässt sich an ihrem Griff packen und verschieben; die Reihenfolge
-   bleibt je Ansicht gespeichert. Bewusst ohne Bibliothek: Pointer-Events
-   können das, und eine Sortierbibliothek wäre mehr Code als die ganze Datei.
-
-   Gespeichert wird die Reihenfolge als Liste von Karten-Kennungen. Karten, die
-   später dazukommen, hängen hinten an, statt zu verschwinden — eine
-   gespeicherte Reihenfolge darf ein Update nicht überleben, indem sie neue
-   Karten unterschlägt. */
-
-/* Die Reihenfolge liegt auf dem Server, nicht im Browser: Sie soll auf dem
-   Telefon dieselbe sein wie am Rechner. localStorage bleibt als Zwischenspeicher
-   erhalten, damit die erste Zeichnung nicht auf das Netz warten muss — sobald
-   die Antwort da ist, gilt der Server. */
-const LAYOUT_KEY = "puls.layout.";
-let dragging = null;
-let layoutFromServer = null;
-
-function cardKey(card, index) {
-  // Eine eigene id ist die beste Kennung; sonst die Überschrift, sonst die
-  // Position. Die Überschrift ist stabil genug und übersteht ein Update.
-  if (card.id) return "#" + card.id;
-  const h = card.querySelector("h3");
-  return h ? "h:" + h.textContent.trim().slice(0, 40) : "n:" + index;
-}
-
-/* Die Karten liegen im Raster, nicht direkt im Abschnitt. Wer den Abschnitt
-   als Behälter nimmt, findet genau eine Karte (die außerhalb des Rasters) und
-   wundert sich, warum nur sie einen Griff bekommt. */
-function cardHost(view) {
-  const section = $("#view-" + view);
-  if (!section) return null;
-  return section.querySelector(":scope > .grid-cards") || section;
-}
-
-/* Gespeichert wird je Ansicht { order: [...], widths: {key: 1|2|3} }.
-   Ältere Stände hielten nur die Liste — die soll ein Update nicht verlieren. */
-function layoutOf(view) {
-  const fromServer = layoutFromServer && layoutFromServer[view];
-  if (fromServer) return Array.isArray(fromServer) ? { order: fromServer } : fromServer;
+async function renderModels() {
+  const box = $("#modelBox");
+  box.replaceChildren();
   try {
-    const raw = JSON.parse(localStorage.getItem(LAYOUT_KEY + view) || "null");
-    if (Array.isArray(raw)) return { order: raw };
-    return raw || {};
-  } catch (e) { return {}; }
-}
-
-function loadOrder(view) {
-  return layoutOf(view).order || [];
-}
-
-function loadWidths(view) {
-  return layoutOf(view).widths || {};
-}
-
-function saveOrder(view) {
-  const host = cardHost(view);
-  if (!host) return;
-  const cards = [...host.children].filter((c) => c.classList.contains("card"));
-  const keys = cards.map((c, i) => cardKey(c, i));
-  const widths = {};
-  cards.forEach((c, i) => {
-    const w = [1, 2, 3].find((n) => c.classList.contains("w" + n));
-    if (w) widths[cardKey(c, i)] = w;
-  });
-  const entry = { order: keys, widths };
-  try { localStorage.setItem(LAYOUT_KEY + view, JSON.stringify(entry)); }
-  catch (e) { /* Kein Speicher — dann eben nur für diese Sitzung */ }
-  if (layoutFromServer) layoutFromServer[view] = entry;
-  api("/layout", { method: "POST",
-    body: JSON.stringify({ view, order: keys, widths }) })
-    .catch(() => toast("Anordnung konnte nicht gespeichert werden", true));
-}
-
-/* Die gespeicherten Breiten anwenden. Ohne gespeicherte Breite bleibt es bei
-   dem, was die Karte von Haus aus mitbringt (span2, wide oder einspaltig). */
-function applyWidths(view) {
-  const host = cardHost(view);
-  if (!host) return;
-  const widths = loadWidths(view);
-  [...host.children].filter((c) => c.classList.contains("card"))
-    .forEach((c, i) => {
-      const w = widths[cardKey(c, i)];
-      c.classList.remove("w1", "w2", "w3");
-      if (w) c.classList.add("w" + w);
-    });
-}
-
-/* Beim Start einmal holen und überall anwenden. */
-async function syncLayout() {
-  let d;
-  try { d = await api("/layout"); } catch (e) { return; }
-  layoutFromServer = d.views || {};
-  $$(".view").forEach((v) => {
-    const name = v.id.replace("view-", "");
-    if (layoutFromServer[name]) {
-      try { localStorage.setItem(LAYOUT_KEY + name,
-        JSON.stringify(layoutFromServer[name])); } catch (e) { /* egal */ }
-      applyOrder(name);
-      applyWidths(name);
+    const m = await api("/system/models");
+    if (!m.ollama_reachable) {
+      box.append(el("p", "hint", "Ollama ist nicht erreichbar — PULS rechnet "
+        + "trotzdem, formuliert nur nüchterner."));
+      return;
     }
-  });
-}
-
-function applyOrder(view) {
-  const host = cardHost(view);
-  if (!host) return;
-  const order = loadOrder(view);
-  if (!order.length) return;
-  const cards = [...host.children].filter((c) => c.classList.contains("card"));
-  const byKey = new Map(cards.map((c, i) => [cardKey(c, i), c]));
-  // Erst die gespeicherten, dann alles Neue in seiner ursprünglichen Folge.
-  const placed = new Set();
-  order.forEach((k) => {
-    const el = byKey.get(k);
-    if (el) { host.appendChild(el); placed.add(k); }
-  });
-  cards.forEach((c, i) => {
-    if (!placed.has(cardKey(c, i))) host.appendChild(c);
-  });
-}
-
-function makeSortable(view) {
-  const host = cardHost(view);
-  if (!host || host.dataset.sortable) return;
-  host.dataset.sortable = "1";
-
-  [...host.children].filter((c) => c.classList.contains("card")).forEach((card) => {
-    if (card.querySelector(":scope > .drag")) return;
-    const grip = document.createElement("button");
-    grip.className = "drag";
-    grip.type = "button";
-    grip.title = "Karte verschieben";
-    grip.setAttribute("aria-label", "Karte verschieben");
-    grip.textContent = "⠿";
-    card.prepend(grip);
-
-    // Breitenwahl: eins, zwei oder drei Spalten. Was die Karte tatsächlich
-    // bekommt, hängt am Fenster — bei zwei Spalten sind zwei und drei
-    // dasselbe. Angeboten wird sie deshalb erst ab der zweispaltigen Breite.
-    const sel = document.createElement("div");
-    sel.className = "wsel";
-    const current = () => [1, 2, 3].find((n) => card.classList.contains("w" + n))
-      || (card.classList.contains("wide") ? 3
-        : card.classList.contains("span2") ? 2 : 1);
-    const paintSel = () => {
-      sel.innerHTML = [1, 2, 3].map((n) =>
-        `<button type="button" data-w="${n}"${n === current() ? ' class="on"' : ""}
-          title="${n} Spalte${n > 1 ? "n" : ""} breit"
-          aria-label="${n} Spalten breit">${n}</button>`).join("");
-      sel.querySelectorAll("[data-w]").forEach((b) =>
-        b.addEventListener("click", (ev) => {
-          ev.preventDefault();
-          card.classList.remove("w1", "w2", "w3");
-          card.classList.add("w" + b.dataset.w);
-          paintSel();
-          saveOrder(view);
-        }));
-    };
-    paintSel();
-    card.prepend(sel);
-
-    grip.addEventListener("pointerdown", (ev) => {
-      ev.preventDefault();
-      dragging = card;
-      card.classList.add("dragging");
-      grip.setPointerCapture(ev.pointerId);
+    const sel = el("select");
+    m.presets.forEach((p) => {
+      const opt = el("option", null,
+        `${p.label || p.name}${p.installed ? "" : " (lädt beim Wählen)"}`);
+      opt.value = p.name;
+      if (p.active) opt.selected = true;
+      sel.append(opt);
     });
-    grip.addEventListener("pointermove", (ev) => {
-      if (dragging !== card) return;
-      const under = document.elementFromPoint(ev.clientX, ev.clientY);
-      const other = under && under.closest(".card");
-      if (!other || other === card || other.parentElement !== host) return;
-      const cards = [...host.children];
-      const before = cards.indexOf(card) < cards.indexOf(other);
-      host.insertBefore(card, before ? other.nextSibling : other);
-    });
-    const end = (ev) => {
-      if (dragging !== card) return;
-      dragging = null;
-      card.classList.remove("dragging");
-      try { grip.releasePointerCapture(ev.pointerId); } catch (e) { /* egal */ }
-      saveOrder(view);
-      toast("Anordnung gemerkt");
-    };
-    grip.addEventListener("pointerup", end);
-    grip.addEventListener("pointercancel", end);
-
-    // Ohne Maus: Mit den Pfeiltasten verschieben, wenn der Griff Fokus hat.
-    grip.addEventListener("keydown", (ev) => {
-      const step = ev.key === "ArrowUp" || ev.key === "ArrowLeft" ? -1
-        : ev.key === "ArrowDown" || ev.key === "ArrowRight" ? 1 : 0;
-      if (!step) return;
-      ev.preventDefault();
-      const cards = [...host.children].filter((c) => c.classList.contains("card"));
-      const i = cards.indexOf(card);
-      const target = cards[i + step];
-      if (!target) return;
-      host.insertBefore(step < 0 ? card : target, step < 0 ? target : card);
-      saveOrder(view);
-      grip.focus();
-    });
-  });
-}
-
-async function resetLayout(view) {
-  try { localStorage.removeItem(LAYOUT_KEY + view); } catch (e) { /* egal */ }
-  if (layoutFromServer) delete layoutFromServer[view];
-  try { await api(`/layout/${view}`, { method: "DELETE" }); } catch (e) { /* egal */ }
-  location.reload();
-}
-
-/* Die letzten Trainingstage noch einmal auswerten.
-
-   Der Sync wertet nur aus, was gerade neu hereinkommt. Was davor liegt — weil
-   die Uhr spät synchronisiert hat, weil Sätze nachgetragen wurden oder weil
-   sich die Regel geändert hat — bliebe sonst für immer unberücksichtigt. */
-$("#btnRecalc").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const days = +$("#recalcDays").value || 30;
-  const r = await api(`/exercises/proposals/recalculate?days=${days}`,
-    { method: "POST" });
-  toast(r.proposals
-    ? `${r.proposals} Vorschläge aus ${r.days} Trainingstagen`
-    : `${r.days} Trainingstage geprüft — die Vorgaben passen bereits`);
-  loadProposals();
-  loadChanges();
-}));
-
-/* ------------------------------------------------- Einheit auf Zuruf */
-
-/* „60 Minuten zuhause für den Handstand" — das Modell liest Dauer, Ort,
-   Schwerpunkt und Ziel heraus, die Übungen kommen aus der Bibliothek. Was
-   verstanden wurde, steht über dem Vorschlag: Wer eine Einheit bekommt, die
-   nicht zum Satz passt, soll sehen woran es lag. */
-async function proposeWish(save) {
-  const text = $("#wishText").value.trim();
-  if (!text) { toast("Schreib, was du trainieren willst.", true); return; }
-  const w = await api("/plan/wish", { method: "POST",
-    body: JSON.stringify({ text, save }) });
-
-  if (save) {
-    $("#wishPreview").innerHTML = "";
-    $("#wishText").value = "";
-    toast(`${w.minutes} min eingeplant`);
-    loadPlan();
-    return;
+    sel.onchange = () => post("/system/model", { name: sel.value })
+      .then((r) => toast(`Modell ${r.model}: ${r.status}.`));
+    box.append(sel);
+  } catch (e) {
+    box.append(el("p", "hint", "Modellstatus nicht abrufbar."));
   }
-  $("#wishPreview").innerHTML = `
-    <div class="detail-section">
-      <div class="muted">Verstanden als: ${esc(w.read_as || "")}</div>
-      <h4>${esc(w.name)}</h4>
-      ${w.goal_note ? `<p class="muted">${esc(w.goal_note)}</p>` : ""}
-      <p class="muted">${esc(w.description || "")}</p>
-      <ul class="steps">${stepsToHtml(w.steps)}</ul>
-      <button class="btn" id="btnWishSave">So einplanen</button>
-    </div>`;
-  $("#btnWishSave").addEventListener("click", (e) =>
-    withSpinner(e.currentTarget, () => proposeWish(true)));
 }
 
-$("#btnWish").addEventListener("click", (e) =>
-  withSpinner(e.currentTarget, () => proposeWish(false)));
-$("#wishText").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") { ev.preventDefault(); $("#btnWish").click(); }
-});
-
-/* ------------------------------------------------------ Einheit für zuhause */
-
-const HOME_GROUPS = [["core", "Rumpf"], ["back", "Rücken"], ["chest", "Brust"],
-                     ["shoulders", "Schultern"], ["legs", "Beine"]];
-let homeChosen = ["core", "back"];
-
-function renderHomeGroups() {
-  const host = $("#homeGroups");
-  if (!host) return;
-  host.innerHTML = HOME_GROUPS.map(([key, label]) =>
-    `<button class="chip${homeChosen.includes(key) ? " on" : ""}"
-      data-homegroup="${key}">${label}</button>`).join("");
-  $$("#homeGroups [data-homegroup]").forEach((b) => b.addEventListener("click", () => {
-    const k = b.dataset.homegroup;
-    homeChosen = homeChosen.includes(k)
-      ? homeChosen.filter((x) => x !== k) : [...homeChosen, k];
-    if (!homeChosen.length) homeChosen = [k];   // ganz ohne Gruppe geht nicht
-    renderHomeGroups();
-  }));
-}
-
-$("#btnHomeSession").addEventListener("click", (e) =>
-  withSpinner(e.currentTarget, async () => {
-    const w = await api("/plan/home", { method: "POST", body: JSON.stringify({
-      minutes: +$("#homeMinutes").value || 30,
-      groups: homeChosen,
-      with_dumbbell: $("#homeDumbbell").checked }) });
-    $("#homePreview").innerHTML = `
-      <div class="detail-section">
-        <h4>${esc(w.name)}</h4>
-        <p class="muted">${esc(w.description)}</p>
-        <ul class="steps">${stepsToHtml(w.steps)}</ul>
-      </div>`;
-    toast(`${w.minutes} min für heute eingeplant`);
-    loadPlan();
-  }));
-
-/* ---------------------------------------------------------------- Schritte */
-
-/* Ein Schrittziel allein sagt am Nachmittag wenig: 6.000 von 10.000 sind um
-   zehn Uhr viel und um zwanzig Uhr wenig. Deshalb steht daneben, was zu dieser
-   Stunde bei dir üblich ist — und was daraus bis Mitternacht wird. */
-async function loadSteps() {
-  let d;
-  try { d = await api("/steps/today"); } catch (e) { return; }
-
-  $("#stepNow").textContent = d.steps.toLocaleString("de-DE");
-  $("#stepGoal").textContent = d.goal.toLocaleString("de-DE");
-  $("#stepBar").style.width = `${d.percent}%`;
-  $("#stepBar").className = d.reaches_goal === false ? "short" : "";
-
-  // Die Marke zeigt, wo du um diese Uhrzeit üblicherweise stehst.
-  const mark = $("#stepMark");
-  if (d.expected_by_now != null && d.goal) {
-    mark.hidden = false;
-    mark.style.left = `${Math.min(100, (d.expected_by_now / d.goal) * 100)}%`;
-    mark.title = `üblich um diese Zeit: ${d.expected_by_now.toLocaleString("de-DE")}`;
-  } else { mark.hidden = true; }
-
-  $("#stepFacts").innerHTML = [
-    d.expected_by_now != null
-      ? { l: "üblich um diese Zeit", v: d.expected_by_now.toLocaleString("de-DE") } : null,
-    d.ahead_by != null
-      ? { l: d.ahead_by >= 0 ? "voraus" : "zurück",
-          v: `${d.ahead_by >= 0 ? "+" : ""}${d.ahead_by.toLocaleString("de-DE")}` } : null,
-    d.projected != null ? { l: "bis Mitternacht", v: d.projected.toLocaleString("de-DE") } : null,
-    d.remaining ? { l: "noch bis zum Ziel", v: d.remaining.toLocaleString("de-DE") } : null,
-  ].filter(Boolean).map((f) => `
-    <div class="st-f"><div class="v">${esc(f.v)}</div><div class="l">${esc(f.l)}</div></div>`
-  ).join("");
-  $("#stepNote").textContent = d.note || "";
-
-  // Heute gegen den typischen Tag — zwei Kurven, damit der Vergleich sichtbar
-  // ist und nicht nur behauptet.
-  const base = new Date(); base.setHours(0, 0, 0, 0);
-  const at = (h) => base.getTime() + h * 3600e3;
-  let sum = 0;
-  const mine = d.hours.map((r) => ({ t: at(r.hour + 1), value: (sum += r.steps) }));
-  const norm = (d.typical.cumulative || [])
-    .filter((c) => c.steps > 0)
-    .map((c) => ({ t: at(c.hour + 1), value: c.steps }));
-  timeChart($("#stepChart"), [
-    { key: "heute", label: "heute", color: "var(--chart-2)", points: mine },
-    norm.length ? { key: "üblich", label: "üblich", color: "var(--chart-1)", points: norm } : null,
-  ].filter(Boolean), {
-    from: at(0), to: at(24), height: 150, unit: " Schritte",
-    empty: "Für heute liegt noch kein Verlauf vor.", label: "Schritte im Tagesverlauf",
-  });
-}
-
-/* Der typische Tag als Balken je Stunde — hier geht es nicht um heute,
-   sondern um den Rhythmus. */
-async function loadTypicalSteps() {
-  const host = $("#stepTypicalChart");
-  if (!host) return;
-  rangeTabs($("#stepTypicalRange"), "stepTypical", ["week", "month", "quarter"],
-    async (range, days) => {
-      let d;
-      try { d = await api(`/steps/typical?days=${days}`); } catch (e) { return; }
-      if (d.hint) {
-        host.innerHTML = `<p class="muted">${esc(d.hint)}</p>`;
-        $("#stepTypicalFacts").innerHTML = "";
-        return;
-      }
-      barChart(host, d.hours.map((h) => ({
-        value: h.steps, label: h.hour % 3 === 0 ? `${h.hour}` : "",
-        tip: `${h.hour}:00–${h.hour + 1}:00 · ${h.steps} Schritte`,
-      })));
-      $("#stepTypicalFacts").innerHTML = `
-        <div class="tiles wide-tiles" style="margin-top:10px">
-          <div class="tile"><div class="tv">${d.total.toLocaleString("de-DE")}</div>
-            <div class="tl">Schritte an einem üblichen Tag</div></div>
-          <div class="tile"><div class="tv">${d.busiest_hour}<span class="tu"> Uhr</span></div>
-            <div class="tl">stärkste Stunde (${d.busiest_steps})</div></div>
-          <div class="tile"><div class="tv">${d.half_by_hour}<span class="tu"> Uhr</span></div>
-            <div class="tl">Hälfte des Tagespensums erreicht</div></div>
-          <div class="tile"><div class="tv">${d.morning.toLocaleString("de-DE")}</div>
-            <div class="tl">morgens · ${d.afternoon.toLocaleString("de-DE")} nachmittags
-              · ${d.evening.toLocaleString("de-DE")} abends</div></div>
-        </div>
-        <p class="muted" style="margin-top:6px">Aus ${d.days} aufgezeichneten Tagen.</p>`;
-    }, "month");
-}
-
-/* ------------------------------------------- Vorschläge nach dem Training */
-
-/* Was tatsächlich geleistet wurde, passt oft nicht zur Vorgabe — wer 35 kg
-   statt der geplanten 20 bewegt, hat eine Entscheidung getroffen. PULS
-   rechnet sie durch und legt sie vor; übernommen wird sie erst mit einem
-   Tippen. Der Beleg steht daneben, damit man nicht raten muss, woher die
-   Zahl kommt. */
-async function loadProposals() {
-  const card = $("#proposalCard");
-  if (!card) return;
-  let list;
-  try { list = await api("/exercises/proposals"); } catch (e) { card.hidden = true; return; }
-  if (!list.length) { card.hidden = true; return; }
-  card.hidden = false;
-
-  $("#proposalList").innerHTML = list.map((p) => {
-    const dw = (p.to_weight ?? 0) - (p.from_weight ?? 0);
-    const dr = (p.to_reps ?? 0) - (p.from_reps ?? 0);
-    const bits = [];
-    if (Math.abs(dw) >= 0.1) bits.push(`${p.from_weight}\u2009kg → <b>${p.to_weight}\u2009kg</b>`);
-    if (dr) bits.push(`${p.from_reps} → <b>${p.to_reps}</b> Wdh.`);
-    return `
-      <div class="prop" data-prop="${p.id}">
-        <div class="pn">${esc(p.name)}</div>
-        <div class="pc">${bits.join(" · ")}</div>
-        <div class="pe">${esc(p.evidence || "")}</div>
-        <div class="pr">${esc(p.reason || "")}</div>
-        <div class="row">
-          <button class="btn small" data-accept="${p.id}">Übernehmen</button>
-          <button class="btn small ghost" data-decline="${p.id}">Lassen</button>
-        </div>
-      </div>`;
-  }).join("");
-
-  $$("#proposalList [data-accept]").forEach((b) => b.addEventListener("click", (e) =>
-    withSpinner(e.currentTarget, async () => {
-      await api(`/exercises/proposals/${b.dataset.accept}`, { method: "POST",
-        body: JSON.stringify({ accept: true }) });
-      toast("Übernommen"); loadProposals(); loadChanges();
-    })));
-  $$("#proposalList [data-decline]").forEach((b) => b.addEventListener("click", (e) =>
-    withSpinner(e.currentTarget, async () => {
-      await api(`/exercises/proposals/${b.dataset.decline}`, { method: "POST",
-        body: JSON.stringify({ accept: false }) });
-      toast("Bleibt, wie es war"); loadProposals();
-    })));
-}
-
-$("#btnAcceptAll").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/exercises/proposals", { method: "POST",
-    body: JSON.stringify({ accept: true }) });
-  toast(`${r.count} übernommen`); loadProposals(); loadChanges();
-}));
-$("#btnDeclineAll").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  const r = await api("/exercises/proposals", { method: "POST",
-    body: JSON.stringify({ accept: false }) });
-  toast(`${r.count} unverändert gelassen`); loadProposals();
-}));
-
-/* ---------------------------------------------------------- Zielgewicht */
-
-/* Die Frage, die hinter jedem Gewichtsverlauf steht: Wann bin ich da? Die
-   Hochrechnung kommt aus der Steigung der geglätteten Kurve — und sie sagt
-   auch, wenn sie nichts sagen kann. */
-async function loadWeightGoal() {
-  let g;
-  try { g = await api("/body/goal"); } catch (e) { return; }
-
-  $("#goalNow").textContent = g.current_kg != null ? `${g.current_kg.toFixed(1)} kg` : "–";
-  $("#goalTarget").textContent = g.goal_kg != null ? `${g.goal_kg} kg` : "–";
-  $("#goalInput").value = g.target_kg ?? "";
-
-  const facts = [
-    g.remaining_kg != null
-      ? { l: "noch", v: `${Math.abs(g.remaining_kg).toFixed(1)} kg` } : null,
-    g.rate_kg_week != null
-      ? { l: "pro Woche", v: `${g.rate_kg_week > 0 ? "+" : ""}${g.rate_kg_week} kg`,
-          note: g.pace } : null,
-    g.eta ? { l: "voraussichtlich", v: fmtDate(g.eta) }
-      : g.weeks_to_goal ? { l: "noch", v: `${Math.round(g.weeks_to_goal)} Wochen` } : null,
-    g.bmi != null ? { l: "BMI", v: String(g.bmi),
-                      note: g.in_healthy_range ? "im grünen Bereich" : "außerhalb" } : null,
-  ].filter(Boolean);
-  $("#goalFacts").innerHTML = facts.map((f) => `
-    <div class="gw-f"><div class="v">${esc(f.v)}</div>
-      <div class="l">${esc(f.l)}${f.note ? ` <span class="muted">· ${esc(f.note)}</span>` : ""}</div>
-    </div>`).join("");
-
-  // Der Balken zeigt den Weg seit dem Start der Messreihe, nicht seit null —
-  // ein Balken, der bei 73 von 76 kg fast voll ist, sagt nichts.
-  let pct = 0;
-  if (g.current_kg != null && g.goal_kg != null && g.remaining_kg != null) {
-    const span = Math.abs(g.goal_kg - (g.current_kg - (g.rate_kg_week || 0) * 8));
-    pct = span > 0.1 ? Math.max(0, Math.min(100, (1 - Math.abs(g.remaining_kg) / span) * 100)) : 0;
-  }
-  $("#goalBar").style.width = `${pct.toFixed(0)}%`;
-  $("#goalBar").className = g.on_track === false ? "wrong" : "";
-  $("#goalNote").textContent = g.note || "";
-}
-
-$("#btnGoalSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/body/goal", { method: "POST",
-    body: JSON.stringify({ target_kg: +$("#goalInput").value || null }) });
-  toast("Ziel gesetzt"); loadWeightGoal();
-}));
-$("#btnGoalClear").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/body/goal", { method: "POST", body: JSON.stringify({ target_kg: null }) });
-  toast("Vorschlag übernommen"); loadWeightGoal();
-}));
-
-/* ------------------------------------------------------- Schlafenszeit */
-
-/* Abends die Frage, die zählt: Wann muss ich ins Bett? Rückwärts gerechnet
-   vom Aufstehziel — Schlafbedarf und die eigene Einschlafdauer abgezogen.
-   Tagsüber steht die Karte nicht im Weg; sie erscheint, wenn es relevant wird. */
-async function loadBedtime() {
-  const card = $("#bedtimeCard");
-  let d;
-  try { d = await api("/sleep/tonight"); } catch (e) { card.hidden = true; return; }
-
-  const hour = new Date().getHours();
-  // Ab dem späten Nachmittag, und nachts weiter — nicht beim Frühstück.
-  card.hidden = !(hour >= 15 || hour < 4);
-  if (card.hidden) return;
-
-  const late = d.minutes_until < 0 || d.minutes_until > 20 * 60;
-  $("#bedtimeAt").textContent = d.bedtime;
-  $("#bedtimeUntil").textContent = late
-    ? "diese Zeit ist durch — je eher jetzt, desto besser"
-    : d.minutes_until < 60
-      ? `in ${d.minutes_until} Minuten`
-      : `in ${Math.floor(d.minutes_until / 60)} h ${d.minutes_until % 60} min`;
-  $("#bedtimeAt").className = "bt-time" + (late || d.due_soon ? " soon" : "");
-
-  $("#bedtimeFacts").innerHTML = [
-    { l: "Aufstehen", v: d.wake_target },
-    { l: "Schlafbedarf", v: `${d.need_hours} h` },
-    { l: "Einschlafen", v: `${d.fall_asleep_min} min`,
-      note: d.fall_asleep_measured ? "aus deinen Nächten" : "Vorgabewert" },
-    d.usual_bedtime ? { l: "sonst um", v: d.usual_bedtime } : null,
-  ].filter(Boolean).map((f) => `
-    <div class="bt-f"><div class="v">${esc(f.v)}</div>
-      <div class="l">${esc(f.l)}${f.note ? ` <span class="muted">(${esc(f.note)})</span>` : ""}</div>
-    </div>`).join("");
-
-  $("#bedtimeNote").textContent = d.note || "";
-
-  const r = d.regularity;
-  $("#bedtimeReg").innerHTML = r.nights >= 5 ? `
-    <div class="bt-r">
-      <span>Regelmäßigkeit über ${r.nights} Nächte:</span>
-      <b>±${r.bedtime_spread_h ?? "–"} h</b> beim Zubettgehen,
-      <b>±${r.waketime_spread_h ?? "–"} h</b> beim Aufstehen.
-      ${r.later_than_target ? `An ${r.later_than_target} von ${r.of_nights} Nächten
-        bist du deutlich später als ${esc(r.target)} aufgestanden.` : ""}
-    </div>` : `<div class="bt-r muted">Für die Regelmäßigkeit braucht es noch
-      ein paar aufgezeichnete Nächte.</div>`;
-}
-
-/* --------------------------------------- Lader für die neuen Ansichten */
-
-/* Kraft, Laufen, Gewicht und Vital zeigen Karten, die früher auf dem
-   Dashboard oder im Coach-Reiter standen. Sie brauchen dieselben Daten —
-   deshalb hier je ein schmaler Lader statt eines aufgeblähten Dashboards. */
-
-async function loadStrengthView() {
+async function refreshBadge() {
   try {
-    const d = await api("/dashboard");
-    rangeTabs($("#loadRange"), "load", DAILY_RANGES, (range, days) => {
-      const rows = daysBack(d.load_series, days);
-      const label = dayLabelFor(range);
-      const every = Math.max(1, Math.ceil(rows.length / 7));
-      barChart($("#loadChart"), rows.map((p, i) => ({
-        value: Math.round(p.load), tip: `${p.day} · ${p.count} Training(s)`,
-        label: i % every === 0 ? label(p.day) : "",
-      })));
-    }, "month");
-  } catch (e) { /* Die Übungsliste steht trotzdem */ }
-  loadTrends();
-  loadChanges();
-  loadProposals();
-}
-
-/* Was nach der letzten Einheit an den Vorgaben angepasst wurde. */
-async function loadChanges() {
-  if (!$("#changeList")) return;
-  let list;
-  try { list = await api("/exercises/changes?days=14"); } catch (e) { return; }
-  const box = $("#changeList");
-  if (!box) return;
-  if (!list.length) {
-    box.innerHTML = '<p class="muted">Seit zwei Wochen wurde nichts angepasst — ' +
-      'sobald eine Einheit ausgewertet ist, steht hier, was daraus folgte.</p>';
-    return;
+    const h = await api("/health");
+    $("#syncBadge").textContent = h.garmin_linked ? "Garmin ✓" : "Garmin –";
+    $("#syncBadge").className = h.garmin_linked ? "ok" : "";
+  } catch (e) {
+    $("#syncBadge").textContent = "offline";
   }
-  const cls = (c) => c.action === "deload" ? "down"
-    : c.action === "calibrate" ? "cal" : "up";
-  box.innerHTML = list.map((c) => `
-    <div class="chg ${cls(c)}">
-      <div class="ch">${esc(c.name)}
-        <span class="cw">${esc(c.change)}</span>
-        <span class="ct">${fmtDate(c.when)}</span></div>
-      <div class="cr">${esc(c.reason || "")}</div>
-    </div>`).join("");
 }
 
-async function loadRunningView() {
-  loadTrends();
-}
+/* ================================================================= Start */
 
-async function loadWeightView() {
-  await loadBody();
-  loadWeightGoal();
-  try {
-    const d = await api("/dashboard");
-    renderComposition(d.body_composition);
-    const ws = d.weight_series.map((p) => ({ ...p, value: p.weight_kg }));
-    rangeTabs($("#weightRange"), "weight", DAILY_RANGES, (range, days) => {
-      const label = dayLabelFor(range);
-      lineChart($("#weightChart"), daysBack(ws, days)
-        .map((p) => ({ value: p.value, label: label(p.day), tip: p.day })),
-        { unit: " kg" });
-    }, "quarter");
-    if (ws.length >= 2) {
-      const diff = (ws[ws.length - 1].value - ws[0].value).toFixed(1);
-      $("#weightDelta").textContent =
-        `${diff > 0 ? "+" : ""}${diff} kg seit ${fmtDate(d.weight_series[0].day)}`;
-    }
-  } catch (e) { /* Körperdaten stehen trotzdem */ }
-}
-
-async function loadVitalView() {
-  const d = await api("/dashboard");
-  renderTodayTiles(d.recovery);
-  renderSleepAndHeart(d.recovery);
-  loadRecovery();
-  loadThreshold();
-  loadStressPattern();
-  loadTypicalSteps();
-}
-
-/* Die Schwelle in Pulsbereiche übersetzt: Der Maximalpuls ist eine Zahl, die
-   man selten kennt und noch seltener erreicht — die Schwelle läuft man jede
-   Woche, also sind die Bereiche daran ausgerichtet. */
-async function loadThreshold() {
-  let t;
-  try { t = await api("/vitals/threshold"); } catch (e) { return; }
-  $("#lthrInput").value = t.measured ? t.hr : "";
-  if (!t.hr) {
-    $("#thresholdBox").innerHTML = `<p class="muted">${esc(t.hint)}</p>`;
-    return;
-  }
-  $("#thresholdBox").innerHTML = `
-    <div class="thr-head">
-      <div><div class="v">${t.hr}<span class="u"> bpm</span></div>
-        <div class="l">Schwellenpuls</div></div>
-      ${t.pace_text ? `<div><div class="v">${esc(t.pace_text)}<span class="u"> /km</span></div>
-        <div class="l">Schwellentempo</div></div>` : ""}
-      <div class="thr-src">${esc(t.source || "")}${
-        t.runs_used ? ` · ${t.runs_used} Läufe` : ""}</div>
-    </div>
-    <div class="thr-zones">${(t.zones || []).map((z) => `
-      <div class="thr-z">
-        <div class="zn">${esc(z.name)}</div>
-        <div class="zr">${z.from}–${z.to} bpm</div>
-        <div class="zd">${esc(z.note)}</div>
-      </div>`).join("")}</div>`;
-}
-
-async function loadStressPattern() {
-  let d;
-  try { d = await api("/vitals/stress"); } catch (e) { return; }
-  const box = $("#stressPattern");
-  if (!d.days) { box.innerHTML = `<p class="muted">${esc(d.hint)}</p>`; return; }
-
-  box.innerHTML = `
-    <div class="tiles wide-tiles">
-      <div class="tile"><div class="tv">${d.average}<span class="tu"> von 100</span></div>
-        <div class="tl">Stress im Schnitt</div></div>
-      ${d.worst_weekday ? `<div class="tile"><div class="tv">${esc(d.worst_weekday.weekday)}</div>
-        <div class="tl">höchster Wert (${d.worst_weekday.value})</div></div>` : ""}
-      ${d.calmest_weekday ? `<div class="tile"><div class="tv">${esc(d.calmest_weekday.weekday)}</div>
-        <div class="tl">ruhigster Tag (${d.calmest_weekday.value})</div></div>` : ""}
-      <div class="tile"><div class="tv">${d.high_days}</div>
-        <div class="tl">Tage deutlich über deinem Schnitt</div></div>
-    </div>
-    ${d.agreement_note ? `<p class="muted" style="margin-top:8px">${esc(d.agreement_note)}</p>` : ""}
-    <h4 class="ins-h" style="margin-top:14px">Was bei dir dagegen hilft</h4>
-    ${d.helpers.length ? d.helpers.map((h) => `
-      <div class="helper">
-        <div class="hn">${esc(h.name)}</div>
-        <div class="hm">${h.gut} von ${h.von} Mal hilfreich${
-          h.when ? ` — ${esc(h.when)}` : ""}</div>
-        ${h.text ? `<div class="hd">${esc(h.text)}</div>` : ""}
-      </div>`).join("")
-      : `<p class="muted">${esc(d.hint || "")}</p>`}`;
-}
-
-$("#btnLthrSave").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/vitals/threshold", { method: "POST",
-    body: JSON.stringify({ hr: +$("#lthrInput").value || null }) });
-  toast("Eingetragen"); loadThreshold();
-}));
-$("#btnLthrClear").addEventListener("click", (e) => withSpinner(e.currentTarget, async () => {
-  await api("/vitals/threshold", { method: "POST", body: JSON.stringify({ hr: null }) });
-  toast("Wird wieder geschätzt"); loadThreshold();
-}));
-
-/* Welche Ansicht was nachlädt. Mehrere Ansichten teilen sich einen Lader,
-   wenn sie aus derselben Quelle leben — die Karten stehen jetzt dort, wo man
-   sie sucht, nicht dort, wo der Endpunkt sie zufällig liefert. */
-const LOADERS = {
-  start: loadDashboard,
-  mood: loadMood,
-  plan: () => { loadCoachPlan(); loadPlan(); renderHomeGroups(); },
-  strength: () => { loadExercises(); loadStrengthView(); },
-  running: () => { loadExercises(); loadRunningView(); },
-  nutrition: loadNutrition,
-  weight: loadWeightView,
-  vital: loadVitalView,
-  stats: loadStatsAll,
-  settings: loadSettings,
-};
-
-function goto(view) {
-  $$(".view").forEach((v) => v.classList.remove("active"));
-  $("#view-" + view).classList.add("active");
-  applyOrder(view);
-  applyWidths(view);
-  makeSortable(view);
-  $$("nav.bottom button").forEach((b) => {
-    const on = b.dataset.view === view;
-    b.classList.toggle("active", on);
-    // Bei zehn Reitern liegt der aktive oft außerhalb des Sichtbaren.
-    if (on && b.scrollIntoView) {
-      b.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
-    }
+function bind() {
+  $$("nav.tabs button").forEach((b) => { b.onclick = () => show(b.dataset.view); });
+  $("#btnSettings").onclick = () => openSettings().catch((e) => toast(e.message, "bad"));
+  $("#btnSaveSettings").onclick = () => saveSettings().catch((e) => toast(e.message, "bad"));
+  $("#btnSync").onclick = () => {
+    toast("Synchronisiere …");
+    post("/garmin/sync").then((r) =>
+      toast(r.ok ? "Daten sind da." : (r.detail || "Sync fehlgeschlagen."),
+            r.ok ? "good" : "bad")).catch((e) => toast(e.message, "bad"));
+  };
+  ["#setSchwelle", "#setOben", "#setUnten", "#setRunter"].forEach((sel) => {
+    $(sel).oninput = updateProgPreview;
   });
-  Promise.resolve((LOADERS[view] || (() => {}))()).catch((e) => toast(e.message, true));
-  window.scrollTo({ top: 0 });
+
+  $("#btnTodayRefresh").onclick = () => loadToday(true).catch((e) => toast(e.message, "bad"));
+  $("#btnTodayPlan").onclick = () => post("/today/plan")
+    .then((r) => { toast(`„${r.name}“ eingetragen.`, "good"); loadPlanned(); })
+    .catch((e) => toast(e.message, "bad"));
+  $("#btnPlanWeek").onclick = () => {
+    toast("Plane die Woche …");
+    post("/plan/week", { include_runs: true })
+      .then((r) => { toast(`${r.created.length} Einheiten gelegt.`, "good"); loadPlanned(); })
+      .catch((e) => toast(e.message, "bad"));
+  };
+  $("#btnPushAll").onclick = () => post("/plan/push-all")
+    .then((r) => toast(`${r.pushed.length} auf der Uhr`
+      + (r.failed.length ? `, ${r.failed.length} nicht` : "."), r.failed.length ? "bad" : "good"))
+    .catch((e) => toast(e.message, "bad"));
+  $("#btnWish").onclick = () => {
+    const text = $("#wishText").value.trim();
+    if (!text) { toast("Schreib deinen Wunsch hin.", "bad"); return; }
+    toast("Baue die Einheit …");
+    post("/plan/wish", { text }).then(renderWish).catch((e) => toast(e.message, "bad"));
+  };
+  $("#gymMinutes").onchange = saveStructure;
+  $("#runMinutes").onchange = saveStructure;
+
+  $("#btnRead").onclick = readTraining;
+  $("#btnCommit").onclick = commitTraining;
+  $("#btnPropAll").onclick = () => post("/strength/proposals/all", { accept: true })
+    .then((r) => { toast(`${r.count} Gewichte übernommen.`, "good"); loadStrength(); });
+  $("#btnPropRecalc").onclick = () => post("/strength/proposals/recalculate")
+    .then((r) => { toast(`${r.days} Trainingstage geprüft.`); loadStrength(); });
+  $("#btnNewExercise").onclick = (e) => { e.stopPropagation(); openExercise(null); };
+  $("#btnExSave").onclick = () => saveExercise().catch((err) => toast(err.message, "bad"));
+  $("#btnExDelete").onclick = async () => {
+    if (!editing) return;
+    await del(`/exercises/${editing.id}`);
+    $("#dlgExercise").close();
+    loadStrength();
+  };
+
+  $("#btnMoodSave").onclick = () => saveMood().catch((e) => toast(e.message, "bad"));
 }
 
-$$("nav.bottom button").forEach((b) => b.addEventListener("click", () => goto(b.dataset.view)));
-document.addEventListener("click", (e) => {
-  const g = e.target.closest("[data-goto]");
-  if (g) { e.preventDefault(); goto(g.dataset.goto); }
-});
-
-/* -------------------------------------------------------------------- Init */
-
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
-$("#nutDay").value = $("#bodyDay").value = new Date().toISOString().slice(0, 10);
-api("/settings").then((s) => applyFontScale(s.font_scale || 100)).catch(() => {});
-
-// Die gespeicherte Anordnung gilt in jeder Ansicht, nicht erst nach einem
-// Wechsel — sonst sähe die Startseite beim ersten Öffnen anders aus als danach.
-$$(".view").forEach((v) => {
-  const name = v.id.replace("view-", "");
-  applyOrder(name);
-  applyWidths(name);
-  makeSortable(name);
-});
-syncLayout();
-loadDashboard().catch((e) => toast(e.message, true));
-
-async function loadStatsAll() {
-  await loadStatsMetrics();
-  await loadStats();
+async function boot() {
+  bind();
+  refreshBadge();
+  try {
+    const s = await api("/settings");
+    document.documentElement.style.setProperty("--fs", `${s.font_scale / 100 * 16}px`);
+  } catch (e) { /* Vorgabe bleibt */ }
+  show(localStorage.getItem("puls.view") || "plan");
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
 }
 
-$("#btnResetLayout").addEventListener("click", () => {
-  const active = $$(".view").find((v) => v.classList.contains("active"));
-  if (active) resetLayout(active.id.replace("view-", ""));
-});
+boot();

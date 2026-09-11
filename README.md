@@ -1,906 +1,291 @@
 # PULS — dein lokaler Trainingscoach
 
-Selbstgehosteter Trainingscoach mit lokaler KI (Ollama, rein auf CPU), Garmin-Anbindung
-in beide Richtungen, Übungsbibliothek mit automatischer Progression und einem dunklen,
-motivierenden Dashboard. Läuft komplett auf deinem Server — keine Cloud-KI, keine Abos.
+Selbstgehosteter Trainingscoach mit lokaler KI (Ollama, rein auf CPU) und
+Garmin-Anbindung in beide Richtungen. Läuft komplett auf deinem Server — keine
+Cloud-KI, keine Abos.
 
-## Die Reiter
+PULS beantwortet eine Frage: **Was soll ich heute trainieren?** Alles andere
+steht dahinter.
+
+## Die vier Reiter
 
 | Reiter | Was dort steht |
 |---|---|
-| **Start** | Score, was der Coach heute sagt, offene Punkte, nächste Einheiten, zuletzt Trainiertes samt Bewertung, Schlafenszeit, Chat |
-| **Gemüt** | Stimmung eintragen, was der Coach daraus macht, „Was jetzt hilft", Verlauf |
-| **Plan** | Ziel, Wochenstruktur, die kommende Woche, geplante Einheiten, Kalibrierung |
-| **Kraft** | Muskelgruppen, Trainingslast, Übungsbibliothek, manuelles Eintragen |
-| **Laufen** | Laufform und Prognosen, Lauftrends, Aktivitätsprotokoll |
-| **Essen** | Tagesbilanz, Freitext-Eingabe, Rezeptvorschläge, Verlauf |
-| **Gewicht** | Referenzfenster, Körperzusammensetzung, Verlauf |
-| **Vital** | Zustand heute, Schlaf, Herz, Erholung |
-| **Statistik** | Alles gegen alles, abgeleitete Empfehlungen |
-| **Mehr** | Garmin, Waage, Supplements, Ziele, Darstellung, Modell, Version |
+| **Plan** | Die Empfehlung für heute, Einheiten auf Zuruf, deine Woche, was geplant ist |
+| **Kraft** | Training in Worten nachtragen, neue Gewichte, Muskelgruppen, Übungen |
+| **Laufen** | Form und Tempi, Trend, alle Läufe mit Karte und Kurven |
+| **Gemüt** | Stimmung, Energie, Stress, Beschwerden — und was daraus fürs Training folgt |
 
-Zehn Reiter passen auf einem Telefon nicht nebeneinander — die Leiste scrollt
-seitlich, und der aktive Reiter wird beim Wechsel in den Blick geholt.
+Einstellungen stehen nicht als fünfter Reiter im Weg, sondern hinter dem Knopf
+oben rechts: Ziel, Wochenstruktur, Gewichtssprünge, Garmin, Modell.
 
-## Deine Wochenstruktur
+---
 
-PULS plant genau so, wie du trainierst:
+## Die Empfehlung für heute
 
-| Wann | Was |
+Ganz oben im Plan-Reiter steht ein Satz, kein Dashboard. Er entsteht in drei
+Schritten, und alle drei sind nachlesbar.
+
+**1. Wie belastbar bist du?** Aus allem, was vorliegt, wird eine Zahl von 0 bis
+100:
+
+| Signal | Was gezählt wird |
 |---|---|
-| Jeden Morgen | 20–30 min Laufen — meist locker, ein Tempo- und ein langer Lauf pro Woche |
-| Mo / Mi / Fr abends | Gym 60–90 min: Kettlebell-Auftakt → Klimmzug-Arbeit → Maschinen → Dehnen |
-| Jeden Abend | Kurze Yoga-/Dehneinheit vor dem Schlafen |
+| Trainingsbereitschaft | der Wert der Uhr, sofern vorhanden |
+| Herzratenvariabilität | gegen deine eigene Basislinie, nicht gegen einen Tabellenwert |
+| Schlaf | Dauer der letzten Nacht |
+| Körperakku | Stand beim Aufwachen |
+| Ruhepuls | Abweichung vom Schnitt der letzten vier Wochen |
+| Dein Eintrag | Stimmung, Energie, Stress aus dem Gemüt-Reiter |
 
-Alles davon stellst du im **Coach-Tab** um: Gym-Tage und Lauftage getrennt
-anklicken, Dauer setzen, Ziel hineinschreiben — den Rest legt der Coach fest
-(siehe *Der Coach-Tab*). Ein Klick auf **Woche planen** erzeugt die komplette
-Woche; **Alles an Garmin** schiebt sie auf die Fenix.
+Jedes Signal hat ein Gewicht; fehlt eines, zählen die übrigen entsprechend
+mehr. Die Zahl ist also auch ohne Uhr brauchbar — dann eben aus Schlaf und
+deinem eigenen Eintrag. Unter der Empfehlung lässt sich aufklappen, welcher
+Messwert welchen Beitrag geliefert hat. Eine Zahl ohne ihre Herkunft ist ein
+Orakel.
 
-## Die zwei Hauptziele
+**2. Was ist offen?** Tage seit dem letzten Krafttraining, Tage seit dem
+letzten Lauf, welche Muskelgruppe hinterherhängt, welche Laufart seit Wochen
+fehlt, und ob heute nach deiner Wochenstruktur überhaupt ein Trainingstag ist.
 
-- **10 km unter 60 Minuten** — der Benchmark-Lauf kalibriert deine Trainingstempi, das
-  Dashboard zeigt die aktuelle Prognose und wie weit du noch weg bist.
-- **Mehr Klimmzüge** — eigener Block in jeder Gym-Einheit. Je nach Maximum arbeitet PULS
-  mit negativen, bandunterstützten oder freien Klimmzügen.
+**3. Entschieden wird mit Regeln**, in dieser Reihenfolge:
 
-## Wann du ins Bett solltest
+- Belastbarkeit unter 35 → **Pause**, egal welcher Wochentag.
+- Unter 52 → höchstens **leicht**, und rund ein Drittel kürzer.
+- Über 72 → **hart** erlaubt.
+- Liegt die letzte Woche deutlich über dem Schnitt der letzten vier (ACWR über
+  1,4), fällt „hart" auf „normal" zurück.
+- Schmerz oder Verletzung ab Stufe 3 drosselt auf leicht und nimmt die
+  betroffene Muskelgruppe aus dem Schwerpunkt.
+- Steht etwas im Plan, geht das vor dem Wochentag.
+- Was heute schon stattgefunden hat, steht nicht noch einmal an.
 
-Abends steht auf der Startseite eine Uhrzeit. Sie ist rückwärts gerechnet:
+Jede dieser Regeln legt ihren Grund daneben, und die Gründe stehen unter dem
+Satz. Der Grundsatz bleibt: **der Code entscheidet, das Modell formuliert.**
+Das Modell bekommt die fertige Entscheidung samt Zahlen und fasst sie in zwei
+Sätze — es darf sie nicht ändern und keine Zahl nennen, die nicht dasteht. Ist
+Ollama nicht erreichbar, steht der gerechnete Satz da. Nüchterner, aber
+genauso richtig.
 
-    Zubettgehzeit = Aufstehziel − Schlafbedarf − Einschlafdauer
+Zur Empfehlung gehört immer die **fertige Einheit**: aufklappen, ansehen, mit
+einem Tipp in den Plan legen und von dort an die Uhr schicken.
 
-Das **Aufstehziel** stellst du unter *Mehr → Trainingsziele* ein. Der
-**Schlafbedarf** ist keine feste Zahl: acht Stunden als Grundlage, plus je eine
-halbe Stunde bei schwacher Trainingsbereitschaft, bei einer HRV deutlich unter
-deinem Schnitt und nach einer langen Einheit, dazu bis zu einer halben Stunde
-für den Rückstand der letzten Nächte. Jeder Zuschlag wird benannt — wer ihn für
-falsch hält, sieht sofort, woran es liegt. Die **Einschlafdauer** kommt aus
-deinen eigenen Nächten (Zeit im Bett minus tatsächlich geschlafene Zeit), sobald
-fünf davon vorliegen; vorher gilt ein Vorgabewert von 15 Minuten.
+---
 
-Darunter steht, wie regelmäßig es tatsächlich zugeht: um wie viel deine
-Zubettgeh- und Aufstehzeiten im Schnitt schwanken, und an wie vielen Nächten du
-deutlich später aufgestanden bist als geplant. Regelmäßigkeit bringt hier mehr
-als eine einzelne lange Nacht — deshalb steht sie daneben und nicht in einer
-Fußnote.
+## Ein Training in Worten nachtragen
 
-Die Karte erscheint ab dem späten Nachmittag. Beim Frühstück hilft sie nicht.
+Das Kernstück des Kraft-Reiters. Du schreibst hin, was du gemacht hast:
 
-## Wie lange eine Einheit wirklich dauert
+> Gestern im Gym: Beinpresse 3×15 mit 60 kg, dann Latzug 12/10/8 bei 45 kg,
+> Hamstring-Curls 15 Wdh @ 25 / 30 / 35, Wadenheben stehend 3×20 mit 30 kg
+> und Plank 3×60s. Danach 5,2 km in 30 min gelaufen.
 
-Eine Gym-Einheit, die „90 min" heißt und nach 80 vorbei ist, ist eine Ansage,
-auf die man sich nicht verlassen kann. Genau das war lange der Fall: Die Zahl
-kam aus einer Nachschlagetabelle mit drei Einträgen (60/75/90), die festlegte,
-wie viele Übungen in jeden Block kommen — wie lange das dann dauert, hat nie
-jemand nachgerechnet. Jeder Wunsch dazwischen rutschte auf einen der drei
-Werte, 68 Minuten ergaben dieselbe Einheit wie 75.
+Daraus wird:
 
-Jetzt wird gerechnet. Jede Wiederholung zählt mit dreieinhalb Sekunden (zwei
-hoch, zwei runter, plus Ansetzen), jede Pause und jede Zeitübung mit ihrer
-Dauer, dazu 45 Sekunden Umsetzen je Übung — Gewicht einstellen, Gerät suchen.
-Danach werden Übungen zugefügt oder weggenommen, bis die Einheit die Vorgabe
-auf ±7 % trifft: erst im Hauptteil, dann Kettlebell und Klimmzüge, das Dehnen
-zuletzt. Genauer geht es nicht sinnvoll — die kleinste Einheit ist eine Übung,
-und die dauert rund fünf Minuten.
+| gelesen als | Sätze | |
+|---|---|---|
+| Beinpresse | 15× 60 kg · 15× 60 kg · 15× 60 kg | bekannt |
+| Latziehen | 12× 45 kg · 10× 45 kg · 8× 45 kg | bekannt (aus „Latzug") |
+| Hamstring-Curls mit Band | 15× 25 kg · 15× 30 kg · 15× 35 kg | bekannt |
+| Wadenheben stehend | 20× 30 kg · 20× 30 kg · 20× 30 kg | **neu, wird angelegt** |
+| Unterarmstütz | 60 s · 60 s · 60 s | bekannt (aus „Plank") |
+| Lauf | 5,2 km in 30 min | als Aktivität |
 
-Im Namen steht danach die **gerechnete** Dauer, nicht die gewünschte. Wer 75
-Minuten einstellt, bekommt womöglich „Gym Ganzkörper 80 min" — das ist keine
-Ungenauigkeit, sondern die ehrliche Zahl.
+Erst als Vorschau, zum Abhaken. Erst der zweite Tipp schreibt.
+
+**Was verstanden wird.** Ein paar Schreibweisen für dieselbe Sache:
+
+```
+Beinpresse 3x15 mit 60 kg
+Beinpresse 3 Sätze à 15 Wdh mit 60 kg
+Beinpresse 3x15 60kg
+Beinpresse 15, 12, 10 mit 60 kg          → drei Sätze mit fallenden Wdh.
+Hamstring-Curls 15 Wdh @ 25 / 30 / 35    → drei Sätze mit steigendem Gewicht
+Unterarmstütz 3x60s                      → auf Zeit statt auf Wiederholungen
+dreimal fünfzehn Beinpresse mit sechzig Kilo
+```
+
+Der Trainingstag kommt aus „gestern", „vorgestern", einem Wochentag oder einem
+Datum wie „am 9.3."; ohne Angabe ist es heute. Ein Datum ohne Jahr, das in der
+Zukunft läge, meint das Vorjahr.
+
+**Unbekannte Übungen** werden angelegt — mit geratener Muskelgruppe und
+geratenem Gerät, die sich in der Bibliothek mit zwei Tippern korrigieren
+lassen. Das Gewicht aus der Beschreibung ist sofort die Vorgabe.
+
+**Gelesen wird mit Regeln, nicht mit dem Modell.** Zahlen sind das Einzige,
+worauf es hier ankommt, und ein Sprachmodell, das „60 kg" zu „65 kg" verliest,
+ist schlimmer als eines, das gar nichts sagt. Nur wenn die Regeln an einem
+Fließtext scheitern, darf das Modell ihn in Zeilen zerlegen — und danach wird
+**jede Zahl gegen deinen Originaltext geprüft** und verworfen, wenn sie dort
+nicht vorkommt.
+
+Ein Stück Text ohne jede Ziffer („Gestern im Gym") ist Beiwerk und wird
+stillschweigend übergangen. Nur was nach Daten aussah und trotzdem nicht
+verstanden wurde, landet unter „nicht verstanden" — ein Missverständnis soll
+auffallen, ein Füllwort nicht.
+
+Dieselbe Beschreibung zweimal geschickt **ersetzt** den Tag, statt ihn zu
+verdoppeln. Sätze, die von der Uhr kamen, bleiben dabei unangetastet.
+
+---
 
 ## Wie die Progression funktioniert
 
-Die Zahlen rechnet Code, nicht die KI — das Modell wählt aus und erklärt, aber es erfindet
-keine Gewichte. Verwendet wird **doppelte Progression**:
+Nach jeder Einheit — ob von der Uhr oder nachgetragen — steht die Regel, die du
+vorgegeben hast:
 
-1. Alle Sätze auf Zielwiederholungen geschafft, Ziel ist am oberen Ende der Spanne?
-   → Gewicht eine Stufe hoch, Wiederholungen zurück auf den unteren Wert.
-2. Alle Sätze geschafft, aber noch Luft? → eine Wiederholung mehr (bei „war leicht" zwei).
-3. Zweimal in Folge deutlich verfehlt? → Deload, eine Stufe runter.
-4. Sonst: gleiche Vorgabe nochmal.
+> Schafft der **schwerste Satz mehr als 10 Wiederholungen**, war das Gewicht
+> nicht die Grenze. Dann gilt ab sofort **dieses Gewicht bei 10
+> Wiederholungen**. Schafft er weniger, war es zu schwer: **5 kg runter, dafür
+> 15 Wiederholungen**.
 
-Die Schrittweite hängt am Gerät: Maschine 5 kg, Kabel/Band 2,5 kg, Kurzhantel 2 kg,
-Kettlebell 4 kg — pro Übung einstellbar.
+Beispiel aus der Praxis: Hamstring-Curls mit 25, dann 30, dann 35 kg, jeweils
+15 Wiederholungen. Ab jetzt gilt **35 kg bei 10 Wiederholungen** — nicht der
+Durchschnitt von 30, denn den hat es so nie gegeben.
 
-**Der Clou:** Die Fenix 7 protokolliert bei Kraft-Workouts jeden Satz mit Wiederholungen
-und Gewicht. PULS holt diese Sätze beim Sync zurück, ordnet sie deinen Übungen zu und
-rechnet die Progression von selbst weiter. Du musst nichts doppelt eintragen.
+Maßgeblich ist der schwerste Satz des Tages, und darin die meisten
+Wiederholungen. Wer sich innerhalb einer Einheit hocharbeitet, hat mit dem
+letzten Satz gezeigt, was geht, nicht mit dem ersten.
 
-## Was der Coach aus deinen Läufen liest
+**Geändert wird nichts von allein.** Jeder Vorschlag steht mit seinem Beleg da
+(„schwerster Satz: 15× 35 kg — mehr als 10 Wiederholungen"), und ein Tipp macht
+ihn zur neuen Vorgabe. *Alle übernehmen* geht auch. Die vier Zahlen der Regel
+— Schwelle, oben, unten, Minus-Kilo — stehen in den Einstellungen und lassen
+sich ändern; darüber steht der Satz, den sie gerade ergeben.
 
-Nach jedem Sync holt PULS zu jeder Laufeinheit die Kennzahlen von der Uhr und
-bewertet sie. Tippe in der Übungen-Ansicht auf einen Lauf, um die Analyse zu öffnen.
+Der Knopf **An letzte Trainings anpassen** rechnet die letzten drei Wochen neu
+durch. Nützlich, wenn ein Sync Sätze nachgeliefert hat, die beim ersten
+Durchlauf noch fehlten.
 
-Ausgelesen werden Distanz, Zeit, Tempo, Puls und die Zeit je Herzfrequenzzone,
-Schrittfrequenz und Schrittlänge, Höhenmeter und Trainingseffekt. Bodenkontaktzeit
-und vertikale Bewegung nur, wenn ein Brustgurt (HRM-Pro) oder RD-Pod mitläuft — die
-Fenix allein misst sie nicht.
+**Platzhalter sind keine Messwerte.** Garmin schreibt `-1` in die
+Wiederholungen, wenn die Uhr nicht mitgezählt hat — an Maschinen ständig. Als
+Zahl gelesen heißt das nicht „unbekannt", sondern „minus eine Wiederholung":
+Die Progression läse daraus ein verfehltes Ziel und legte beim zweiten Mal
+einen Deload ein. Solche Werte werden beim Einlesen zur Lücke, die sie sind.
 
-Bewertet wird dann:
+---
 
-- **Tempo gegen deine kalibrierten Zonen.** Der häufigste Fehler im Breitensport ist,
-  die lockeren Läufe zu schnell zu laufen. PULS sagt es dir.
-- **Pulsverteilung.** Bei einem Grundlagenlauf sollen 75 % und mehr in Zone 1–2 liegen;
-  bei einer Tempoeinheit ist Zone 4 dagegen genau das Ziel. Die Bewertung weiß, welche
-  Art Einheit gemeint war, und misst entsprechend.
-- **Schrittfrequenz.** Unter 160 Schritten pro Minute folgt ein konkreter Hinweis.
-- **Ermüdung im Verlauf.** Steigt dein Puls auf der zweiten Hälfte bei gleichem Tempo
-  deutlich an, war die Einheit zu lang oder zu schnell (aerobe Entkopplung).
-- **Fortschritt.** Schneller bei gleichem Puls als im Schnitt der letzten Wochen — das
-  ist der Vergleich, auf den es ankommt.
+## Deine Woche
+
+Gym-Tage und Lauftage klickst du getrennt an, dazu je eine Dauer. Der Rest
+folgt daraus: **Woche planen** legt die sieben Tage an, **Alles an die Uhr**
+schiebt sie auf die Fenix.
+
+Den Schwerpunkt der Gym-Tage setzt nicht eine feste Aufteilung, sondern der
+gerechnete Bedarf: Was vier Wochen zu kurz kam, kommt zuerst. Eine feste
+Push/Pull-Rotation gibt es bewusst nicht mehr — sie war eine Antwort auf eine
+Frage, die die Trends besser beantworten. Wer trotzdem eine bestimmte Einheit
+will, sagt es:
 
 ## Einheit auf Zuruf
 
-Ein Eingabefeld unter *Plan*. Schreib hinein, was du willst:
+Ein Satz genügt:
 
-| Was du schreibst | Was daraus wird |
-|---|---|
-| „90 Minuten Ganzkörper" | 89-min-Gym-Einheit über alle Gruppen |
-| „30 Minuten zuhause, Fokus Bauch" | 30 min auf der Matte, nur Rumpf |
-| „45 min Push im Studio" | Brust, Schultern, Arme |
-| „60 Minuten zuhause für den Handstand" | Handgelenke → Handstand an der Wand → Pike-Liegestütz → Hohlkörper → Krähe |
-| „eine Stunde zuhause für den ersten Klimmzug" | Negative Klimmzüge, Rudern, Rumpfarbeit |
+- „90 Minuten Ganzkörper"
+- „30 Minuten zuhause mit Fokus auf Bauch und Rumpf"
+- „60 Minuten zuhause für den Handstand"
+- „Push-Training, 75 Minuten"
 
-Über dem Vorschlag steht, **wie der Satz gelesen wurde** („60 Minuten zuhause,
-auf Handstand hin — Schultern, Rumpf, Arme"). Wer eine Einheit bekommt, die
-nicht zum Wunsch passt, soll sehen, woran es lag.
+Gelesen werden Dauer, Ort, Muskelgruppen und Ziel — mit Regeln, und nur wo die
+nichts finden, hilft das Modell aus. Was im Satz eindeutig dasteht (eine Zahl
+mit „min"), ist verlässlicher als jede Schätzung und wird nie überschrieben.
 
-Die Arbeitsteilung ist die übliche: Das Modell liest Dauer, Ort, Schwerpunkt und
-ein etwaiges Ziel heraus — mehr nicht. Welche Übungen daraus werden, entscheidet
-der Code aus der Bibliothek. Ein Modell, das sich Übungen ausdenkt, erfindet
-auch Gewichte, und die stünden dann im Plan. Ohne laufendes Modell zerlegt PULS
-den Satz selbst; alle Beispiele oben funktionieren auch dann.
+Ein **gezielter** Wunsch schrumpft den Auftakt und die Klimmzugarbeit
+zugunsten der gewünschten Gruppen: Wer „Sixpack" schreibt, will nicht eine
+Bauchübung von sechsen. Ein **breiter** Wunsch („Ganzkörper") bleibt
+ausgewogen — dort ist die Gleichverteilung ja gerade der Punkt.
 
-Zielorientierte Übungen (Handstand an der Wand, Krähe, Pike-Liegestütz) tauchen
-**nur** auf, wenn ein Ziel sie verlangt. In einer beliebigen Bauch-Einheit haben
-sie nichts verloren. Umgekehrt darf eine verlangte Übung aus jedem Block kommen:
-Wer auf den ersten Klimmzug hinarbeitet, braucht negative Klimmzüge — egal, in
-welcher Schublade sie liegen.
+Bei einem Schwerpunkt stehen Matten-Übungen vor den Maschinen: Nach dem
+Aufwärmen liegt man ohnehin schon, und die Geräte sind später frei.
 
-## Ein Schwerpunkt trägt die Einheit
+---
 
-„90 Minuten Gym, Sixpack" ergab lange **eine** Bauchübung von sechs. Zwei
-Gründe: Der Hauptteil ging stur reihum durch alle Muskelgruppen, und die
-Matten-Übungen — Sit-ups, Planken, Seitstütz — lagen im Block „zuhause" und
-waren im Studio damit gesperrt. Als hinge ein Sit-up an einer Maschine.
+## Wie lange eine Einheit wirklich dauert
 
-Beides ist geändert. Matten-Übungen haben einen eigenen Block und kommen
-**sowohl zuhause als auch im Studio** in Frage. Und bei einem ausdrücklichen
-Wunsch trägt der Schwerpunkt den Hauptteil, statt nur vorne zu stehen: Auftakt
-und Klimmzugarbeit schrumpfen zugunsten der gewünschten Gruppen, ein
-Kettlebell-Satz bleibt als Aufwärmen stehen. Dazu sechs neue Studio-Übungen für
-den Rumpf: Sit-ups, Negativ-Sit-ups an der Schrägbank, Rumpfrotation,
-Rückenstrecker, hängendes Beinheben, Crunch am Kabelzug.
+Die Dauer ist gerechnet, nicht behauptet: Arbeitszeit (3,5 s je Wiederholung
+oder die vorgegebene Zeit) plus Pausen plus 45 s Gerätewechsel, über alle
+Blöcke. Steht das Ergebnis mehr als 7 % neben der gewünschten Zahl, wird die
+Zusammenstellung angepasst, bis es passt. Und was die Empfehlung als Dauer
+nennt, ist die Dauer der gebauten Einheit — eine Empfehlung, die 75 Minuten
+sagt und 80 liefert, ist an genau der Stelle falsch, an der man sie nachrechnet.
 
-Aus „90 Minuten Gym Sixpack" wird damit:
+---
 
-    Aufwärmen (Kettlebell)
-    Klappmesser · Sit-ups · Hängendes Beinheben
-    Unterarmstütz · Seitstütz · Käfer
-    Beinpresse
-    Negativ-Sit-ups · Rumpfrotation · Crunch am Kabelzug
-    Dehnen
+## Was der Coach aus deinen Läufen liest
 
-Die Reihenfolge ist kein Zufall: **Matte vor Maschine.** Nach dem Aufwärmen
-liegt man ohnehin schon, und die Geräte sind später frei. Ein breiter Wunsch
-(„Ganzkörper") bleibt dagegen ausgewogen — dort ist die Gleichverteilung ja
-gerade der Punkt.
+Der Laufen-Reiter zeigt Form und Trend nebeneinander:
 
-Neue Übungen erreichen auch eine **bestehende** Bibliothek: Gesät wird nur beim
-ersten Start, deshalb trägt ein Abgleich beim Hochfahren nach, was dazugekommen
-ist. Angefasst wird dabei nichts Bestehendes — eigene Gewichte, Zielwerte und
-selbst angelegte Übungen bleiben unberührt.
+- **Tempo bei gleichem Puls.** Die aussagekräftigste Zahl im Ausdauertraining:
+  nur Läufe über 2 km, nur der Bereich zwischen Puls 120 und 155. Vier Wochen
+  gegen die vier davor. Schneller bei gleichem Puls heißt besser — alles
+  andere kann auch am Wetter liegen.
+- **Umfang, längste Einheit, Anteil harter Läufe.** Fehlt der Tempoanteil ganz,
+  steht das Renntempo; sind mehr als 40 % der Läufe hart, ist es zu viel.
+- **Bestzeiten** über 1, 5, 10 km und Halbmarathon, auf die Distanz
+  hochgerechnet.
+- **Jeder Lauf einzeln**: Puls-, Tempo- und Höhenkurve, GPS-Spur auf der Karte,
+  Kilometersplits, und eine Bewertung, die sagt, ob der Lauf das war, was er
+  sein sollte.
 
-## Zuhause trainieren
+Welche Laufart die Tagesempfehlung vorschlägt, folgt aus demselben Trend: Fehlt
+der harte Anteil, kommt ein Tempolauf; ist die längste Einheit geschrumpft und
+steht Ausdauer im Ziel, ein langer Lauf; an einem schwachen Tag immer locker.
 
-Nicht jede Einheit braucht ein Studio. Unter *Plan → Zuhause trainieren* wählst
-du Dauer und Muskelgruppen, und PULS baut eine Einheit aus Übungen, die nichts
-als eine Matte und höchstens eine kleine Hantel brauchen: Unterarmstütz,
-Seitstütz, Käfer, Vierfüßlerstand, Beckenheben, Rückenstrecken, Schwimmer,
-einarmiges Rudern, Kurzhantel-Kreuzheben, Seitheben, Überzüge, russischer
-Twist, Liegestütz, Ausfallschritte.
+---
 
-Die Gruppen wechseln sich ab, statt sechsmal Bauch zu bringen. Die Dauer wird
-eingehalten — Übungen kommen dazu oder fallen weg, bis sie passt. Gemeldete
-Beschwerden gelten auch hier: Bei Rückenschmerzen bleibt der Rücken draußen,
-und das steht dann auch da. Ohne Hantel geht es ebenfalls, dann bleiben die
-Körpergewichtsübungen.
+## Gemüt und Beschwerden
 
-## Yoga-Stellungen
+Stimmung, Energie und Stress auf einer Skala von 1 bis 5, dazu eine Notiz.
+Aus der Notiz liest PULS Beschwerden heraus („Knie zwickt seit gestern") und
+merkt sich Region, Art und Stärke.
 
-Die Abendeinheit geht als echtes Yoga-Workout auf die Uhr: Jede Stellung wird mit
-Garmins Übungsnamen übergeben, die Fenix zeigt also Namen und Abbildung statt eines
-namenlosen Zeitblocks. Der Kurzhinweis („Knie locker sinken lassen") steht als
-Beschreibung dabei.
+Das ist kein Tagebuch, sondern ein Eingangssignal: Der Eintrag geht in die
+Belastbarkeit ein, und eine Beschwerde nimmt die betroffenen Muskelgruppen aus
+dem Schwerpunkt. Muskelkater heißt dosieren, Schmerz heißt aussetzen — und
+zwar nur so lange, wie er nachwirkt: drei Tage für Muskelkater, vier für
+Verspannungen.
 
-Die ausführliche Anleitung — wie du Schritt für Schritt in jede Stellung kommst,
-worauf sie wirkt und wie sie auf Sanskrit heißt — findest du in der App unter
-*Plan → Yoga-Stellungen*. Einmal in Ruhe durchgehen, dann brauchst du sie abends nicht
-mehr.
+Der Verlauf zeigt alle drei Werte an ihren echten Uhrzeiten. Eine Lücke bleibt
+eine Lücke: Zwischen zwei Punkten, die weiter auseinanderliegen als üblich,
+wird nicht durchgezogen.
 
-## Kalibrierung (Benchmark)
+---
 
-Unter *Plan → Kalibrierung*:
+## Was PULS im Hintergrund weiter tut
 
-- **Benchmark-Lauf (Cooper-Test)**: 12 Minuten so weit wie möglich. Daraus berechnet PULS
-  VO₂max, deine vier Trainingstempi und eine ehrliche 10-km-Prognose. Die Rechnung folgt
-  dem Modell von Jack Daniels — die Werte decken sich mit dessen VDOT-Tabellen.
-- **Kraft-Test**: pro Übung ein Satz bis zum sauberen Maximum. Daraus 1RM nach Epley und
-  neue Arbeitsgewichte (mit 5 % Sicherheitsabschlag).
-- **Klimmzug-Maximum**: bestimmt, mit welcher Variante weitergearbeitet wird.
+Ohne eigenen Reiter, aber weiterhin in Betrieb:
 
-PULS erinnert alle 10 Wochen ans Nachkalibrieren.
+- **Garmin-Sync** alle drei Stunden: Aktivitäten, Detaildaten, Schlaf, HRV,
+  Ruhepuls, Körperakku, Stress, Trainingsbereitschaft. Danach werden die
+  Gewichtsvorschläge aus den frischen Sätzen abgeleitet, damit sie morgens
+  schon dastehen.
+- **Die Waage** (Mi Scale 2 über den Nachbarcontainer) schreibt weiter in die
+  Datenbank. Angezeigt wird sie nicht mehr — das Gewicht war eine Zahl, die
+  täglich schwankte und nichts entschied.
+- **Läufe, Schlaf, Herzdaten** bleiben vollständig gespeichert. Was ein
+  gelöschter Reiter angezeigt hat, ist nicht gelöscht.
 
+Beim Umbau geht nichts verloren: Die Tabellen bleiben, wie sie sind, und ein
+Update trägt nur nach, was fehlt.
 
-## Der Coach-Score
+---
 
-Ganz oben auf dem Dashboard steht, wie zufrieden der Coach gerade ist — eine
-Zahl von 0 bis 100, und daneben die fünf Säulen, aus denen sie entsteht. Ein
-einzelner Wert ohne Begründung wäre leicht misszuverstehen; wer 82 sieht, soll
-danebenlesen können, woraus die 82 kommt.
+## Übungsbibliothek
 
-| Säule | Gewicht | Woraus sie entsteht |
-|---|---|---|
-| Beständigkeit | 30 % | Wie oft du deine eigene Wochenstruktur tatsächlich einhältst |
-| Fortschritt | 25 % | Werden Gewichte schwerer und Läufe schneller bei gleichem Puls |
-| Erholung | 20 % | Schlaf, HRV und Ruhepuls gegenüber *deiner* Basislinie |
-| Belastung | 15 % | Belastungsverhältnis (ACWR) — Aufbau oder Überlastung |
-| Alltag | 10 % | Supplements, Wiegen im Referenzfenster, Befinden eintragen |
+Rund 56 Übungen zum Start, aufgeteilt in Blöcke (Kettlebell-Auftakt,
+Klimmzugarbeit, Hauptteil, Matte, Dehnen), jede mit Gewicht, Zielwiederholungen,
+Satzzahl, Pausenzeit und ihrer Entsprechung im Garmin-Katalog.
 
-Säulen ohne ausreichende Datengrundlage werden **nicht geraten**, sondern als
-solche ausgewiesen; ihr Gewicht verteilt sich auf die übrigen, damit eine
-fehlende Quelle den Wert nicht künstlich drückt.
+Gesät wird beim ersten Start. Kommen mit einem Update neue Übungen dazu, würde
+sie sonst niemand sehen, der PULS schon benutzt — deshalb gleicht PULS beim
+Hochfahren ab und trägt nach, was fehlt. Deine Gewichte, Zielwerte und selbst
+angelegten Übungen bleiben dabei unberührt.
 
-Darunter steht, **wo am meisten Potenzial liegt** — sortiert danach, was
-rechnerisch die meisten Punkte liegen lässt, mit einer konkreten Ansage statt
-einer Mängelliste.
+Für zuhause reicht eine Matte und eine kleine Hantel: Über zwanzig Übungen
+brauchen kein Gerät.
 
-Der Zeitraum ist bewusst kurz: Beständigkeit zählt die laufende **Woche**,
-Alltagsgewohnheiten ebenfalls, nur der Fortschritt braucht vier Wochen, weil
-sich Kraft und Tempo in sieben Tagen nicht messbar ändern. Ein Monatswert
-verwischt genau das, worauf du heute noch Einfluss hast — nach einer guten
-Woche soll der Wert steigen, nicht in einem Durchschnitt untergehen.
-
-Direkt daneben steht **was heute noch offen ist**: Lauf, Gym, Abend-Yoga,
-Schritte, Supplements, Wiegen im Referenzfenster, Befinden. Jeder Punkt mit
-seinem Fortschritt, am Abend im besten Fall alles erledigt. Zweimal am Tag —
-mittags und abends — meldet sich der Coach von sich aus dazu, wenn noch etwas
-offen ist, mit zwei Sätzen dazu, was jetzt noch machbar ist. Beim Schrittziel
-nennt er den Stand, damit „noch 2.400 Schritte" auch als Spaziergang lesbar ist.
-
-Gerechnet wird der Wert im Code. Das Modell darf ihn kommentieren, aber nicht
-bestimmen — sonst wäre er von Tag zu Tag beliebig.
-
-## Dein Zustand heute — und was daraus folgt
-
-Ganz oben auf dem Dashboard stehen die sechs Werte, nach denen sich entscheidet,
-was heute sinnvoll ist: Ruhepuls, HRV, Schlaf, Stressmittel, Trainingsbereitschaft
-und Body Battery beim Aufwachen. Jeder mit seiner Veränderung gegenüber deiner
-Basislinie und einem knappen Verlauf.
-
-Werte mit einer festen Skala stehen als **„62 von 100"** da, mit einem Balken
-darunter, der zusätzlich den Bereich markiert, in dem sie bei dir normal liegen.
-Eine nackte 62 sagt nichts, solange man weder die Obergrenze noch deinen
-Normalbereich kennt.
-
-Darunter schreibt der Coach drei bis vier Sätze dazu, was die Zahlen bedeuten und
-was für heute folgt — immer im Bezug zur Basislinie, denn ein Ruhepuls von 46
-sagt nichts, solange man deinen Normalwert nicht kennt. Die Einschätzung wird
-für die Sitzung behalten, weil sie auf der CPU spürbar dauert.
-
-## Statistik — alles gegen alles
-
-Die eigene Ansicht **Statistik** vergleicht jede erfasste Größe mit jeder
-anderen: Schlaf gegen Schritte, HRV gegen Gewicht, Body Battery gegen gefühlten
-Stress. 37 Größen aus sieben Gruppen — Schlaf, Herz, Stress, Bewegung, Körper,
-Befinden, Ernährung.
-
-Das ist statistisch heikel, und genau daran scheitern die meisten solchen
-Ansichten: Bei 37 Größen gibt es über 600 Paare. Prüft man die einfach alle
-gegen die übliche Schwelle von 5 %, findet man rein durch Zufall **rund
-dreißig „Zusammenhänge"**, die keine sind. Wer daraus Empfehlungen ableitet,
-folgt Rauschen.
-
-Erfasst sind dabei auch die Dinge, die man leicht vergisst, weil sie keine
-Messwerte im engeren Sinn sind:
-
-* **Uhrzeiten** — Zubettgehzeit, Aufstehzeit und Schlafmitte, dazu die
-  Abweichung von deiner üblichen Zeit als Maß für Regelmäßigkeit. Und die
-  Uhrzeit, zu der du trainierst. Gerechnet wird ohne Bruch um Mitternacht:
-  23:30 und 00:30 liegen eine Stunde auseinander, nicht dreiundzwanzig — sonst
-  wäre jeder Zusammenhang mit der Schlafenszeit rechnerisch zerstört.
-* **Gemüt getrennt nach Tageszeit** — Stimmung und Energie morgens sagen etwas
-  über die Nacht, abends etwas über den Tag. Ein Tagesmittel verliert genau
-  diesen Unterschied. Dazu der Verlauf über den Tag als eigene Größe.
-
-PULS macht deshalb zweierlei:
-
-* Ein Paar wird überhaupt erst betrachtet, wenn es **mindestens zwölf Tage**
-  gibt, an denen beide Werte vorliegen.
-* Über alle geprüften Paare läuft eine **Korrektur für Mehrfachprüfung**
-  (Benjamini-Hochberg, 10 %). Sie zieht die Grenze so, dass unter den als
-  belastbar markierten Funden höchstens jeder zehnte zufällig ist.
-
-Oben stehen die belastbaren Funde, darunter nach Stärke der Rest — sichtbar
-ausgegraut, damit der Unterschied nicht in einer Fußnote verschwindet. Zu jedem
-Fund gehören Richtung, Stärke, der Korrelationskoeffizient und die Anzahl
-gemeinsamer Tage. Auf Knopfdruck ordnet der Coach die stärksten Funde ein — mit
-der ausdrücklichen Auflage, offenzulassen, was Ursache und was Wirkung ist. Ein
-Zusammenhang zwischen Schlaf und HRV sagt nicht, welches von beidem das andere
-treibt.
-
-Jede Größe lässt sich einzeln öffnen: ihr Verlauf, und alles, was mit ihr
-zusammenhängt.
-
-### Was daraus folgt
-
-Ein Korrelationskoeffizient ist keine Empfehlung. Über den belastbaren Funden
-steht deshalb eine Karte, die daraus etwas Handfestes macht — und zwar
-gerechnet, nicht formuliert.
-
-Für jeden Fund, bei dem eine Seite etwas ist, woran du **direkt drehen kannst**
-(Schlafenszeit, Schritte, Trainingsumfang, Nährwerte), wird das Drittel deiner
-besten Tage gegen das Drittel deiner schlechtesten gestellt und der Unterschied
-in echten Einheiten ausgerechnet:
-
-> **Zubettgehzeit vor 22:46** — an diesen 39 Tagen lag deine HRV bei 66 ms
-> statt 52,8 ms. Ein Unterschied von 13,2 ms (25 %).
-
-Aus „r = 0,52" wird so eine Uhrzeit, auf die man heute Abend achten kann. Die
-Gegenrichtung wird ausgeschlossen: „Schlaf besser, dann ist dein Ruhepuls
-tiefer" ist keine Empfehlung, sondern eine Umformulierung des Befunds — nur
-Größen, an denen du drehen kannst, kommen als Stellschraube in Frage, und nur
-Größen, bei denen klar ist was besser wäre, als Ziel.
-
-Sortiert wird nach Wirkung gemessen am eigenen Streubereich der Zielgröße, nicht
-nach der nackten Zahl — sonst gewänne immer die Größe mit den größten Werten.
-Je Stellschraube steht nur die stärkste Empfehlung, sonst stünde dreimal
-dasselbe da. Und darunter der Hinweis, der bleiben muss: Die Richtung ist damit
-nicht geklärt. Dass du an frühen Abenden erholter bist, kann am frühen
-Zubettgehen liegen — oder daran, dass man an erholten Tagen früher müde wird.
-Als Ansatzpunkt taugt es trotzdem: zwei Wochen ausprobieren, dann hier
-nachsehen.
-
-## Der Coach-Tab — Ziel, Woche, Trends
-
-Alles, was das Training bestimmt, steht auf einer Seite: was du erreichen
-willst, an welchen Tagen du kannst, wie sich deine Werte entwickeln, und was
-daraus für die kommende Woche folgt.
-
-### Dein Ziel
-
-Ein Freitextfeld. Schreib hinein, worauf du hinarbeitest — „10 km unter 55
-Minuten, dazu stärkere Beine". PULS liest daraus die Schwerpunkte und zeigt
-direkt darunter, was es verstanden hat. Erkannt wird über eine feste
-Stichwortliste im Code, nicht vom Modell: Bei „Halbmarathon" soll immer
-dasselbe passieren, nicht mal so und mal so. Wird nichts erkannt, steht das da
-— dann fehlt eine Strecke, eine Zeit oder eine Übung.
-
-Dazu ein Schwerpunkt (schneller laufen, Muskeln aufbauen, beides halten,
-ruhiger werden) und die Dauer je Lauf und je Gym-Einheit.
-
-### Deine Woche
-
-Du sagst nur, **an welchen Tagen du was machst** — Gym-Tage und Lauftage
-getrennt. Mo/Mi/Fr ins Gym, Di/Do laufen: zwei Reihen anklickbarer Tage, mehr
-nicht. Welche Einheit genau auf welchem Tag landet, entscheidet der Coach jede
-Woche neu.
-
-| Was du festlegst | Was der Coach daraus macht |
-|---|---|
-| Gym an Mo/Mi/Fr | Drei Krafteinheiten, jede mit dem Schwerpunkt, der gerade am ehesten dran ist |
-| Laufen an Di/Do | Zwei Läufe — welche Art, entscheidet, was zuletzt gefehlt hat |
-| Langer Lauf möglichst am | Liegt auf diesem Tag, wenn es ein Lauftag ist, sonst auf dem letzten |
-| Aufteilung der Krafteinheiten | Ganzkörper, Push/Pull, Push/Pull/Beine oder Oberkörper/Beine |
-| Abend-Yoga | Jeden Abend zwölf Minuten, oder gar nicht |
-
-**Die Aufteilung** bestimmt, was auf welchem Gym-Tag liegt. Ganzkörper ist für
-zwei bis drei Einheiten die Woche das Sinnvollste — jede Gruppe kommt mehrmals
-dran. Ab drei lohnt eine Teilung, weil sonst jede Einheit zu lang wird oder zu
-wenig je Gruppe übrigbleibt. Bei Mo/Mi/Fr und Push/Pull heißt das Push · Pull ·
-Push, bei Push/Pull/Beine entsprechend die Dreiteilung.
-
-Bei einer Teilung gibt der Zyklus den Schwerpunkt vor, nicht die Trends: Eine
-Push-Einheit ist eine Push-Einheit, auch wenn die Beine gerade am ehesten dran
-wären. Die Trends entscheiden dann *innerhalb* der Gruppe, welche Übung
-vorgezogen wird.
-
-Trägst du keine Tage ein, verteilt der Coach selbst — dann zählt nur der
-Schwerpunkt. Und wenn die Erholung kippt, fällt ein Tag weg; das steht dann
-sichtbar in der Vorschau, statt still zu geschehen.
-
-### Trends: was gefordert werden sollte
-
-Damit „der Coach entscheidet" nicht heißt „irgendetwas passiert", steht daneben
-die Grundlage, auf der er entscheidet — gerechnet aus deinen Sätzen und Läufen,
-vier Wochen gegen die vier davor.
-
-**Muskelgruppen.** Je Gruppe: Volumen, Anteil am Gesamtvolumen gegen einen
-ausgewogenen Zielanteil, Zahl der Einheiten, Tage seit der letzten Belastung
-und die Entwicklung der geschätzten Maximalkraft (Epley, über die Übungen
-gemittelt, die in beiden Zeiträumen vorkommen — sonst verglichte man Äpfel mit
-Birnen). Daraus ein Bedarfswert von 0 bis 100 aus vier Gründen, jeder mit
-eigener Obergrenze, damit keiner allein die Rangfolge bestimmt:
-
-* lange nicht trainiert (eine Gruppe, die vier Wochen ausblieb, springt nach oben)
-* zu kleiner Anteil am Volumen
-* Maximalkraft steht oder fällt
-* Volumen eingebrochen
-
-Die oberste Gruppe wird zum Schwerpunkt der nächsten Krafteinheit — die
-Übungsauswahl zieht sie vor, statt stur reihum zu gehen. Jede Zeile nennt ihren
-Grund, damit man widersprechen kann.
-
-**Der Balken zeigt den Bedarf, nicht die Leistung.** Ein hoher Wert heißt: Diese
-Gruppe kommt zu kurz. Was gerade trainiert wurde, *sinkt* hier also — wer heute
-Beinpresse gemacht hat, sieht die Beine bei „versorgt · Bedarf 0/100" und nicht
-bei 100. Das ist so gewollt, und es steht seit dieser Version auch so über der
-Liste; vorher las sich „0 von 100" wie eine schlechte Note.
-
-**Laufen.** Der ehrlichste Fortschrittsmaßstab ist das Tempo bei gleichem
-Puls: gleiche Anstrengung, mehr Strecke. Verglichen werden nur Läufe über 2 km
-mit einem Durchschnittspuls zwischen 120 und 155 — sonst verglichte man einen
-Intervall mit einem Regenerationslauf. Dazu Wochenumfang, längste Einheit und
-wie viele Läufe im harten Bereich lagen.
-
-Daraus folgt direkt, was die Woche trägt: Fehlt seit vier Wochen jeder harte
-Lauf, kommt einer dazu — auch bei einem Schwerpunkt, der eigentlich keinen
-vorsieht. Lagen umgekehrt mehr als 40 % der Läufe im harten Bereich, fällt der
-Tempoanteil weg; der Großteil des Laufens gehört ins Lockere. Erkannt wird das
-am Puls, nicht am Namen der Einheit: Der Name sagt, was geplant war, der Puls,
-was gelaufen wurde.
-
-### Die kommende Woche
-
-Der Plan steht **nach Datum sortiert, das Nächste oben** — was morgen ansteht,
-sucht man nicht unten.
-
-**Übernehmen ersetzt die Woche, es legt sie nicht dazu.** Vorher hat jeder
-Klick eine weitere komplette Woche obendrauf gelegt — nach dreimal Ausprobieren
-standen einundzwanzig Einheiten im Plan. Entfernt wird nur, was noch offen ist
-und von einem Planer stammt; Erledigtes, an die Uhr Geschicktes und selbst
-Angelegtes bleibt. Ebenso verschwinden Einheiten, deren Datum vorbei ist und
-die nie abgehakt wurden: Sie können nicht mehr stattfinden, und stehenzulassen
-hieße den Plan mit Unerledigbarem zu füllen.
-
-Die Vorschau zeigt jeden Tag mit Begründung, bevor irgendetwas angelegt wird:
-welche Laufart und warum, welcher Kraft-Schwerpunkt und warum, welche Tage die
-Erholung gekostet hat. Erst „Übernehmen" schreibt sie in die Planung — und baut
-dabei für jede Laufart den passenden Bauplan, nicht überall denselben lockeren
-Lauf mit anderem Tempofenster.
-
-Das Modell begründet die Woche hinterher in drei bis vier Sätzen. Es legt sie
-nicht fest: Sonst sähe jede Woche anders aus, ohne dass sich etwas geändert
-hätte.
-
-## Schlaf
-
-Der Schlaf hat auf dem Dashboard eine eigene, breite Karte: Dauer, Score,
-Tief- und REM-Anteil, Wachzeit und Effizienz, jeweils gegen deine Basislinie.
-Die Verläufe zeichnen den Wert als Linie über einem grauen Band — dem Bereich,
-in dem er bei dir normal liegt. Punkte erscheinen nur dort, wo der Wert das
-Band verlässt. Damit ist auf einen Blick erkennbar, welche Nacht aus der Reihe
-fiel, ohne dass man Zahlen vergleichen müsste.
-
-Auf Knopfdruck sagt der Coach, was konkret *deinen* Schlaf verbessern würde —
-und stützt sich dabei auf die Zusammenhänge, die die Statistik bei dir gefunden
-hat, nicht auf allgemeine Schlafregeln.
-
-## Was dir guttut — und was nicht
-
-Die Frage ist nicht, wie hoch deine HRV ist, sondern ob es dir an Tagen mit
-hoher HRV besser geht. Auf dem Dashboard steht dafür eine Karte, die genau das
-vergleicht: Die Tage werden am Median eines Einflusses in zwei Hälften geteilt,
-und Stimmung, Energie und Trainingsbereitschaft in beiden Hälften
-gegenübergestellt.
-
-*„An Tagen mit mehr als 7,2 h Schlafdauer: Stimmung 4,1 von 5 — sonst 2,8 von 5."*
-
-Ein Balkenpaar zeigt den Unterschied. Das ist ehrlicher als eine
-Korrelationszahl, die niemand einordnen kann — man sieht sofort, ob der
-Unterschied groß oder klein ist.
-
-Gemeldet wird nur, was drei Bedingungen erfüllt: mindestens fünf Tage in jeder
-Hälfte, über 12 % Unterschied, und ein Zusammenhang, der auch als Korrelation
-sichtbar ist. Bei genug Daten wird sonst irgendwann jeder Zufall
-„signifikant". Ein Test füttert die Auswertung mit reinem Rauschen und prüft,
-dass sie schweigt.
-
-Untersucht werden Schlafdauer, Tiefschlaf, Schlafscore, HRV, Ruhepuls, Stress
-und Trainingslast des Vortags. Der Stress von *gestern* erklärt den heutigen
-Zustand — der von heute ist teils dessen Folge.
-
-Zusammenhang ist keine Ursache. Die Texte sagen deshalb, was miteinander
-einherging, nicht was wovon kommt.
-
-## Essen beschreiben statt Zahlen suchen
-
-„150 g Hähnchen mit Reis und Gemüse, dazu ein Skyr" — eintippen, *Berechnen*,
-fertig. Was dabei herauskommt, steht als Aufstellung da, bevor irgendetwas
-gebucht wird: jeder Bestandteil einzeln mit Menge und Kalorien, darunter die
-Summe.
-
-Die Arbeitsteilung ist dieselbe wie überall hier. Das Modell **zerlegt** den
-Satz in Bestandteile und Mengen („zwei Eier" → Ei, 120 g). Die Nährwerte kommen
-aus einer Tabelle im Code, nicht aus dem Modell: Ein lokales 8B-Modell auf der
-CPU rechnet Kalorien nicht zuverlässig — es schätzt sie, und zwar jedes Mal
-anders. Eine Tabelle schätzt auch, aber gleichbleibend und nachschlagbar.
-
-Läuft kein Modell, zerlegt PULS den Text selbst — gröber, aber es funktioniert:
-„150 g Hähnchenbrust, 80 g Reis und Gemüse" wird auch ohne Ollama richtig
-aufgelöst. Was die Tabelle nicht kennt, wird **benannt und weggelassen**, nicht
-geraten: „Nicht gefunden: Mondgestein. Diese Anteile fehlen in der Summe."
-
-Alle rund fünfzig Tabelleneinträge werden von einem Test gegengeprüft — Eiweiß
-und Kohlenhydrate 4 kcal/g, Fett 9 —, damit ein Tippfehler in einer Spalte
-auffällt statt still in die Tagesbilanz zu wandern.
-
-## Nährwerte und was du erreichen solltest
-
-Unter *Essen* trägst du Mahlzeiten ein — von Hand oder mit einem Tipp aus der
-Rezeptliste, dann stehen die Nährwerte schon da. Portionen skalieren mit.
-
-Die Zielwerte rechnet PULS aus deinen Daten statt aus einer Tabelle:
-
-- **Grundumsatz** nach Mifflin-St Jeor aus Alter, Größe und Gewicht — die
-  Formel, die in Vergleichsstudien am besten abschneidet
-- **mal 1,3** für den Alltag ohne Sport
-- **plus dein tatsächlicher Trainingsverbrauch** aus den verbrannten Kalorien
-  der letzten 14 Tage. Wer täglich läuft und dreimal ins Gym geht, hat einen
-  anderen Bedarf als der Durchschnitt gleicher Größe und gleichen Gewichts
-- **plus 350 kcal**, wenn „Gewicht zunehmen" unter deinen Zielen steht
-
-Eiweiß mit 1,8 bis 2,2 g je Kilogramm je nach Ziel, Fett mit 0,9 g je
-Kilogramm, der Rest Kohlenhydrate. Jeder Wert zeigt mit einem Balken, wie weit
-der Tag ist und was noch fehlt. Der komplette Rechenweg steht ausklappbar
-darunter — eigene Zielwerte in den Einstellungen haben Vorrang.
-
-## Was jetzt hilft — und was bei dir wirklich hilft
-
-Meldest du gedrückte Stimmung, wenig Energie, hohen Stress oder schlechten
-Schlaf, erscheint eine Karte mit drei konkreten Maßnahmen für die nächsten
-Stunden — aus Bewegung, Ernährung und Gewohnheiten. Jede ist sofort umsetzbar
-und nennt ihren Grund; keine Motivationssprüche.
-
-Die Auswahl gilt für **zwei Stunden**. Sie wechselt also im Lauf des Tages,
-aber nicht bei jedem Neuladen der Seite — sonst stünde dort ständig etwas
-anderes, und die Rückmeldung darunter würde bedeutungslos, weil sie sich auf
-einen Vorschlag bezöge, den man nie umgesetzt hat. Im nächsten Fenster kommen
-bevorzugt Maßnahmen, die heute noch nicht dran waren.
-
-Der eigentliche Punkt ist die Rückmeldung darunter: **hat geholfen** oder
-**bringt mir nichts**. PULS merkt sich das und zieht beim nächsten Mal vor, was
-bei dir gewirkt hat. Was zweimal nichts gebracht hat, kommt seltener. Aus einer
-allgemeinen Liste wird so mit der Zeit deine Liste — und was sich bewährt hat,
-steht auch im Kontext des Coaches, wenn du ihn etwas fragst.
-
-## Rückmeldung nach jeder Einheit
-
-Die Uhr misst Puls und Tempo, aber nicht, ob sich eine Einheit gut angefühlt
-hat. Genau diese Größe fehlt: Zwei Läufe mit identischen Daten können sich völlig
-verschieden anfühlen, und der Unterschied liegt in Schlaf, Stress und Ernährung
-davor.
-
-Deshalb fragt PULS nach jeder Einheit kurz nach — zwei Regler und ein Feld. Ab
-sechs Rückmeldungen vergleicht es die Tage vor guten mit denen vor schlechten
-Einheiten und sagt, was sich unterscheidet: *„Vor guten Einheiten hattest du im
-Schnitt 1,4 h mehr Schlaf als vor schlechten."* Gemeldet wird nur, was deutlich
-auseinanderliegt.
-
-## Mit dem Coach sprechen — und was er behält
-
-Der Chat steht direkt auf der Startseite und kennt deine Daten. Damit du nicht
-zum dritten Mal erklärst, dass das linke Knie empfindlich ist, hält PULS eine
-kleine Zahl von **Merkposten** — Sätze, die dauerhaft gelten.
-
-Zwei Wege hinein: Du trägst sie selbst ein, oder das Modell erkennt nach einem
-Gespräch etwas, das über den Tag hinaus gilt (Vorlieben, Unverträglichkeiten,
-Verletzungsgeschichte, Arbeitszeiten). Beides landet **sichtbar** in der Liste
-unter dem Chat und lässt sich löschen — nichts wird heimlich behalten. Selbst
-eingetragene Merkposten sind angeheftet und werden nie verdrängt.
-
-## Was der Coach von sich aus vorschlägt
-
-Deine Wochenstruktur ist der Rahmen und bleibt es. Aber ein Rahmen allein macht
-noch kein Training — irgendwann fehlt ein langer Lauf, es wurde wochenlang nur
-locker gelaufen, oder die Belastung steigt schneller, als die Erholung
-mitkommt. Dafür prüft PULS nach jedem Sync sieben Regeln und legt bei Bedarf
-einen Vorschlag auf das Dashboard:
-
-| Regel | Wann sie greift |
-|---|---|
-| Langer Lauf | 14 Tage ohne Lauf über 50 Minuten — schlägt einen Sonntag vor |
-| Tempoeinheit | Alle Läufe nur locker, kein harter Anteil seit 12 Tagen |
-| Zu viel Intensität | Unter 68 % der Laufzeit in Zone 1–2 |
-| Ruhigere Woche | Belastungsverhältnis über 1,45 |
-| Erholungstag | HRV unter, Ruhepuls über der Basislinie — beides zugleich |
-| Vernachlässigte Muskelgruppe | Über drei Wochen ohne Satz dafür |
-| Klimmzüge | Ziel noch offen, aber kaum Sätze in drei Wochen |
-
-Jeder Vorschlag nennt seinen Anlass und lässt sich mit einem Tipp übernehmen
-oder verwerfen — **nichts geht ungefragt an die Uhr**. Bei „Übernehmen" wird
-aus dem Vorschlag ein echtes Workout mit Datum, oder ein Schwerpunkt, den die
-nächste Gym-Einheit für zwei Wochen berücksichtigt. Verworfenes kommt zehn Tage
-lang nicht wieder.
-
-Der Unterschied zu Beschwerden ist Absicht: Auf gemeldete Schmerzen reagiert
-PULS sofort und ohne Rückfrage, weil das keine Geschmacksfrage ist. Ein
-zusätzlicher Sonntagslauf dagegen ist deine Entscheidung.
-
-## Schritte: Ziel und Tagesrhythmus
-
-Ein Schrittziel allein sagt am Nachmittag wenig: 6.000 von 10.000 sind um zehn
-Uhr viel und um zwanzig Uhr wenig. Auf der Startseite steht deshalb neben dem
-Stand, **was zu dieser Stunde bei dir üblich ist** — und was daraus bis
-Mitternacht wird, wenn der Tag normal weiterläuft. Reicht es nicht, steht da,
-wie viele Minuten Gehen fehlen.
-
-Dafür wird der Tagesverlauf stundenweise von der Uhr geholt. Unter *Vital*
-steht der typische Tag als Balken: stärkste Stunde, wann die Hälfte des
-Pensums erreicht ist, wie sich morgens, nachmittags und abends verteilen.
-Gerechnet wird der **Median** je Stunde, nicht der Mittelwert — ein einzelner
-Wandertag soll den Normalfall nicht verschieben.
-
-## Das Layout gehört dir
-
-Jede Karte hat oben links einen Griff (⠿) und daneben drei Zahlen: **1, 2, 3**
-— so viele Spalten breit soll sie sein. Was davon ankommt, hängt am Fenster: In
-der dreispaltigen Ansicht sind alle drei Breiten verschieden, in der
-zweispaltigen sind zwei und drei dasselbe, und auf dem Telefon ist ohnehin jede
-Karte volle Breite — dort wird die Wahl deshalb gar nicht erst angeboten.
-
-Mit dem Griff lässt sich die Karte verschieben;
-die Reihenfolge bleibt **je Ansicht** gespeichert — und zwar auf dem Server,
-nicht im Browser: Am Telefon steht sie danach genauso wie am Rechner. Ohne Maus geht es auch:
-Griff anwählen, dann Pfeiltasten. Unter *Mehr → Darstellung* steht ein Knopf,
-der die Anordnung der gerade offenen Ansicht zurücksetzt.
-
-Gespeichert werden Reihenfolge und Breiten je Ansicht. Karten, die mit einem Update
-dazukommen, hängen hinten an, statt zu verschwinden — eine gespeicherte
-Reihenfolge darf ein Update nicht überleben, indem sie neue Karten
-unterschlägt.
-
-## Diagramme: Zeitraum und Beschriftung
-
-Über jedem Verlaufsdiagramm steht ein Umschalter. Die Wahl bleibt **je
-Diagramm** gespeichert — wer sich den Gewichtsverlauf über ein Vierteljahr
-ansieht, steht nach dem Neuladen nicht wieder auf der Woche.
-
-Die Achsenbeschriftung richtet sich nach der Spanne, nicht nach einer festen
-Regel: Stunden bei einem Tag (`08:00`), Wochentage bei einer Woche (`Do 3.`),
-Datum bei einem Monat (`17.8.`), Monatsnamen bei einem Jahr. Dasselbe gilt für
-den Tooltip.
-
-Der **Gemütsverlauf** liegt auf einer echten Zeitachse: Jeder Eintrag steht an
-seiner Uhrzeit. Drei Einträge um 7, 13 und 21 Uhr sind kein
-Drittel-Drittel-Drittel, und zwei Tage ohne Eintrag sind eine Lücke — die
-Linie bricht dort ab, statt nahtlos durchzulaufen und eine Messung
-vorzutäuschen, die es nicht gab. Stimmung, Energie und Stress liegen als drei
-Kurven übereinander, mit Legende.
-
-Diagramme mit **einem Wert je Tag** (Gewicht, Schlafdauer, Ruhepuls, HRV,
-Belastung) bieten bewusst *keine* Tagesansicht an: Ein Tag wäre ein einzelner
-Punkt. Einen Umschalter anzubieten, der nichts zeigen kann, wäre ein
-Versprechen, das die Daten nicht halten. Sie beginnen bei der Woche.
-
-## Gemütszustand und Beschwerden
-
-Ein eigener Tab, mehrmals am Tag nutzbar: Stimmung, Energie und Stress auf
-einer Fünferskala, antippbare Beschwerden nach Körperregion und Art
-(Schmerz, Muskelkater, Verspannung …) und ein Freitextfeld. Schreibst du
-„Rücken zwickt seit gestern", liest das lokale Modell das mit und **schlägt**
-den passenden Eintrag vor — übernommen wird er erst, wenn du drauftippst.
-
-**Das ändert den Plan, nicht nur die Statistik.** Eine gemeldete
-Rückenbeschwerde nimmt die betroffenen Muskelgruppen aus der nächsten
-Gym-Einheit und zieht die passenden Yoga-Stellungen im Abendprogramm nach
-vorn. Bliebe dadurch zu wenig übrig, wird die Einschränkung wieder aufgehoben
-— eine Einheit aus zwei Übungen hilft niemandem.
-
-Beschwerden klingen unterschiedlich schnell ab: Muskelkater zählt drei Tage,
-Schmerz sieben, eine Verletzung drei Wochen. Bei Muskelkater kommt ein
-Ernährungshinweis dazu, bei Schmerz wird ausgesetzt statt dosiert.
-
-Die Zuordnung von Beschwerde zu Konsequenz steht als Tabelle im Code, nicht
-als Modellanfrage: „Rückenschmerzen" muss jedes Mal dasselbe auslösen.
-
-## Supplements
-
-Unter *Mehr → Supplements*. Jedes Mittel ist entweder zu einer festen Uhrzeit
-fällig oder an eine Einheit gekoppelt — was am Gym hängt, wird an einem
-Ruhetag gar nicht erst fällig, und „wartet noch auf die Einheit" ist etwas
-anderes als „vergessen". Nur das Zweite wird hervorgehoben.
-
-Voreingestellt sind Kreatin (5 g morgens), Zink (abends) und ein Eiweiß-Shake
-nach dem Gym; alles änderbar. Offene Einnahmen stehen auf dem Dashboard zum
-Abhaken und tauchen in der Tagesnachricht des Coaches auf.
-
-## Rezepte
-
-Unter *Essen*. Zwanzig Gerichte mit echten Nährwerten je Portion, gewichtet
-auf vegetarisch, schnell und vorkochbar. Die Auswahl trifft der Code aus dem,
-was du heute tatsächlich trainiert hast: Krafttraining stellt Eiweiß nach
-vorn, ein langer Lauf die Kohlenhydrate, gemeldeter Muskelkater holt die
-regenerativen Gerichte dazu, und wenn dir bis zum Eiweißziel noch viel fehlt,
-schlägt das alles andere.
-
-Das Modell schreibt nur die zwei Sätze Begründung — es liefert keine einzige
-Zahl. Ein 8B-Modell auf CPU würde plausibel klingende Nährwerte erfinden, und
-an erfundenen Werten lässt sich keine Bilanz führen. Ein Test rechnet für
-jedes Rezept die Kalorien aus den Makros nach, damit ein Tippfehler in der
-Tabelle auffällt.
-
-## Erholung
-
-Im Gemüt-Tab: HRV, Ruhepuls, Schlaf mit seinen Phasen, Schlafscore, Body
-Battery, Stress und Atemfrequenz. Jeder Wert steht **im Verhältnis zu deiner
-eigenen Basislinie** — 58 ms HRV sagen nichts, solange man nicht weiß, was
-für dich normal ist.
-
-Zusammenhänge werden nur gemeldet, wenn sie belastbar sind: mindestens
-14 Tage Daten und ein Zusammenhang von mindestens 0,35. Sonst würde die
-Auswertung Zufall als Einsicht verkaufen.
-
-## Aktivitätsprotokoll, Karten und Kurven
-
-Unter *Übungen* steht das vollständige Protokoll, filterbar nach Sportart und
-Zeitraum, mit Summen je Sportart.
-
-Ein **Lauf** öffnet sich mit der GPS-Spur, eingefärbt nach Puls, wahlweise mit
-OpenStreetMap-Hintergrund (in den Einstellungen zuschaltbar, standardmäßig
-aus — ohne das geht keine Anfrage nach außen). Darunter Puls, Tempo, Höhe und
-Schrittfrequenz als Kurven mit einem gemeinsamen Fadenkreuz: Fährst du über
-die Kurve, wandert ein Punkt über die Karte. Dazu die Kilometerzeiten.
-
-Eine **Gym-Einheit** öffnet Sätze, Volumen, Muskelgruppen und je Übung den
-Vergleich zur letzten Einheit — schwerer, mehr Wiederholungen, unverändert
-oder runter. Die Hinweise kommen aus den Zahlen: eine Übung, die stillsteht;
-eine, die durchgehend leicht lief; Volumen deutlich über oder unter deinem
-Vier-Wochen-Schnitt.
-
-Die Detaildaten werden beim Sync ausgedünnt gespeichert — Kurven auf rund 400
-Messpunkte gemittelt, die GPS-Spur mit Douglas-Peucker vereinfacht. An einem
-45-Minuten-Lauf gemessen: 539 kB roh, 23 kB gespeichert, größte Abweichung der
-Spur 1,2 m. So passt jeder Lauf dauerhaft ins Volume.
-
-## Warum das angezeigte Gewicht nicht der Waagenwert ist
-
-Drei Zahlen, und sie sind bewusst verschieden:
-
-    82,9 kg  gemessen um 21:40
-    81,6 kg  umgerechnet auf dein Referenzfenster
-    81,4 kg  Referenzwert (Median über sieben Tage)
-
-Die Kette steht so auf der Seite, weil ein Kopfwert, der zwei Kilo unter der
-Waage liegt, ohne Erklärung schlicht unglaubwürdig ist.
-
-Zwei Dinge waren daran lange falsch. Der „7-Tage-Median" lief über die letzten
-sieben **Einträge**, nicht über sieben Tage — wer unregelmäßig wiegt, bekam
-damit einen Median über Monate, und oben stand ein Gewicht von vor einem
-Vierteljahr. Und die Umrechnung auf das Referenzfenster war nach oben nur sehr
-weit gedeckelt: Bei verrauschten Messpaaren konnte der persönliche Faktor auf
-das Zweieinhalbfache laufen und aus 82,9 kg rechnerisch 79,5 machen.
-
-Jetzt gilt: Der Median läuft über sieben **Kalendertage**, der persönliche
-Faktor bleibt zwischen 0,6 und 1,6, und die Umrechnung selbst ist auf 2,5 %
-begrenzt. Eine Korrektur, die größer ist als der Unterschied, den man messen
-wollte, schadet mehr als sie nutzt.
-
-## Körperdaten und Referenzfenster
-
-Zwischen der Messung früh nüchtern und der abends nach dem Essen liegen leicht
-anderthalb Kilo, ohne dass sich am Körper etwas geändert hätte. Deshalb
-arbeitet PULS mit einem **Referenzfenster** (Standard 6–9 Uhr, einstellbar):
-Nur Messungen darin bilden die Trendlinie. Alle anderen werden gespeichert,
-markiert und über ein Tagesgang-Modell umgerechnet.
-
-Das Modell startet mit Erfahrungswerten und **kalibriert sich auf dich**,
-sobald fünf Tage mit Morgen- *und* Abendmessung vorliegen. Messungen ohne
-bekannte Uhrzeit (Altbestand, CSV-Import) werden als solche geführt und nicht
-korrigiert — eine Uhrzeit zu raten wäre schlimmer als die Lücke.
-
-Die Waage funkt nur Gewicht und Impedanz. Körperfett, Muskelmasse, Wasser,
-Knochenmasse und Viszeralfett sind daraus **geschätzt** und in der Oberfläche
-mit einem ≈ markiert. Gut für den Trend, nicht als medizinische Aussage.
-Jede Messung ist einzeln löschbar.
-
-## Nach dem Training: Vorschläge statt stiller Änderungen
-
-Wer 35 kg bewegt, wo 20 geplant waren, hat eine Entscheidung getroffen. PULS
-rechnet sie durch und **legt sie vor**, statt sie stillschweigend zu
-übernehmen — mit dem Beleg daneben, damit man nicht raten muss, woher die Zahl
-kommt:
-
-> **Beinpresse** — 20 kg → **35 kg**
-> 15× 35 kg geschafft (Vorgabe 15× 20 kg)
-> Du hast 35 kg bewegt, geplant waren 20 kg — das ist die neue Grundlage.
-> [Übernehmen] [Lassen]
-
-Vier Fälle werden unterschieden, und der erste ist der, an dem die alte
-Automatik scheiterte:
-
-Maßgeblich ist der **schwerste Satz** des Tages, nicht der Durchschnitt. Wer
-sich innerhalb einer Einheit hocharbeitet — 25, dann 30, dann 35 kg —, hat mit
-dem letzten Satz gezeigt, was geht, und nicht mit dem ersten. Ein Mittelwert
-beschriebe hier eine Belastung, die so nie stattgefunden hat.
-
-Daraus folgt eine Regel mit zwei Fällen:
-
-| Schwerster Satz | Neue Vorgabe |
-|---|---|
-| **mehr als 10** Wiederholungen | dieses Gewicht, angesetzt auf **10** Wiederholungen |
-| **10 oder weniger** | **5 kg weniger**, dafür **15** Wiederholungen |
-
-Aus `15× 25 kg · 15× 30 kg · 15× 35 kg` wird damit **35 kg × 10** — und nicht
-ein Wiederholungsziel von 16, das an der Sache vorbeigeht. Die vier Zahlen
-(Schwelle, oberes Ziel, unteres Ziel, Abschlag) stehen unter *Mehr →
-Trainingsziele* und lassen sich ändern; sie sind eine Trainingsentscheidung,
-keine Rechnung, und sollen nachlesbar bleiben.
-
-Liegt das neue Ziel außerhalb der eingestellten Wiederholungsspanne, zieht die
-Spanne mit. Sonst stünde „10 Wiederholungen" bei einer Spanne von 12 bis 18 —
-und die nächste Fortschreibung rechnete gegen die eigene Vorgabe.
-
-Ein Tippen macht daraus die neue Vorgabe, „Alle übernehmen" erledigt die ganze
-Einheit auf einmal.
-
-Ausgewertet wird beim Sync — also das, was gerade hereinkommt. Was davor liegt,
-weil die Uhr spät synchronisiert hat, Sätze nachgetragen wurden oder sich die
-Regel geändert hat, bliebe sonst für immer unberücksichtigt. Dafür steht unter
-*Kraft* der Knopf **„An die letzten Trainings anpassen"**: Er wertet die
-gewählte Zeitspanne noch einmal aus. Je Übung bleibt dabei nur der Vorschlag
-vom jüngsten Trainingstag offen — die älteren werden als überholt abgelegt,
-statt dieselbe Übung dreimal mit drei Zahlen anzubieten. Was abgelehnt wird, bleibt unverändert. Unter *Kraft* steht
-außerdem dauerhaft, **was sich seit dem letzten Mal geändert hat** und woraus es
-folgte — eine andere Zahl auf dem Zettel ohne Begründung sieht sonst aus wie ein
-Fehler.
-
-## Platzhalter sind keine Messwerte
-
-Garmin schreibt `-1` in die Wiederholungszahl, wenn die Uhr nichts zählen
-konnte — an Maschinen passiert das ständig. Als Zahl gelesen heißt das nicht
-„unbekannt", sondern „minus eine Wiederholung". Die Progression las daraus ein
-verfehltes Ziel, hielt das Gewicht und hätte beim zweiten Mal einen **Deload**
-ausgelöst: Weil die Uhr nicht zählen konnte, wäre das Gewicht gesunken.
-
-Solche Platzhalter werden jetzt zu der Lücke, die sie sind — beim Import und
-zentral in `record_set`, damit auch eine manuelle Eingabe nichts Negatives
-hineinschreiben kann. Vorhandene Sätze bereinigt eine Migration beim Start.
-
-Fehlen die Wiederholungen, ist das kein Grund, gar nichts zu tun: Das
-**aufgelegte Gewicht** ist bekannt, und damit wird die Vorgabe nachgezogen. Das
-gilt auch sonst — wer den Stift umsteckt, hat entschieden. Was tatsächlich
-bewegt wurde, ist die Wirklichkeit; die Vorgabe hat ihr zu folgen, nicht
-umgekehrt.
-
-## Wann die Waage eine Messung übernimmt
-
-Die Mi Scale meldet ein „stabiles" Gewicht schon, während man noch aufsteigt und
-das Gewicht verlagert — stabil im Sinne des Protokolls, aber nicht das, was man
-wiegt. Die Impedanz misst sie erst, wenn man wirklich ruhig barfuß steht. Ein
-Wert **mit** Impedanz ist deshalb nicht nur vollständiger, er ist auch das
-verlässlichere Gewicht.
-
-PULS übernimmt darum nur Messungen, zu denen auch die Impedanz kam — und nimmt
-das Gewicht **aus dem Moment, in dem sie kam**, nicht den letzten Frame vor dem
-Absteigen. Kommt binnen zwanzig Sekunden keine Impedanz, wird die Messung
-verworfen und im Protokoll gesagt, warum.
-
-Wer das nicht will, setzt `REQUIRE_IMPEDANCE=0` — dann kommt das Gewicht auch
-allein an, wie früher.
-
-## Wenn keine Daten ankommen
-
-Unter *Mehr → Garmin → „Es kommen keine Daten an?" → Prüfen*. Das geht der
-Reihe nach durch: Ist Garmin verknüpft, steht die Verbindung, liefert Garmin
-überhaupt Aktivitäten und Tageswerte, und was davon ist in der Datenbank
-gelandet — dazu die letzten Protokolleinträge. Damit lässt sich unterscheiden,
-ob die Verbindung, die Abfrage oder das Speichern klemmt.
-
-Der Verlaufs-Import läuft in vier Schritten mit eigenem Fortschritt und lässt
-sich abbrechen; das bereits Geholte bleibt. Bleibt er hängen, gilt er nach
-fünf Minuten ohne Fortschritt als tot und ist über „Import zurücksetzen"
-wieder startbar.
+---
 
 ## Tests
 
@@ -908,50 +293,44 @@ wieder startbar.
 ./tests/run_all.sh
 ```
 
-Dreiundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten werden
-nicht angefasst. Eine davon lässt `deploy.sh` mit einer Docker-Attrappe komplett durchlaufen und
-prüft, dass jeder Schritt erreicht wird. Anlass war ein Abbruch mitten im
-Deploy, den niemand bemerkte, weil das Skript dabei keinen Fehler meldete.
+Achtzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten
+werden nicht angefasst.
 
-Eine weitere prüft Eigenschaften, die für die ganze API gelten sollen: dass alle
-44 GET-Endpunkte fehlerfrei antworten, dass keiner davon Daten verändert, und
-dass zweimal dieselbe Abfrage dasselbe ergibt. Genau dort ist ein Fehler
-aufgefallen, den keine einzelne Prüfung gefunden hätte.
+Zwei davon decken die beiden Kernstücke ab. Die eine schickt jede Schreibweise
+durch den Textleser und prüft, dass genau die Sätze herauskommen, die
+dastehen — dass ein Dezimalkomma keine zwei Läufe macht, dass „15 Wdh @ 25 /
+30 / 35" drei Sätze mit steigendem Gewicht sind und nicht drei Wiederholungen,
+und dass eine Zahl, die im Originaltext nicht vorkommt, verworfen wird. Die
+andere stellt die Tagesempfehlung in Lagen, die eine klare Antwort verlangen:
+erschöpft am Gym-Tag muss Pause ergeben, erholt am Gym-Tag eine harte Einheit,
+ein Knieschmerz muss die Beine aus dem Schwerpunkt nehmen, und was heute schon
+stattgefunden hat, darf nicht noch einmal vorgeschlagen werden.
 
-Abgedeckt sind ansonsten der Waagen-Parser, das Referenzfenster mit
-seiner Kalibrierung, das Ausdünnen der Laufdaten, die Gym-Auswertung, die
-Ableitung von Beschwerden bis in den fertigen Trainingsplan, der Garmin-Sync
-samt Verlaufs-Import gegen einen nachgebauten Client, die komplette API gegen
-die echte Anwendung, und die Frontend-Struktur.
+Eine prüft Eigenschaften, die für die ganze API gelten: dass alle GET-Endpunkte
+fehlerfrei antworten, dass keiner davon Daten verändert, und dass zweimal
+dieselbe Abfrage dasselbe ergibt. Genau dort ist ein Fehler aufgefallen, den
+keine einzelne Prüfung gefunden hätte.
 
-Eine Suite klickt die App in einem **echten Browser** durch — jede Ansicht,
-und beim Autopiloten bis zur gespeicherten Auswahl nach dem Neuladen. Anlass war
-ein Aufruf, der beim Bearbeiten in einen fremden Klick-Handler gerutscht war:
-Der Autopilot wurde dadurch nur noch beim Löschen eines Supplements befüllt, auf
-der Seite standen leere Auswahlfelder. Kein Python-Test konnte das sehen, denn
-die Datei war syntaktisch einwandfrei und jeder Endpunkt antwortete korrekt.
-Sie prüft dabei nicht nur, ob ein Klick ankommt, sondern ob man ihn **sieht**:
-Größe und Form der Knöpfe, und ob sich ein ausgewählter Wert farblich abhebt.
-Anlass war die Bewertung nach einer Einheit — die Regel für die Zahlenknöpfe
-hing an einem Elternteil, den diese Karte nicht hat. Der Klick kam an, der Wert
-wurde gespeichert, sichtbar passierte nichts. Für den Nutzer war das Bewerten
-damit schlicht kaputt, und kein Test, der nur Zustände prüft, hätte das je
-bemerkt.
+Eine Suite klickt die App in einem **echten Browser** durch: jeden Reiter, das
+Nachtragen bis zum übernommenen Vorschlag, die geschalteten Wochentage bis über
+ein Neuladen hinweg. Sie prüft dabei nicht nur, ob ein Klick ankommt, sondern
+ob man ihn **sieht** — Größe der Knöpfe, und ob ein ausgewählter Wert sich
+farblich abhebt. Anlass war die Bewertung nach einer Einheit: Die Regel für die
+Zahlenknöpfe hing an einem Elternteil, den diese Karte nicht hatte. Der Klick
+kam an, sichtbar passierte nichts, und kein Test, der nur Zustände prüft, hätte
+das je bemerkt. Beim Umbau hat dieselbe Suite sofort den nächsten Fehler dieser
+Art gefunden: `charts.js` benutzte eine Funktion, die in `app.js` stand — die
+Diagramme liefen nur, solange zufällig beides zusammenpasste.
 
-Diese Suite braucht Playwright und einen Chromium; fehlt beides, überspringt sie
-sich, damit sie auf dem Server niemanden aufhält.
+Diese Suite braucht Playwright und einen Chromium; fehlt beides, überspringt
+sie sich, damit sie auf dem Server niemanden aufhält.
 
-Eine prüft die Trends und die zusammengeführte Wochenplanung: Eine vier Wochen
-ausgelassene Muskelgruppe muss nach oben rutschen, eine gerade hart trainierte
-nach unten, und die geplanten Tage müssen exakt die eingetragenen sein — mit
-einem gelegten Effekt (40 s/km schneller bei gleichem Puls), der wiedergefunden
-werden muss.
-
-Zwei weitere kamen mit der Statistik dazu. Die eine prüft sie dort, wo sie
-wehtut: Zweihundert reine Zufallspaare müssen die Mehrfachprüfung fast
-vollständig aussortieren, ein echter Zusammenhang mitten darin muss sie
-überstehen. Die andere hält den Garmin-Fehler fest, der Krafteinheiten
-unsendbar machte (siehe *Workouts auf der Fenix 7*).
+Abgedeckt sind außerdem der Waagen-Parser, das Referenzfenster, das Ausdünnen
+der Laufdaten, die Gym-Auswertung, die Ableitung von Beschwerden bis in den
+fertigen Trainingsplan, der Garmin-Sync samt Verlaufs-Import gegen einen
+nachgebauten Client, der Garmin-Fehler, der Krafteinheiten unsendbar machte
+(siehe *Workouts auf der Fenix 7*), die Frontend-Struktur und `deploy.sh` mit
+einer Docker-Attrappe.
 
 ## Installieren und aktualisieren
 
@@ -1174,11 +553,11 @@ Der Unterschied ist erheblich: Auf der CPU dauert eine Coach-Antwort mit
 Qwen3-8B je nach Kernen ein bis mehrere Minuten, auf einer Karte Sekunden.
 Achte auf den VRAM: Qwen3-8B braucht rund 5–6 GB. Passt das Modell nicht ganz
 hinein, teilt Ollama auf — und das ist dann langsamer als reine CPU. Bei
-weniger Speicher lieber `qwen3:4b` unter *Mehr → KI-Modell*.
+weniger Speicher lieber `qwen3:4b` unter *Einstellungen → Modell*.
 
 ### KI-Modell wählen
 
-Das Modell stellst du in der App unter *Mehr → KI-Modell* ein — der Download läuft im
+Das Modell stellst du in der App unter *Einstellungen → Modell* ein — der Download läuft im
 Hintergrund mit Fortschrittsanzeige, du musst keine Datei anfassen.
 
 | Modell | RAM | Tempo auf CPU | Wofür |
@@ -1201,7 +580,7 @@ docker rm -f puls-coach puls-ollama puls-miscale 2>/dev/null
 
 Die Volumes bleiben dabei erhalten, deine Daten sind sicher. Dann in der App:
 
-1. *Mehr → Garmin Connect*: verbinden (MFA wird unterstützt, gespeichert werden nur Tokens).
+1. *Einstellungen → Garmin*: verbinden (MFA wird unterstützt, gespeichert werden nur Tokens).
 2. *Coach*: Ziel hineinschreiben, Gym-Tage und Lauftage anklicken, Dauer setzen.
 3. *Übungen*: deine Maschinen durchgehen — Startgewichte stehen schon drin, anpassen was
    nicht stimmt. Neue Geräte mit „+ Neu"; das passende Garmin-Übungsbild wird automatisch
@@ -1244,11 +623,11 @@ erfahrungsgemäß problemlos).
 
 ### Einrichtung
 
-1. In PULS unter *Mehr → Waage* das Token kopieren.
+1. In PULS unter *Einstellungen* das Token kopieren.
 2. In der `docker-compose.yml` bei `miscale` als `PULS_TOKEN` einsetzen, dazu
    `HEIGHT_CM`, `AGE` und `SEX` für die Körperfett-Schätzung.
 3. Neu starten: `./deploy.sh`
-4. In PULS auf *Mehr → Waage* gehen — dort siehst du **live**, was passiert.
+4. In PULS auf *Einstellungen* gehen — dort siehst du **live**, was passiert.
 
 ### Die Live-Ansicht
 
@@ -1274,7 +653,7 @@ auf. Zur Fehlersuche hilft `LOG_LEVEL=DEBUG` und `docker logs -f puls-miscale`.
 
 **Die Reichweite ist der Knackpunkt:** BLE schafft je nach Wänden 5–10 m. Steht dein
 Server im Keller und die Waage im Bad, funktioniert das nicht — dann bleiben der
-CSV-Import (*Mehr → Körperdaten*) oder eine openScale-Bridge nach Garmin Connect.
+eine openScale-Bridge nach Garmin Connect.
 
 Die Körperfett-, Muskel- und Wasserwerte sind Schätzungen aus der Impedanz — gut für
 den Trend, nicht als absolute Wahrheit. Das Gewicht selbst ist exakt.
@@ -1309,14 +688,16 @@ Der Waagen-Webhook ist per Token geschützt.
   ändern — dann hilft meist `docker compose build --no-cache`. Der FIT-Weg funktioniert
   unabhängig davon.
 - Der Coach ist kein Arzt. Bei Schmerzen oder gesundheitlichen Fragen: echte Fachleute.
-- Täglich laufen plus 3× Gym ist ein ordentliches Pensum. Das Dashboard zeigt deine
-  Belastung (ACWR); wenn der Wert über 1,5 klettert, meldet sich der Coach.
+- Täglich laufen plus 3× Gym ist ein ordentliches Pensum. Die Tagesempfehlung
+  rechnet deine Belastung (ACWR) mit; steigt sie deutlich über den Schnitt der
+  letzten vier Wochen, bremst sie von selbst.
 
 ## Technik
 
 FastAPI + SQLite (Volume `puls-data`), Ollama als eigener Container, Mi-Scale-Dienst mit
-`bleak`, Frontend als abhängigkeitsfreie Vanilla-JS-PWA. Scheduler: Garmin-Sync (alle
-`SYNC_INTERVAL_HOURS`), Tagesnachricht (7:30), Forschungs-Häppchen (Mo 6:00).
+`bleak`, Frontend als abhängigkeitsfreie Vanilla-JS-PWA. Ein einziger
+Hintergrundjob: der Garmin-Sync (alle `SYNC_INTERVAL_HOURS`), der danach die
+Gewichtsvorschläge aus den frischen Sätzen ableitet.
 
 Diagramme und Karte sind selbst gezeichnetes Inline-SVG — auch die Karte, denn
 eine unbewegliche Karte braucht keine Kartenbibliothek: Es genügt, die
@@ -1324,9 +705,10 @@ Kachelnummern für den Ausschnitt auszurechnen und die Bilder an die richtige
 Stelle zu legen. Das sind ein paar Zeilen statt 150 kB Fremdcode.
 
 Der durchgehende Grundsatz: **Der Code rechnet, das Modell formuliert.**
-Trainingsgewichte, Tempozonen, 1RM, VO₂max, Progression, Nährwerte und der
-Score sind deterministisch. Das Modell wählt aus und erklärt — es erfindet
-keine Zahlen.
+Trainingsgewichte, Tempozonen, 1RM, VO₂max, Progression und die Belastbarkeit
+sind deterministisch. Das Modell formuliert und zerlegt — es erfindet keine
+Zahlen, und beim Nachtragen wird jede Zahl, die es liefert, gegen deinen
+eigenen Text geprüft.
 
 | Env-Variable | Default | Bedeutung |
 |---|---|---|
@@ -1335,7 +717,7 @@ keine Zahlen.
 | `SYNC_INTERVAL_HOURS` | `3` | Garmin-Sync-Intervall |
 | `SYNC_LOOKBACK_DAYS` | `14` | wie weit zurück gesynct wird |
 | `PULS_PORT` | `1337` | Port, unter dem PULS im Browser läuft |
-| `PULS_TOKEN` (miscale) | — | Token aus *Mehr → Waage* |
+| `PULS_TOKEN` (miscale) | — | Token aus *Einstellungen* |
 | `SCALE_MAC` (miscale) | leer | nur auf diese Waage hören |
 | `MIN_WEIGHT_KG` (miscale) | `30` | leichtere Messungen ignorieren |
 

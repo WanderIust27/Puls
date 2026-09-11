@@ -1,3 +1,36 @@
+/* Eigenständig: Was die Diagramme brauchen, bringen sie selbst mit.
+   Diese drei Helfer standen einmal in app.js — charts.js lief damit nur,
+   solange app.js zufaellig vorher geladen war und sie noch enthielt. Eine
+   Kopplung, die erst im Browser auffiel, und dort als leeres Diagramm. */
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+let _tipNode = null;
+
+function _tip() {
+  if (!_tipNode) {
+    _tipNode = document.createElement("div");
+    _tipNode.className = "tooltip";
+    document.body.append(_tipNode);
+  }
+  return _tipNode;
+}
+
+function showTip(x, y, html) {
+  const tip = _tip();
+  tip.innerHTML = html;
+  tip.style.left = `${Math.min(x, window.innerWidth - 160)}px`;
+  tip.style.top = `${Math.max(8, y - 8)}px`;
+  tip.classList.add("show");
+}
+
+function hideTip() {
+  if (_tipNode) _tipNode.classList.remove("show");
+}
+
 /* PULS — Diagramme und Karte. Vanilla JS, keine Abhängigkeiten.
 
    Ergänzt die einfachen Diagramme aus app.js (barChart, lineChart) um das,
