@@ -33,6 +33,7 @@ run "Gemüt"            python3 tests/test_mood.py
 run "Trends & Wochenplan" python3 tests/test_trends.py
 run "Training in Worten" python3 tests/test_logbook.py
 run "Tagesempfehlung"  python3 tests/test_today.py
+run "Wissensdatenbank" python3 tests/test_knowledge.py
 run "Zuhause-Einheit"   python3 tests/test_home.py
 run "Wunsch & Bibliothek" python3 tests/test_wish.py
 run "Workout an die Uhr" python3 tests/test_workout_push.py

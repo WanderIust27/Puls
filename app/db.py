@@ -613,6 +613,12 @@ def get_db() -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        # Die Sperre oben schuetzt nur PULS gegen sich selbst. In derselben
+        # Datei schreibt auch die Wissensdatenbank, und die haelt ihre eigene
+        # Verbindung. Ohne Wartezeit scheitert jeder Zusammenstoss sofort mit
+        # "database is locked" — mit fuenf Sekunden wartet der zweite
+        # Schreiber, statt aufzugeben. WAL laesst Leser ohnehin durch.
+        conn.execute("PRAGMA busy_timeout=5000")
         try:
             yield conn
             conn.commit()

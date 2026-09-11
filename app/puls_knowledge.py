@@ -377,12 +377,16 @@ class KnowledgeBase:
                 stats["unveraendert"] += 1
                 continue
 
-            self._delete_source(path.name)
+            # Erst rechnen, dann schreiben. Stuende das Einbetten zwischen
+            # DELETE und COMMIT, hielte der erste Ingest eine Schreibsperre
+            # auf der gemeinsamen Datei — waehrend im Hintergrund 220 MB
+            # Modell geladen werden. PULS koennte in der Zeit nichts
+            # eintragen und meldete "database is locked".
             chunks = chunk_markdown(path)
-
             vectors = self.embedder.encode([c.text for c in chunks],
                                            kind="passage")
 
+            self._delete_source(path.name)
             for chunk, vec in zip(chunks, vectors):
                 cur = self.db.execute(
                     "INSERT INTO kb_chunks (source, heading, text) VALUES (?, ?, ?)",

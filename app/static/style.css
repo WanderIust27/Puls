@@ -319,6 +319,24 @@ button.x {
 #toast.good { border-color: var(--good); }
 #toast.bad { border-color: var(--bad); }
 
+/* ------------------------------------------------------------- Coach-Frage */
+.kb-state { font-size: 0.78em; letter-spacing: 0; color: var(--ink-3); }
+.kb-state.ok { color: var(--teal); }
+.kb-state.warn { color: var(--warn); }
+p.answer { font-size: 1.02em; line-height: 1.65; margin: 12px 0 8px; white-space: pre-wrap; }
+.sources {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  font-size: 0.78em; color: var(--ink-3); margin-top: 10px;
+  padding-top: 8px; border-top: 1px solid var(--border-soft);
+}
+.src-label { color: var(--ink-3); }
+.src {
+  background: var(--surface-2); border-radius: 4px; padding: 2px 7px;
+  color: var(--ink-2); font-variant-numeric: tabular-nums;
+}
+details.computed { margin-top: 8px; }
+details.computed .item-sub { padding: 2px 0 2px 14px; }
+
 /* ---------------------------------------------------------- Diagramme */
 svg { width: 100%; height: auto; display: block; }
 .muted { color: var(--ink-3); font-size: 0.86em; }
