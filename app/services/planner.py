@@ -480,11 +480,31 @@ def build_home_session(minutes: int = 30, groups: list[str] | None = None,
 
     used: list[dict[str, Any]] = []
 
+    # Aufwaermen mit Namen statt einer pauschalen Zeile. Drei bis vier kurze
+    # Uebungen aus dem eigenen Block — wer "drei Minuten aufwaermen" liest,
+    # macht meistens zwei Schulterkreise und faengt an.
+    # Bei einer kurzen Einheit darf das Aufwaermen nicht die halbe Zeit
+    # fressen: zwei Uebungen bis zwanzig Minuten, sonst vier.
+    warmups = _pick([e for e in everything if e.get("slot") == "warmup"],
+                    2 if minutes <= 20 else 4,
+                    f"warmup-{dt.date.today().isocalendar()[1]}")
+
     def assemble(count: int) -> list[dict[str, Any]]:
         used.clear()
-        out: list[dict[str, Any]] = [
-            {"type": "warmup", "name": "Aufwärmen auf der Matte", "duration_s": 180,
-             "notes": "Katze-Kuh, Schulterkreisen, ein paar Ausfallschritte"}]
+        out: list[dict[str, Any]] = []
+        if warmups:
+            for w in warmups:
+                # Als Aufwaermen kennzeichnen: Die Uhr soll den Block nicht
+                # als Arbeitssatz zaehlen, und die Anzeige nicht als Leistung.
+                for step in _exercise_to_steps(w):
+                    if step.get("type") == "work":
+                        step["type"] = "warmup"
+                    out.append(step)
+        else:
+            out.append(
+                {"type": "warmup", "name": "Aufwärmen auf der Matte",
+                 "duration_s": 180,
+                 "notes": "Katze-Kuh, Schulterkreisen, ein paar Ausfallschritte"})
         for e in rotation[:count]:
             out.extend(_exercise_to_steps(e))
             used.append(e)

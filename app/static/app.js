@@ -588,6 +588,7 @@ function openExercise(ex) {
   $("#exReps").value = ex?.target_reps ?? 12;
   $("#exSets").value = ex?.sets ?? 3;
   $("#exSetting").value = ex?.machine_setting || "";
+  $("#exNotes").value = ex?.notes || "";
   $("#exAssisted").checked = Boolean(ex?.assisted);
   $("#btnExDelete").hidden = !ex;
   $("#exHistory").replaceChildren();
@@ -634,6 +635,7 @@ async function saveExercise() {
     target_reps: Number($("#exReps").value) || 12,
     sets: Number($("#exSets").value) || 3,
     machine_setting: $("#exSetting").value.trim() || null,
+    notes: $("#exNotes").value.trim() || null,
     assisted: $("#exAssisted").checked ? 1 : 0,
   };
   if (!data.name) { toast("Name fehlt.", "bad"); return; }

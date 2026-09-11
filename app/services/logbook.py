@@ -408,6 +408,11 @@ EQUIP_WORDS: dict[str, str] = {
 }
 
 
+def _names_equipment(entry: dict[str, Any]) -> bool:
+    """Traegt der Name der Uebung selbst ein Geraet im Namen?"""
+    return any(t in EQUIP_WORDS for t in tokens(entry["ex"]["name"]))
+
+
 def _equipment_named(toks: list[str]) -> str | None:
     for t in toks:
         if t in EQUIP_WORDS:
@@ -505,6 +510,12 @@ def candidates(name: str, limit: int = 5) -> list[dict[str, Any]]:
             # Ein genanntes Geraet, das nicht passt, ist ein Einspruch —
             # kein Grund zum Ausschluss, aber die Uebung gewinnt so nicht.
             best *= 0.45
+        elif not wanted_equipment and _names_equipment(entry):
+            # Wer "Klimmzüge" schreibt, meint die Klimmzüge und nicht die
+            # Klimmzugmaschine. Ohne diesen Abschlag stehen beide gleichauf,
+            # und dann entscheidet die Reihenfolge in der Bibliothek — was
+            # heisst: Der Treffer gilt als unsicher, obwohl er eindeutig ist.
+            best *= 0.9
         if best > 0.12:
             scored.append({"exercise": entry["ex"], "score": round(best, 3)})
     scored.sort(key=lambda c: -c["score"])
@@ -525,9 +536,14 @@ def _exact(name: str) -> dict[str, Any] | None:
 
 
 def find_exercise(name: str) -> dict[str, Any] | None:
-    """Die eine Uebung zum Namen — oder nichts."""
+    """Die eine Uebung zum Namen — oder nichts.
+
+    Nur sichere Treffer. Der unsichere Fall gehoert in die Vorschau, wo eine
+    Auswahl danebensteht; hier wuerde er stillschweigend zwei Uebungen
+    zusammenlegen, die nichts miteinander zu tun haben.
+    """
     found = resolve(name, ask_model=False)
-    return found["exercise"]
+    return found["exercise"] if found["confidence"] in ("sicher", "geprüft") else None
 
 
 def resolve(name: str, ask_model: bool = True) -> dict[str, Any]:

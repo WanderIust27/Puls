@@ -186,9 +186,14 @@ hoch, und oben angekommen geht das Gewicht eine Stufe höher. Die Spanne stellst
 du unter *Einstellungen* ein; über den Feldern steht der Satz, den deine Zahlen
 gerade ergeben.
 
-Der **Schritt** ist die kleinste sinnvolle Änderung der jeweiligen Übung —
-2,5 kg am Kabelzug, 5 kg an der Maschine oder Langhantel. Er steht bei jeder
-Übung einzeln und lässt sich dort ändern.
+Der **Schritt** ist 5 kg, und er ist zugleich das Raster: Ein Vorschlag landet
+immer auf einem Vielfachen davon. Wer 47,5 kg gestemmt hat, bekommt 45 oder 50
+vorgeschlagen — 47,5 gibt es an keiner Maschine, und eine Vorgabe, die man
+nicht einstellen kann, ist keine. Einzige Ausnahme ist die Kettlebell: Die gibt
+es in Vierer-Schritten (12, 16, 20, 24), ein Vorschlag von 21 kg wäre eine Zahl
+ohne Gewicht dazu. Der Schritt steht bei jeder Übung einzeln und lässt sich
+dort ändern — bei leichter Isolationsarbeit wie Seitheben mit 5 kg ist ein
+5-kg-Sprung eine Verdopplung, dort lohnt ein kleinerer Wert.
 
 Maßgeblich ist der schwerste Satz des Tages, und darin die meisten
 Wiederholungen. Wer sich innerhalb einer Einheit hocharbeitet (25, dann 30,
@@ -348,8 +353,19 @@ zu grob erwiesen haben, werden dabei auch wieder entfernt: `rudern` am
 Rudergerät zog jede Rudervariante an sich. Deine Gewichte, Zielwerte, selbst
 angelegten Übungen und selbst gelernten Schreibweisen bleiben unberührt.
 
-Für zuhause reicht eine Matte und eine kleine Hantel: Über zwanzig Übungen
-brauchen kein Gerät.
+Für zuhause reicht eine Matte und eine kleine Hantel. Dazu gehören ein eigener
+**Aufwärmblock** (Hampelmänner, Armkreise, Hüftkreisen, Beinpendel, Knieheben,
+Rumpfdrehen), sechs **Liegestütz-Varianten** vom Knie-Liegestütz bis zur
+Negativ-Variante mit erhöhten Füßen, und Mattenarbeit von der Russischen
+Drehung über Seitstütz-Varianten bis zu Scherenbeinen.
+
+Jede Übung kann eine **Notiz** tragen, und die steht später in der Einheit
+unter der Übung: „beide Seiten nacheinander", „Ellenbogen nah am Körper",
+„Hüfte darf nicht wackeln". Beim Seitstütz ist genau das der Unterschied
+zwischen einem Satz und einem halben.
+
+Vorher begann jede Zuhause-Einheit mit einer Zeile „3 Minuten aufwärmen". Wer
+das liest, macht zwei Schulterkreise und fängt an.
 
 ---
 

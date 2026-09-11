@@ -35,14 +35,22 @@ EQUIPMENT_LABELS = {
 }
 # Sinnvolle kleinste Steigerung je Gerätetyp (kg).
 # Kettlebells gibt es meist nur in 4-kg-Sprüngen.
+# Der Schritt, in dem sich ein Gewicht aendert — und zugleich das Raster, auf
+# dem es liegt: round_to_increment rundet auf ein Vielfaches davon. Fuenf Kilo
+# ueberall, damit nie 37,5 kg herauskommt, sondern 35 oder 40.
+#
+# Die Kettlebell ist die Ausnahme, und zwar aus einem physischen Grund: Sie
+# gibt es in Vierer-Schritten (12, 16, 20, 24). Ein Vorschlag von 21 kg waere
+# eine Zahl, zu der es kein Gewicht gibt.
 DEFAULT_INCREMENT = {
-    "machine": 5.0, "cable": 2.5, "band": 2.5, "dumbbell": 2.0, "kettlebell": 4.0,
-    "barbell": 2.5, "suspension": 2.5, "bodyweight": 0.0, "cardio_machine": 0.0,
+    "machine": 5.0, "cable": 5.0, "band": 5.0, "dumbbell": 5.0, "kettlebell": 4.0,
+    "barbell": 5.0, "suspension": 5.0, "bodyweight": 0.0, "cardio_machine": 0.0,
 }
 
 SLOT_LABELS = {
-    "cardio": "Aufwärmen", "kettlebell": "Kettlebell-Auftakt", "main": "Hauptteil",
-    "pullup": "Klimmzug-Arbeit", "stretch": "Dehnen",
+    "warmup": "Aufwärmen", "cardio": "Rudergerät", "kettlebell": "Kettlebell-Auftakt",
+    "main": "Hauptteil", "pullup": "Klimmzug-Arbeit", "mat": "Matte",
+    "home": "Zuhause", "stretch": "Dehnen",
 }
 
 # Startbibliothek: Thomas' bestehender Maschinenplan plus Kettlebell-Auftakt,
@@ -119,20 +127,20 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          garmin_category="SQUAT", garmin_exercise="LEG_PRESS", sort_order=10,
          aliases=["leg press", "beinpresse"]),
     dict(name="Hamstring-Curls mit Band", muscle_group="legs", equipment="band",
-         weight_kg=22.5, weight_increment=2.5, target_reps=15, rep_min=12, rep_max=18,
+         weight_kg=22.5, weight_increment=5, target_reps=15, rep_min=12, rep_max=18,
          machine_setting="Stufe 7 bei Füße",
          garmin_category="LEG_CURL", garmin_exercise="LEG_CURL", sort_order=20,
          aliases=["leg curl", "hamstring curl", "beinbeuger"]),
     dict(name="Brustpresse mit Schlingentrainer", muscle_group="chest", equipment="suspension",
-         weight_kg=25, weight_increment=2.5, target_reps=12, rep_min=12, rep_max=15,
+         weight_kg=25, weight_increment=5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="SUSPENSION", garmin_exercise="CHEST_PRESS", sort_order=30,
          aliases=["chest press", "brustpresse", "suspension chest press"]),
     dict(name="Aufrechtes Rudern mit Band", muscle_group="shoulders", equipment="band",
-         weight_kg=35, weight_increment=2.5, target_reps=12, rep_min=12, rep_max=15,
+         weight_kg=35, weight_increment=5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="SHRUG", garmin_exercise="UPRIGHT_ROW", sort_order=40,
          aliases=["upright row", "aufrechtes rudern"]),
     dict(name="Flys", muscle_group="chest", equipment="machine",
-         weight_kg=25, weight_increment=2.5, target_reps=12, rep_min=12, rep_max=15,
+         weight_kg=25, weight_increment=5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="FLYE", garmin_exercise="CABLE_CROSSOVER", sort_order=50,
          aliases=["flye", "fly", "butterfly", "cable crossover"]),
     dict(name="Kreuzheben (Langhantel)", muscle_group="back", equipment="barbell",
@@ -148,6 +156,20 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          garmin_category="ROW", garmin_exercise="CABLE_ROW_STANDING",
          sort_order=22, aliases=["cable row", "kabelrudern", "sitzendes rudern",
                                  "rudern kabel", "seated row"]),
+
+    dict(name="Bankdrücken (Langhantel)", muscle_group="chest", equipment="barbell",
+         weight_kg=40, weight_increment=5, target_reps=8, rep_min=6, rep_max=12,
+         sets=3, rest_s=150, slot="main", priority=2,
+         garmin_category="BENCH_PRESS", garmin_exercise="BARBELL_BENCH_PRESS",
+         sort_order=24, aliases=["bench press", "bankdruecken", "langhantel bankdrücken",
+                                 "flachbankdrücken"]),
+
+    dict(name="Wadenheben stehend", muscle_group="legs", equipment="machine",
+         weight_kg=40, weight_increment=5, target_reps=15, rep_min=10, rep_max=20,
+         sets=3, rest_s=60, slot="main", priority=3,
+         garmin_category="CALF_RAISE", garmin_exercise="STANDING_CALF_RAISE",
+         sort_order=25, aliases=["standing calf raise", "wadenheben",
+                                 "wadenmaschine"]),
 
     dict(name="Dips", muscle_group="chest", equipment="bodyweight",
          target_reps=8, rep_min=5, rep_max=15, sets=3, rest_s=120,
@@ -167,7 +189,7 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          sort_order=71, notes="Auf der Matte, Füße locker — nicht reißen",
          aliases=["situp", "sit up", "sit-ups", "bauchpresse frei"]),
     dict(name="Negativ-Sit-ups (Schrägbank)", muscle_group="core", equipment="machine",
-         weight_kg=0, weight_increment=2.5, target_reps=12, rep_min=8, rep_max=20,
+         weight_kg=0, weight_increment=5, target_reps=12, rep_min=8, rep_max=20,
          sets=3, rest_s=60, slot="main",
          garmin_category="SIT_UP", garmin_exercise="DECLINE_SIT_UP",
          sort_order=72, notes="Schrägbank; Gewicht erst, wenn 20 sauber gehen",
@@ -202,21 +224,21 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          garmin_category="CORE", garmin_exercise="SWISS_BALL_JACKKNIFE", sort_order=70,
          aliases=["jackknife", "klappmesser"], notes="So viel wie geht"),
     dict(name="Abwechselndes Seitheben mit statischem Halten", muscle_group="shoulders",
-         equipment="dumbbell", weight_kg=4, weight_increment=1, target_reps=12,
+         equipment="dumbbell", weight_kg=5, weight_increment=5, target_reps=12,
          rep_min=12, rep_max=15, garmin_category="LATERAL_RAISE",
          garmin_exercise="ALTERNATING_LATERAL_RAISE_WITH_STATIC_HOLD", sort_order=80,
          aliases=["lateral raise", "seitheben"]),
     dict(name="Abwechselnde Bizeps-Curls mit Kurzhantel im Stehen", muscle_group="arms",
-         equipment="dumbbell", weight_kg=6, weight_increment=2, target_reps=12,
+         equipment="dumbbell", weight_kg=6, weight_increment=5, target_reps=12,
          rep_min=12, rep_max=15, garmin_category="CURL",
          garmin_exercise="STANDING_ALTERNATING_DUMBBELL_CURLS", sort_order=90,
          aliases=["biceps curl", "bizeps curl", "dumbbell curl"]),
     dict(name="Reverse Fly positiv", muscle_group="back", equipment="machine",
-         weight_kg=25, weight_increment=2.5, target_reps=12, rep_min=12, rep_max=15,
+         weight_kg=25, weight_increment=5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="FLYE", garmin_exercise="INCLINE_REVERSE_FLYE", sort_order=100,
          aliases=["reverse fly", "reverse flye"]),
     dict(name="Trizepsdrücken", muscle_group="arms", equipment="cable",
-         weight_kg=15, weight_increment=2.5, target_reps=12, rep_min=12, rep_max=15,
+         weight_kg=15, weight_increment=5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="TRICEPS_EXTENSION", garmin_exercise="TRICEPS_PRESSDOWN",
          sort_order=110, aliases=["triceps pressdown", "trizepsdrücken", "tricep extension"]),
 
@@ -303,31 +325,31 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          notes="Arme und Beine wechselseitig, klein und schnell",
          aliases=["swimmer", "schwimmer"]),
     dict(name="Kurzhantel-Rudern einarmig", muscle_group="back", equipment="dumbbell",
-         weight_kg=10, weight_increment=2, target_reps=12, rep_min=8, rep_max=15,
+         weight_kg=10, weight_increment=5, target_reps=12, rep_min=8, rep_max=15,
          sets=3, rest_s=60, slot="home", garmin_category="ROW",
          garmin_exercise="SINGLE_ARM_BENT_OVER_ROW", sort_order=335,
          notes="Rücken flach, Ellbogen eng am Körper",
          aliases=["one arm row", "kurzhantelrudern", "rudern einarmig"]),
     dict(name="Kurzhantel-Kreuzheben", muscle_group="back", equipment="dumbbell",
-         weight_kg=10, weight_increment=2, target_reps=12, rep_min=8, rep_max=15,
+         weight_kg=10, weight_increment=5, target_reps=12, rep_min=8, rep_max=15,
          sets=3, rest_s=60, slot="home", garmin_category="DEADLIFT",
          garmin_exercise="DUMBBELL_DEADLIFT", sort_order=340,
          notes="Beine fast gestreckt, Bewegung aus der Hüfte",
          aliases=["romanian deadlift", "kreuzheben kurzhantel",
                   "rumänisches kreuzheben"]),
     dict(name="Kurzhantel-Seitheben", muscle_group="shoulders", equipment="dumbbell",
-         weight_kg=6, weight_increment=2, target_reps=12, rep_min=10, rep_max=18,
+         weight_kg=6, weight_increment=5, target_reps=12, rep_min=10, rep_max=18,
          sets=3, rest_s=45, slot="home", garmin_category="LATERAL_RAISE",
          garmin_exercise="LATERAL_RAISE", sort_order=345,
          aliases=["lateral raise", "seitheben"]),
     dict(name="Kurzhantel-Überzüge", muscle_group="back", equipment="dumbbell",
-         weight_kg=8, weight_increment=2, target_reps=12, rep_min=10, rep_max=16,
+         weight_kg=8, weight_increment=5, target_reps=12, rep_min=10, rep_max=16,
          sets=3, rest_s=45, slot="home", garmin_category="CHOP",
          garmin_exercise="DUMBBELL_PULLOVER", sort_order=350,
          notes="Nur so weit, wie der untere Rücken flach bleibt",
          aliases=["pullover", "ueberzuege"]),
     dict(name="Russischer Twist mit Hantel", muscle_group="core", equipment="dumbbell",
-         weight_kg=6, weight_increment=2, target_reps=16, rep_min=10, rep_max=24,
+         weight_kg=6, weight_increment=5, target_reps=16, rep_min=10, rep_max=24,
          sets=3, rest_s=45, slot="mat", garmin_category="CHOP",
          garmin_exercise="WEIGHTED_RUSSIAN_TWIST_ON_SWISS_BALL", sort_order=355,
          notes="Aus dem Rumpf drehen, nicht aus den Armen",
@@ -372,7 +394,7 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          sort_order=415, notes="Knie auf die Oberarme, Blick nach vorn",
          aliases=["crow", "kraehe", "crow pose", "bakasana"]),
     dict(name="Schulterdrücken mit Kurzhantel", muscle_group="shoulders",
-         equipment="dumbbell", weight_kg=8, weight_increment=2, target_reps=10,
+         equipment="dumbbell", weight_kg=8, weight_increment=5, target_reps=10,
          rep_min=6, rep_max=15, sets=3, rest_s=75, slot="home",
          garmin_category="SHOULDER_PRESS", garmin_exercise="DUMBBELL_SHOULDER_PRESS",
          sort_order=420, aliases=["shoulder press", "schulterdruecken"]),
@@ -385,7 +407,236 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          mode="time", target_duration_s=40, weight_increment=0, sets=3, rest_s=60,
          slot="home", garmin_category="TOTAL_BODY", garmin_exercise="BEAR_CRAWL",
          sort_order=430, notes="Knie knapp über dem Boden, Rücken ruhig",
-         aliases=["bear crawl", "baer kriechen"])
+         aliases=["bear crawl", "baer kriechen"]),
+
+    # ---- Aufwaermen zuhause ----------------------------------------------
+    # Eigener Block, damit die Zuhause-Einheit nicht mit einem pauschalen
+    # "3 Minuten aufwaermen" beginnt, sondern mit Uebungen, die dastehen.
+    # Alle auf Zeit, ohne Gewicht, kurze Pausen: Es geht um Temperatur und
+    # Gelenke, nicht um Reiz.
+    dict(name="Hampelmänner", muscle_group="cardio", equipment="bodyweight",
+         mode="time", target_duration_s=45, weight_increment=0, sets=1, rest_s=20,
+         slot="warmup", priority=1, garmin_category="CARDIO",
+         garmin_exercise="JUMPING_JACKS", sort_order=500,
+         notes="Locker bleiben, auf dem Ballen landen",
+         aliases=["jumping jacks", "hampelmann"]),
+
+    dict(name="Armkreise", muscle_group="shoulders", equipment="bodyweight",
+         mode="time", target_duration_s=40, weight_increment=0, sets=1, rest_s=15,
+         slot="warmup", priority=1, garmin_category="WARM_UP",
+         garmin_exercise="ARM_CIRCLES", sort_order=501,
+         notes="Halbe Zeit vorwärts, halbe rückwärts — klein anfangen, größer werden",
+         aliases=["arm circles", "schulterkreisen", "armkreisen"]),
+
+    dict(name="Hüftkreisen", muscle_group="legs", equipment="bodyweight",
+         mode="time", target_duration_s=40, weight_increment=0, sets=1, rest_s=15,
+         slot="warmup", priority=2, garmin_category="WARM_UP",
+         garmin_exercise="HIP_CIRCLES", sort_order=502,
+         notes="Beide Richtungen, je zwanzig Sekunden",
+         aliases=["hip circles", "hueftkreisen"]),
+
+    dict(name="Beinpendel", muscle_group="legs", equipment="bodyweight",
+         mode="time", target_duration_s=40, weight_increment=0, sets=1, rest_s=15,
+         slot="warmup", priority=2, garmin_category="WARM_UP",
+         garmin_exercise="LEG_SWINGS", sort_order=503,
+         notes="Erst vor und zurück, dann seitlich — pro Bein zehn Schwünge",
+         aliases=["leg swings", "beinschwingen"]),
+
+    dict(name="Knieheben im Stand", muscle_group="cardio", equipment="bodyweight",
+         mode="time", target_duration_s=40, weight_increment=0, sets=1, rest_s=20,
+         slot="warmup", priority=2, garmin_category="CARDIO",
+         garmin_exercise="HIGH_KNEES", sort_order=504,
+         notes="Zügig, aber kontrolliert — Bauch bleibt fest",
+         aliases=["high knees", "knieheben"]),
+
+    dict(name="Rumpfdrehen im Stand", muscle_group="core", equipment="bodyweight",
+         mode="time", target_duration_s=40, weight_increment=0, sets=1, rest_s=15,
+         slot="warmup", priority=2, garmin_category="WARM_UP",
+         garmin_exercise="TRUNK_ROTATION", sort_order=505,
+         notes="Hüfte bleibt vorn, nur der Oberkörper dreht",
+         aliases=["trunk rotation", "oberkörperdrehen"]),
+
+    dict(name="Schulterkreisen am Boden", muscle_group="shoulders",
+         equipment="bodyweight", mode="time", target_duration_s=40,
+         weight_increment=0, sets=1, rest_s=15, slot="warmup", priority=3,
+         garmin_category="WARM_UP", garmin_exercise="SHOULDER_CIRCLES",
+         sort_order=506, notes="Im Vierfüßlerstand, Gewicht bleibt auf den Händen",
+         aliases=["scapula circles"]),
+
+    # ---- Liegestütz-Varianten, vom Leichten zum Schweren -------------------
+    dict(name="Liegestütz auf den Knien", muscle_group="chest",
+         equipment="bodyweight", target_reps=12, rep_min=8, rep_max=20, sets=3,
+         rest_s=75, weight_increment=0, slot="home", priority=2,
+         garmin_category="PUSH_UP", garmin_exercise="KNEE_PUSH_UP", sort_order=510,
+         notes="Der Einstieg: Knie auf, Körper bleibt eine Linie von Kopf bis Knie",
+         aliases=["knie liegestütz", "knee push up"]),
+
+    dict(name="Schräge Liegestütze (Hände erhöht)", muscle_group="chest",
+         equipment="bodyweight", target_reps=12, rep_min=8, rep_max=20, sets=3,
+         rest_s=75, weight_increment=0, slot="home", priority=2,
+         garmin_category="PUSH_UP", garmin_exercise="INCLINE_PUSH_UP",
+         sort_order=511,
+         notes="Hände auf Stuhl oder Sofakante — je höher, desto leichter",
+         aliases=["incline push up", "schräge liegestütze"]),
+
+    dict(name="Breite Liegestütze", muscle_group="chest", equipment="bodyweight",
+         target_reps=10, rep_min=8, rep_max=15, sets=3, rest_s=90,
+         weight_increment=0, slot="home", priority=2,
+         garmin_category="PUSH_UP", garmin_exercise="WIDE_PUSH_UP", sort_order=512,
+         notes="Hände deutlich außerhalb der Schultern — mehr Brust, weniger Trizeps",
+         aliases=["wide push up", "breite liegestütze"]),
+
+    dict(name="Enge Liegestütze (Diamant)", muscle_group="arms",
+         equipment="bodyweight", target_reps=8, rep_min=6, rep_max=15, sets=3,
+         rest_s=90, weight_increment=0, slot="home", priority=2,
+         garmin_category="PUSH_UP", garmin_exercise="DIAMOND_PUSH_UP",
+         sort_order=513,
+         notes="Daumen und Zeigefinger bilden ein Dreieck, Ellenbogen nah am Körper",
+         aliases=["diamond push up", "enge liegestütze", "trizeps liegestütz"]),
+
+    dict(name="Negativ-Liegestütze (Füße erhöht)", muscle_group="chest",
+         equipment="bodyweight", target_reps=8, rep_min=6, rep_max=15, sets=3,
+         rest_s=90, weight_increment=0, slot="home", priority=3,
+         garmin_category="PUSH_UP", garmin_exercise="DECLINE_PUSH_UP",
+         sort_order=514,
+         notes="Füße auf Stuhl oder Bett — die schwerste Variante ohne Gewicht",
+         aliases=["decline push up", "negativ liegestütze"]),
+
+    dict(name="Liegestütz mit Drehung", muscle_group="chest",
+         equipment="bodyweight", target_reps=8, rep_min=6, rep_max=12, sets=3,
+         rest_s=90, weight_increment=0, slot="home", priority=3,
+         garmin_category="PUSH_UP", garmin_exercise="PUSH_UP_AND_ROTATION",
+         sort_order=515,
+         notes="Nach oben drücken, dann eine Hand zur Decke — Seiten abwechseln",
+         aliases=["t push up", "rotations liegestütz"]),
+
+    # ---- Matte: Rumpf ------------------------------------------------------
+    dict(name="Seitstütz beidseitig", muscle_group="core", equipment="bodyweight",
+         mode="time", target_duration_s=30, weight_increment=0, sets=3, rest_s=45,
+         slot="mat", priority=2, garmin_category="PLANK",
+         garmin_exercise="SIDE_PLANK", sort_order=520,
+         notes="Erst die eine Seite halten, dann ohne Pause die andere — "
+               "ein Satz sind beide Seiten",
+         aliases=["seitstütz beide seiten", "side plank both sides"]),
+
+    dict(name="Seitstütz mit Hüftsenken", muscle_group="core",
+         equipment="bodyweight", target_reps=10, rep_min=8, rep_max=20, sets=3,
+         rest_s=45, weight_increment=0, slot="mat", priority=3,
+         garmin_category="PLANK", garmin_exercise="SIDE_PLANK_HIP_ADDUCTION",
+         sort_order=521,
+         notes="Hüfte langsam absenken und wieder heben, je Seite — "
+               "beide Seiten nacheinander",
+         aliases=["side plank hip dip"]),
+
+    dict(name="Unterarmstütz mit Schulterklopfen", muscle_group="core",
+         equipment="bodyweight", target_reps=16, rep_min=10, rep_max=24, sets=3,
+         rest_s=60, weight_increment=0, slot="mat", priority=3,
+         garmin_category="PLANK", garmin_exercise="PLANK_WITH_SHOULDER_TAP",
+         sort_order=522,
+         notes="Hüfte darf nicht wackeln — lieber langsamer und breiter stehen",
+         aliases=["shoulder tap plank", "schulterklopfen"]),
+
+    dict(name="Russische Drehung", muscle_group="core", equipment="bodyweight",
+         target_reps=20, rep_min=12, rep_max=30, sets=3, rest_s=60,
+         weight_increment=0, slot="mat", priority=2,
+         garmin_category="CORE", garmin_exercise="RUSSIAN_TWIST", sort_order=523,
+         notes="Gezählt wird jede Seite einzeln. Füße erst am Boden, "
+               "später anheben. Mit Hantel: siehe Russischer Twist mit Hantel",
+         aliases=["russian twist", "russische drehungen", "russischer twist"]),
+
+    dict(name="Umgekehrter Crunch", muscle_group="core", equipment="bodyweight",
+         target_reps=12, rep_min=8, rep_max=20, sets=3, rest_s=60,
+         weight_increment=0, slot="mat", priority=2,
+         garmin_category="CRUNCH", garmin_exercise="REVERSE_CRUNCH",
+         sort_order=524,
+         notes="Becken vom Boden rollen, nicht schwingen — unterer Bauch",
+         aliases=["reverse crunch", "umgekehrte crunches"]),
+
+    dict(name="Scherenbeine", muscle_group="core", equipment="bodyweight",
+         mode="time", target_duration_s=35, weight_increment=0, sets=3, rest_s=45,
+         slot="mat", priority=3, garmin_category="LEG_RAISE",
+         garmin_exercise="FLUTTER_KICKS", sort_order=525,
+         notes="Unterer Rücken bleibt am Boden — sonst Beine höher nehmen",
+         aliases=["flutter kicks", "scherentritte"]),
+
+    dict(name="Beinheben liegend", muscle_group="core", equipment="bodyweight",
+         target_reps=12, rep_min=8, rep_max=20, sets=3, rest_s=60,
+         weight_increment=0, slot="mat", priority=2,
+         garmin_category="LEG_RAISE", garmin_exercise="LYING_LEG_RAISE",
+         sort_order=526,
+         notes="Hände unter das Gesäß, Beine gestreckt senken bis kurz über den Boden",
+         aliases=["lying leg raise", "beinheben am boden"]),
+
+    # ---- Matte: Beine und Rücken ------------------------------------------
+    dict(name="Luftkniebeuge", muscle_group="legs", equipment="bodyweight",
+         target_reps=20, rep_min=12, rep_max=30, sets=3, rest_s=75,
+         weight_increment=0, slot="home", priority=2,
+         garmin_category="SQUAT", garmin_exercise="AIR_SQUAT", sort_order=530,
+         notes="Fersen bleiben unten, Knie in Richtung der Zehen",
+         aliases=["air squat", "kniebeuge ohne gewicht", "körpergewichtskniebeuge"]),
+
+    dict(name="Bulgarische Kniebeuge", muscle_group="legs", equipment="bodyweight",
+         target_reps=10, rep_min=8, rep_max=15, sets=3, rest_s=90,
+         weight_increment=0, slot="home", priority=3,
+         garmin_category="LUNGE", garmin_exercise="BULGARIAN_SPLIT_SQUAT",
+         sort_order=531,
+         notes="Hinterer Fuß auf Stuhl oder Sofa, je Bein — beide Seiten nacheinander",
+         aliases=["bulgarian split squat", "split squat"]),
+
+    dict(name="Wandsitz", muscle_group="legs", equipment="bodyweight",
+         mode="time", target_duration_s=45, weight_increment=0, sets=3, rest_s=60,
+         slot="home", priority=3, garmin_category="SQUAT",
+         garmin_exercise="WALL_SIT", sort_order=532,
+         notes="Oberschenkel waagerecht, Rücken flach an der Wand",
+         aliases=["wall sit", "wandsitzen"]),
+
+    dict(name="Einbeiniges Beckenheben", muscle_group="legs",
+         equipment="bodyweight", target_reps=12, rep_min=8, rep_max=20, sets=3,
+         rest_s=60, weight_increment=0, slot="mat", priority=3,
+         garmin_category="HIP_RAISE", garmin_exercise="SINGLE_LEG_BRIDGE",
+         sort_order=533,
+         notes="Ein Bein gestreckt, je Seite — beide Seiten nacheinander",
+         aliases=["single leg glute bridge", "einbeinige brücke"]),
+
+    # ---- Kleine Hantel -----------------------------------------------------
+    dict(name="Goblet Squat mit Kurzhantel", muscle_group="legs",
+         equipment="dumbbell", weight_kg=10, weight_increment=5, target_reps=12,
+         rep_min=8, rep_max=15, sets=3, rest_s=90, slot="home", priority=2,
+         garmin_category="SQUAT", garmin_exercise="GOBLET_SQUAT", sort_order=540,
+         notes="Hantel vor der Brust halten, Ellenbogen zwischen den Knien",
+         aliases=["goblet squat kurzhantel"]),
+
+    dict(name="Ausfallschritte mit Kurzhantel", muscle_group="legs",
+         equipment="dumbbell", weight_kg=10, weight_increment=5, target_reps=10,
+         rep_min=8, rep_max=15, sets=3, rest_s=90, slot="home", priority=3,
+         garmin_category="LUNGE", garmin_exercise="WEIGHTED_LUNGE",
+         sort_order=541,
+         notes="Je Bein — beide Seiten nacheinander, dann Pause",
+         aliases=["lunge mit hantel", "kurzhantel ausfallschritt"]),
+
+    dict(name="Kurzhantel-Bankdrücken am Boden", muscle_group="chest",
+         equipment="dumbbell", weight_kg=10, weight_increment=5, target_reps=12,
+         rep_min=8, rep_max=15, sets=3, rest_s=90, slot="home", priority=3,
+         garmin_category="BENCH_PRESS", garmin_exercise="DUMBBELL_FLOOR_PRESS",
+         sort_order=542,
+         notes="Oberarme legen am Boden ab — schont die Schulter",
+         aliases=["floor press", "kurzhantel floor press"]),
+
+    dict(name="Trizepsstrecken über Kopf", muscle_group="arms",
+         equipment="dumbbell", weight_kg=5, weight_increment=5, target_reps=12,
+         rep_min=8, rep_max=15, sets=3, rest_s=60, slot="home", priority=3,
+         garmin_category="TRICEPS_EXTENSION",
+         garmin_exercise="DUMBBELL_OVERHEAD_TRICEPS_EXTENSION", sort_order=543,
+         notes="Ellenbogen zeigen nach vorn und bleiben dort",
+         aliases=["overhead triceps extension", "trizepsdrücken über kopf"]),
+
+    dict(name="Wadenheben einbeinig", muscle_group="legs", equipment="bodyweight",
+         target_reps=15, rep_min=10, rep_max=25, sets=3, rest_s=45,
+         weight_increment=0, slot="home", priority=3,
+         garmin_category="CALF_RAISE", garmin_exercise="SINGLE_LEG_CALF_RAISE",
+         sort_order=544,
+         notes="Auf einer Stufe, volle Dehnung nach unten — je Seite nacheinander",
+         aliases=["single leg calf raise", "einbeiniges wadenheben"])
 ]
 
 # Abend-Yoga: eigene Liste, weil es als Yoga-Workout auf die Uhr geht (nicht als
@@ -537,7 +788,8 @@ def sync_seed_library() -> dict[str, int]:
     added = moved = renamed = 0
     with get_db() as db:
         known = {r["name"]: dict(r) for r in db.execute(
-            "SELECT name, slot, aliases, assisted FROM exercises").fetchall()}
+            "SELECT name, slot, aliases, assisted, equipment, weight_increment "
+            "FROM exercises").fetchall()}
         if not known:
             return {"added": 0, "moved": 0, "aliases": 0}
         for ex in SEED_EXERCISES:
@@ -552,6 +804,15 @@ def sync_seed_library() -> dict[str, int]:
             if ex.get("slot", "main") != current["slot"]:
                 db.execute("UPDATE exercises SET slot=? WHERE name=?",
                            (ex.get("slot", "main"), ex["name"]))
+                moved += 1
+            # Der Gewichtsschritt ist eine Eigenschaft der Uebung, keine
+            # Vorliebe: Eine Maschine, die in 5er-Schritten steckt, steckt in
+            # 5er-Schritten. Bestehende 2,5er werden deshalb nachgezogen.
+            want_step = DEFAULT_INCREMENT.get(current["equipment"], 5.0)
+            if (current["weight_increment"] or 0) not in (0, want_step) \
+                    and want_step:
+                db.execute("UPDATE exercises SET weight_increment=? WHERE name=?",
+                           (want_step, ex["name"]))
                 moved += 1
             # Ob das Gewicht hilft oder belastet, ist eine Eigenschaft der
             # Uebung, keine Einstellung des Nutzers — sie wird nachgezogen.
@@ -1097,7 +1358,7 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
             lifted = [s["weight_kg"] for s in sets if (s.get("weight_kg") or 0) > 0]
             if not lifted or abs(max(lifted) - from_weight) < 0.4:
                 continue
-            top = max(lifted)
+            top = round_to_increment(max(lifted), ex["weight_increment"] or 5.0)
             made.append(_store_proposal(
                 ex, day, from_weight, from_reps, top, from_reps,
                 f"{top:g} kg bewegt, Wiederholungen nicht gezählt",
@@ -1116,6 +1377,9 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
         harder = -step if assisted else step
         unit = " Hilfe" if assisted else ""
 
+        # Jedes Ergebnis geht durch round_to_increment: Es rundet auf ein
+        # Vielfaches des Schritts. Wer 47,5 kg gestemmt hat, bekommt 45 oder 50
+        # vorgeschlagen, nie 47,5 — an der Maschine gibt es das nicht.
         if reps > high:
             to_weight = max(0.0, round_to_increment(heaviest + harder, step))
             to_reps = low
@@ -1141,7 +1405,7 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
             # passt, was tatsaechlich auf der Maschine lag.
             if abs(heaviest - from_weight) < 0.4:
                 continue
-            to_weight = heaviest
+            to_weight = round_to_increment(heaviest, step)
             to_reps = max(low, min(high, reps))
             evidence = f"schwerster Satz: {reps}× {heaviest:g} kg{unit}"
             reason = (f"{ex['name']}: {reps} Wiederholungen bei {heaviest:g} kg"

@@ -73,7 +73,7 @@ with TestClient(app) as client:
 
     # --- Kraft: ein Training in Worten ----------------------------------
     text = ("Heute Beinpresse 3x15 mit 60 kg, dann Latzug 12/10/8 bei 45 kg "
-            "und Wadenheben stehend 3x20 mit 30 kg")
+            "und Nackenzieher am Turm 3x20 mit 30 kg")
     pv = client.post("/api/strength/describe", json={"text": text})
     check("Beschreibung wird gelesen", pv.status_code, 200)
     preview = pv.json()
@@ -115,7 +115,7 @@ with TestClient(app) as client:
     check("Eintragen angenommen", cm.status_code, 200)
     result = cm.json()
     check("Sätze geschrieben", result["sets"], 9)
-    check("Übung angelegt", result["created"], ["Wadenheben stehend"])
+    check("Übung angelegt", result["created"], ["Nackenzieher am Turm"])
     ok("Vorschläge entstanden", bool(result["proposals"]),
        str([p["name"] for p in result["proposals"]]))
 

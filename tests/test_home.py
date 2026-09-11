@@ -102,8 +102,13 @@ ok("… und es kommt trotzdem eine Einheit heraus",
    len(geschont["exercise_ids"]) >= 2, str(len(geschont["exercise_ids"])))
 ok("… und das wird gesagt", geschont.get("adapted") is not None)
 
-# Warmlaufen und Ausklang gehören dazu.
+# Warmlaufen und Ausklang gehören dazu. Das Aufwärmen besteht aus benannten
+# Übungen, nicht aus einer pauschalen Zeile: Wer "drei Minuten aufwärmen"
+# liest, macht meistens zwei Schulterkreise und fängt an.
 ok("Die Einheit beginnt mit Aufwärmen", s["steps"][0]["type"] == "warmup")
+warm = [x for x in s["steps"] if x.get("type") == "warmup"]
+ok("… mit mehreren benannten Übungen", len(warm) >= 3, str([x["name"] for x in warm]))
+ok("… die alle einen Hinweis mitbringen", all(x.get("notes") for x in warm))
 ok("… und endet mit Dehnen", s["steps"][-1]["type"] == "cooldown")
 
 print()

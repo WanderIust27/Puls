@@ -135,7 +135,7 @@ try:
         page.click('nav.tabs button[data-view="strength"]')
         page.wait_for_timeout(1200)
         page.fill("#logText", "Heute Beinpresse 3x15 mit 60 kg, dann Latzug "
-                              "12/10/8 bei 45 kg und Wadenheben stehend "
+                              "12/10/8 bei 45 kg und Nackenzieher am Turm "
                               "3x20 mit 30 kg")
         page.click("#btnRead")
         page.wait_for_timeout(2500)

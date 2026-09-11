@@ -91,7 +91,7 @@ check("Datum ohne Jahr geht zurück", logbook.read_day("am 20.12. Beinpresse", T
 # ---------------------------------------------------- Vorschau und Eintrag
 
 text = ("Gestern im Gym: Beinpresse 3x15 mit 60 kg, dann Latzug 12/10/8 bei 45 kg, "
-        "Hamstring-Curls 15 Wdh @ 25 / 30 / 35, Wadenheben stehend 3x20 mit 30 kg "
+        "Hamstring-Curls 15 Wdh @ 25 / 30 / 35, Nackenzieher am Turm 3x20 mit 30 kg "
         "und Unterarmstütz 3x60s. Danach 5,2 km in 30 min gelaufen.")
 pv = logbook.preview(text, TODAY)
 
@@ -106,16 +106,16 @@ ok("Bekannte Übung wiedergefunden", by_name["beinpresse"]["known"],
 ok("„Plank“ findet den Unterarmstütz",
    by_name.get("unterarmstütz", {}).get("known", False))
 ok("Unbekannte Übung wird als neu gemeldet",
-   not by_name["wadenheben stehend"]["known"])
+   not by_name["nackenzieher am turm"]["known"])
 check("Neue Übung bekommt die richtige Gruppe",
-      by_name["wadenheben stehend"]["muscle_group"], "legs")
+      by_name["nackenzieher am turm"]["muscle_group"], "back")
 check("Steigende Gewichte werden zu drei Sätzen",
       [s["weight_kg"] for s in by_name["hamstring-curls"]["sets"]], [25.0, 30.0, 35.0])
 
 before = len(ex_lib.list_exercises())
 res = logbook.commit(pv["day"], pv["items"], pv["runs"])
 check("Sätze eingetragen", res["sets"], 15)
-check("Eine neue Übung angelegt", res["created"], ["Wadenheben stehend"])
+check("Eine neue Übung angelegt", res["created"], ["Nackenzieher am Turm"])
 check("Bibliothek gewachsen", len(ex_lib.list_exercises()), before + 1)
 check("Lauf eingetragen", res["runs"], 1)
 
@@ -126,12 +126,13 @@ props = {p["name"]: p for p in res["proposals"]}
 ok("Vorschlag für die Hamstring-Curls", "Hamstring-Curls mit Band" in props,
    str(sorted(props)))
 curls = props["Hamstring-Curls mit Band"]
-check("Über der Spanne heisst: einen Schritt hoch", curls["to_weight"], 37.5)
+# Fuenf Kilo, nicht zweieinhalb: Gewichte liegen auf dem 5er-Raster.
+check("Über der Spanne heisst: einen Schritt hoch", curls["to_weight"], 40.0)
 check("… und das Ziel zurück auf das Minimum", curls["to_reps"], 8)
 ok("Der Grund nennt die Übung beim Namen",
    curls["reason"].startswith("Hamstring-Curls mit Band:"), curls["reason"])
 ok("… und nur Zahlen, die zu ihr gehören",
-   "35" in curls["reason"] and "37.5" in curls["reason"].replace(",", "."),
+   "35" in curls["reason"] and "40" in curls["reason"],
    curls["reason"])
 
 # Zweimal dieselbe Beschreibung darf die Saetze nicht verdoppeln.
@@ -186,7 +187,8 @@ ok("„wiederholungen“ ist keine Übung", lunge is None,
 for phrase, expected in (("Rudern am Kabelzug", "Rudern am Kabelzug"),
                          ("Kurzhantel-Rudern", "Kurzhantel-Rudern einarmig"),
                          ("Latzug", "Latziehen"),
-                         ("Bankdrücken", None)):
+                         ("Bankdrücken", "Bankdrücken (Langhantel)"),
+                         ("Trampolinspringen", None)):
     hit = logbook.find_exercise(phrase)
     check(f"„{phrase}“", hit["name"] if hit else None, expected)
 
@@ -282,6 +284,14 @@ for set_index in range(1, 4):
 up = next(p for p in ex_lib.propose_for_day((TODAY - dt.timedelta(days=8)).isoformat())
           if p["name"] == "Beinpresse")
 check("Zu leicht heisst dort: mehr Gewicht", up["to_weight"], 105.0)
+
+
+# Jedes vorgeschlagene Gewicht liegt auf dem 5er-Raster. „37,5 kg" gibt es an
+# keiner Maschine, und eine Vorgabe, die man nicht einstellen kann, ist keine.
+for proposal in ex_lib.open_proposals(50):
+    weight = proposal["to_weight"]
+    ok(f"{proposal['name']}: {weight:g} kg liegt auf dem 5er-Raster",
+       weight % 5 == 0, f"{weight:g}")
 
 
 # ------------------------------ Ein zweiter Eintrag ersetzt den ganzen Tag
