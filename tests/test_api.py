@@ -257,13 +257,23 @@ with TestClient(app) as client:
     # --- Einstellungen --------------------------------------------------
     check("Einstellungen speichern", client.post("/api/settings", json={
         "goal_text": "Halbmarathon im Frühjahr", "gym_days": ["Mo", "Do"],
-        "run_days": ["Di"], "gym_minutes": 60, "prog_runter_kg": 7.5,
+        "run_days": ["Di"], "gym_minutes": 60, "prog_rep_min": 6, "prog_rep_max": 10,
     }).status_code, 200)
     st = client.get("/api/settings").json()
     check("Ziel übernommen", st["goal_text"], "Halbmarathon im Frühjahr")
     check("Gym-Tage übernommen", st["gym_days"], ["Mo", "Do"])
     check("Dauer übernommen", st["gym_minutes"], 60)
-    check("Gewichtsschritt übernommen", st["progression"]["runter_kg"], 7.5)
+    check("Wiederholungsspanne übernommen",
+          [st["progression"]["rep_min"], st["progression"]["rep_max"]], [6, 10])
+
+    # Eine Spanne, deren Minimum über dem Maximum liegt, wäre eine Regel, die
+    # nie zutrifft.
+    client.post("/api/settings", json={"prog_rep_min": 20})
+    st = client.get("/api/settings").json()
+    ok("Eine verdrehte Spanne wird geradegezogen",
+       st["progression"]["rep_max"] > st["progression"]["rep_min"],
+       f"{st['progression']['rep_min']}–{st['progression']['rep_max']}")
+    client.post("/api/settings", json={"prog_rep_min": 8, "prog_rep_max": 12})
 
     client.post("/api/settings", json={"gym_days": ["Mo", "Quatsch"], "gym_minutes": 900})
     st = client.get("/api/settings").json()

@@ -910,6 +910,20 @@ def commit(day: str, items: list[dict[str, Any]],
     learned: list[str] = []
     written = 0
 
+    # Eine erneut geschickte Beschreibung ersetzt den ganzen Tag, nicht nur
+    # die Uebungen, die diesmal vorkommen.
+    #
+    # Vorher wurde nur je Uebung geloescht. Wer eine falsche Zuordnung
+    # richtigstellte und noch einmal eintrug, hatte danach beides in der
+    # Datenbank: die neuen Saetze bei der richtigen Uebung und die alten bei
+    # der falschen. Aus denen las die Fortschreibung dann ein Gewicht, das zu
+    # einer ganz anderen Uebung gehoerte — sichtbar als Begruendung mit einer
+    # Zahl, die im Text nie neben dieser Uebung stand.
+    #
+    # Saetze von der Uhr bleiben unangetastet: Die hat niemand getippt.
+    with get_db() as db:
+        db.execute("DELETE FROM exercise_sets WHERE day=? AND source='text'", (day,))
+
     for item in items or []:
         if item.get("skip"):
             continue
@@ -936,11 +950,6 @@ def commit(day: str, items: list[dict[str, Any]],
                 ex_id = ex_lib.upsert_exercise(guess)
                 created.append(guess["name"])
 
-        # Eine erneut geschickte Beschreibung soll denselben Tag ersetzen,
-        # nicht verdoppeln. Saetze von der Uhr bleiben unangetastet.
-        with get_db() as db:
-            db.execute("DELETE FROM exercise_sets WHERE exercise_id=? AND day=? "
-                       "AND source='text'", (ex_id, day))
         for index, s in enumerate(item.get("sets") or [], start=1):
             ex_lib.record_set(ex_id, reps=s.get("reps"), weight_kg=s.get("weight_kg"),
                               duration_s=s.get("duration_s"), day=day,

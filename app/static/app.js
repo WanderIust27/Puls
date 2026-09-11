@@ -845,10 +845,8 @@ async function openSettings() {
   $("#setGoalKm").value = s.run_goal_distance_km;
   $("#setGoalMin").value = s.run_goal_time_min;
   $("#setPullup").value = s.pullup_goal;
-  $("#setSchwelle").value = s.progression.schwelle;
-  $("#setOben").value = s.progression.oben;
-  $("#setUnten").value = s.progression.unten;
-  $("#setRunter").value = s.progression.runter_kg;
+  $("#setRepMin").value = s.progression.rep_min;
+  $("#setRepMax").value = s.progression.rep_max;
   $("#setFont").value = s.font_scale;
   updateProgPreview();
   $("#versionLine").textContent = `Kennung ${s.version} · Stand ${s.built_at}`;
@@ -857,10 +855,9 @@ async function openSettings() {
 }
 
 function updateProgPreview() {
-  $("#pvSchwelle").textContent = $("#setSchwelle").value;
-  $("#pvOben").textContent = $("#setOben").value;
-  $("#pvUnten").textContent = $("#setUnten").value;
-  $("#pvRunter").textContent = $("#setRunter").value;
+  $("#pvMin").textContent = $("#setRepMin").value;
+  $("#pvMin2").textContent = $("#setRepMin").value;
+  $("#pvMax").textContent = $("#setRepMax").value;
 }
 
 async function saveSettings() {
@@ -869,10 +866,8 @@ async function saveSettings() {
     run_goal_distance_km: Number($("#setGoalKm").value) || 10,
     run_goal_time_min: Number($("#setGoalMin").value) || 60,
     pullup_goal: Number($("#setPullup").value) || 10,
-    prog_schwelle: Number($("#setSchwelle").value),
-    prog_oben: Number($("#setOben").value),
-    prog_unten: Number($("#setUnten").value),
-    prog_runter_kg: Number($("#setRunter").value),
+    prog_rep_min: Number($("#setRepMin").value),
+    prog_rep_max: Number($("#setRepMax").value),
     font_scale: Number($("#setFont").value),
   });
   document.documentElement.style.setProperty("--fs", `${$("#setFont").value / 100 * 16}px`);
@@ -963,7 +958,7 @@ function bind() {
       toast(r.ok ? "Daten sind da." : (r.detail || "Sync fehlgeschlagen."),
             r.ok ? "good" : "bad")).catch((e) => toast(e.message, "bad"));
   };
-  ["#setSchwelle", "#setOben", "#setUnten", "#setRunter"].forEach((sel) => {
+  ["#setRepMin", "#setRepMax"].forEach((sel) => {
     $(sel).oninput = updateProgPreview;
   });
 

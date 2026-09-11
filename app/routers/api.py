@@ -724,10 +724,8 @@ class SettingsIn(BaseModel):
     run_goal_time_min: float | None = None
     pullup_goal: int | None = None
     font_scale: int | None = None
-    prog_schwelle: float | None = None
-    prog_oben: float | None = None
-    prog_unten: float | None = None
-    prog_runter_kg: float | None = None
+    prog_rep_min: int | None = None
+    prog_rep_max: int | None = None
 
 
 @router.get("/settings")
@@ -771,9 +769,14 @@ def post_settings(s: SettingsIn) -> dict[str, str]:
         value = getattr(s, key)
         if value is not None:
             set_setting(key, str(float(value)))
-    for field, low, high in (("prog_schwelle", 1, 50), ("prog_oben", 1, 50),
-                             ("prog_unten", 1, 50), ("prog_runter_kg", 0.5, 50)):
-        value = getattr(s, field)
-        if value is not None:
-            set_setting(field, str(max(low, min(high, float(value)))))
+    # Die Spanne wird gemeinsam geprueft: Ein Minimum oberhalb des Maximums
+    # waere eine Regel, die nie zutrifft.
+    if s.prog_rep_min is not None or s.prog_rep_max is not None:
+        current = ex_lib._scheme()
+        low = int(s.prog_rep_min if s.prog_rep_min is not None else current["rep_min"])
+        high = int(s.prog_rep_max if s.prog_rep_max is not None else current["rep_max"])
+        low = max(1, min(50, low))
+        high = max(low + 1, min(60, high))
+        set_setting("prog_rep_min", str(low))
+        set_setting("prog_rep_max", str(high))
     return {"status": "ok"}

@@ -173,36 +173,44 @@ verdoppeln. Sätze, die von der Uhr kamen, bleiben dabei unangetastet.
 
 ## Wie die Progression funktioniert
 
-Nach jeder Einheit — ob von der Uhr oder nachgetragen — steht die Regel, die du
-vorgegeben hast:
+Nach jeder Einheit — ob von der Uhr oder nachgetragen — gilt eine Spanne:
 
-> Schafft der **schwerste Satz mehr als 10 Wiederholungen**, war das Gewicht
-> nicht die Grenze. Dann gilt ab sofort **dieses Gewicht bei 10
-> Wiederholungen**. Schafft er weniger, war es zu schwer: **5 kg runter, dafür
-> 15 Wiederholungen**.
+> Schaffst du im **schwersten Satz mehr als 12 Wiederholungen**, war das
+> Gewicht zu leicht: einen Schritt hoch, Ziel zurück auf **8**.
+> Schaffst du **weniger als 8**, war es zu schwer: einen Schritt runter, Ziel
+> ebenfalls **8**.
+> **Dazwischen sitzt das Gewicht** — dann kommt kein Vorschlag.
 
-Beispiel aus der Praxis: Hamstring-Curls mit 25, dann 30, dann 35 kg, jeweils
-15 Wiederholungen. Ab jetzt gilt **35 kg bei 10 Wiederholungen** — nicht der
-Durchschnitt von 30, denn den hat es so nie gegeben.
+Das ist Doppelprogression: Du arbeitest dich innerhalb der Spanne von 8 auf 12
+hoch, und oben angekommen geht das Gewicht eine Stufe höher. Die Spanne stellst
+du unter *Einstellungen* ein; über den Feldern steht der Satz, den deine Zahlen
+gerade ergeben.
+
+Der **Schritt** ist die kleinste sinnvolle Änderung der jeweiligen Übung —
+2,5 kg am Kabelzug, 5 kg an der Maschine oder Langhantel. Er steht bei jeder
+Übung einzeln und lässt sich dort ändern.
 
 Maßgeblich ist der schwerste Satz des Tages, und darin die meisten
-Wiederholungen. Wer sich innerhalb einer Einheit hocharbeitet, hat mit dem
-letzten Satz gezeigt, was geht, nicht mit dem ersten.
+Wiederholungen. Wer sich innerhalb einer Einheit hocharbeitet (25, dann 30,
+dann 35 kg), hat mit dem letzten Satz gezeigt, was geht, nicht mit dem ersten.
 
 **Bei unterstützten Übungen dreht sich die Richtung um.** An der
-Klimmzugmaschine ist das Gewicht die *Hilfe*: 60 kg heißt, sie nimmt dir 60 kg
-ab. Mehr Kilo sind dort weniger Anstrengung. Solche Übungen tragen ein
-Kennzeichen (in der Übungsbibliothek umschaltbar), und die Fortschreibung
-rechnet dann andersherum: Zehn Wiederholungen bei 60 kg Hilfe ergeben *mehr*
-Unterstützung, vierzehn bei 45 kg machen diese 45 kg zur neuen Vorgabe. Ohne
-das Kennzeichen schlüge PULS nach einem zu schweren Satz „mehr Gewicht" vor und
-meinte damit „mehr Hilfe".
+Klimmzugmaschine und am Band ist das Gewicht die *Hilfe*: 60 kg heißt, sie
+nimmt dir 60 kg ab. Mehr Kilo sind dort weniger Anstrengung. Solche Übungen
+tragen ein Kennzeichen (in der Übungsbibliothek umschaltbar), und dann heißt
+*über der Spanne* eben **weniger** Unterstützung. Ohne das Kennzeichen schlüge
+PULS nach einem zu schweren Satz „mehr Gewicht" vor und meinte damit „mehr
+Hilfe".
 
 **Geändert wird nichts von allein.** Jeder Vorschlag steht mit seinem Beleg da
-(„schwerster Satz: 15× 35 kg — mehr als 10 Wiederholungen"), und ein Tipp macht
-ihn zur neuen Vorgabe. *Alle übernehmen* geht auch. Die vier Zahlen der Regel
-— Schwelle, oben, unten, Minus-Kilo — stehen in den Einstellungen und lassen
-sich ändern; darüber steht der Satz, den sie gerade ergeben.
+(„15 Wiederholungen bei 40 kg — mehr als 12, also noch Luft"), nennt die Übung
+beim Namen, und ein Tipp macht ihn zur neuen Vorgabe. *Alle übernehmen* geht
+auch.
+
+Ein Vorschlag kommt auch dann, wenn die Wiederholungen passen, in der
+Bibliothek aber ein anderes Gewicht steht als tatsächlich auf der Maschine lag.
+Das ist keine Trainingsänderung, sondern Buchhaltung — und der Text sagt das
+auch so.
 
 Der Knopf **An letzte Trainings anpassen** rechnet die letzten drei Wochen neu
 durch. Nützlich, wenn ein Sync Sätze nachgeliefert hat, die beim ersten
@@ -211,10 +219,16 @@ Durchlauf noch fehlten.
 **Platzhalter sind keine Messwerte.** Garmin schreibt `-1` in die
 Wiederholungen, wenn die Uhr nicht mitgezählt hat — an Maschinen ständig. Als
 Zahl gelesen heißt das nicht „unbekannt", sondern „minus eine Wiederholung":
-Die Progression läse daraus ein verfehltes Ziel und legte beim zweiten Mal
-einen Deload ein. Solche Werte werden beim Einlesen zur Lücke, die sie sind.
+Die Progression läse daraus ein verfehltes Ziel. Solche Werte werden beim
+Einlesen zur Lücke, die sie sind.
 
----
+**Ein zweiter Eintrag ersetzt den ganzen Tag.** Nicht nur die Übungen, die
+diesmal vorkommen. Vorher wurde je Übung ersetzt — wer eine falsche Zuordnung
+richtigstellte und noch einmal eintrug, hatte danach beides in der Datenbank:
+die neuen Sätze bei der richtigen Übung und die alten bei der falschen. Aus
+denen las die Fortschreibung dann ein Gewicht, das zu einer ganz anderen Übung
+gehörte. Sätze von der Uhr bleiben dabei unangetastet — die hat niemand
+getippt.
 
 ## Deine Woche
 

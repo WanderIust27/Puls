@@ -93,6 +93,9 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          sort_order=6, aliases=["negative pull up", "negative klimmzuege", "jumping pull ups"],
          notes="Hochspringen, 5 s langsam ablassen — Zeit unter Spannung zählt"),
     dict(name="Klimmzüge mit Band", muscle_group="back", equipment="band",
+         # Auch hier hilft das Band, statt zu belasten: weniger Band heisst
+         # mehr eigene Arbeit. Wer eine Zahl dafuer notiert, meint die Hilfe.
+         assisted=True,
          target_reps=8, rep_min=6, rep_max=12, sets=3, rest_s=120, weight_increment=0,
          slot="pullup", priority=3,
          garmin_category="PULL_UP", garmin_exercise="BAND_ASSISTED_PULL_UP",
@@ -534,7 +537,7 @@ def sync_seed_library() -> dict[str, int]:
     added = moved = renamed = 0
     with get_db() as db:
         known = {r["name"]: dict(r) for r in db.execute(
-            "SELECT name, slot, aliases FROM exercises").fetchall()}
+            "SELECT name, slot, aliases, assisted FROM exercises").fetchall()}
         if not known:
             return {"added": 0, "moved": 0, "aliases": 0}
         for ex in SEED_EXERCISES:
@@ -549,6 +552,13 @@ def sync_seed_library() -> dict[str, int]:
             if ex.get("slot", "main") != current["slot"]:
                 db.execute("UPDATE exercises SET slot=? WHERE name=?",
                            (ex.get("slot", "main"), ex["name"]))
+                moved += 1
+            # Ob das Gewicht hilft oder belastet, ist eine Eigenschaft der
+            # Uebung, keine Einstellung des Nutzers — sie wird nachgezogen.
+            want_assist = 1 if ex.get("assisted") else 0
+            if want_assist != (current["assisted"] or 0):
+                db.execute("UPDATE exercises SET assisted=? WHERE name=?",
+                           (want_assist, ex["name"]))
                 moved += 1
             # Aliase sind das, woran die Texterkennung haengt. Kommen mit
             # einem Update neue dazu, muessen sie auch bei einer bestehenden
@@ -586,9 +596,14 @@ def seed_default_exercises() -> None:
         return
     with get_db() as db:
         existing = db.execute("SELECT COUNT(*) AS n FROM exercises").fetchone()["n"]
-        if existing:
-            set_setting("exercises_seeded", "1")
-            return
+    if existing:
+        # Bibliothek da, Haekchen fehlte nur: nachtragen und weiter.
+        # set_setting oeffnet die Datenbank selbst — innerhalb eines offenen
+        # get_db() blockiert das dauerhaft, die Sperre ist nicht reentrant.
+        set_setting("exercises_seeded", "1")
+        sync_seed_library()
+        return
+    with get_db() as db:
         for ex in SEED_EXERCISES:
             # Spaltenliste aus der Zeile selbst, nicht von Hand gepflegt: Eine
             # neu hinzugekommene Spalte fehlte hier sonst stillschweigend und
@@ -1020,31 +1035,31 @@ def _best_set(sets: list[dict[str, Any]]) -> dict[str, Any] | None:
     return max(at_top, key=lambda s: s["reps"])
 
 
-# Das Schema, nach dem die Vorgabe nach jeder Einheit gesetzt wird.
+# Die Spanne, in der ein Gewicht richtig sitzt (Doppelprogression).
 #
-#   Schafft der schwerste Satz MEHR als SCHWELLE Wiederholungen, war das
-#   Gewicht nicht die Grenze — dann gilt ab sofort dieses Gewicht, angesetzt
-#   auf OBEN Wiederholungen.
-#   Schafft er weniger, war es zu schwer — dann RUNTER Kilo weniger und
-#   UNTEN Wiederholungen.
+#   Schaffst du MEHR als REP_MAX Wiederholungen, ist das Gewicht zu leicht:
+#   einen Schritt hoch, Ziel wieder REP_MIN.
+#   Schaffst du WENIGER als REP_MIN, ist es zu schwer: einen Schritt runter,
+#   Ziel wieder REP_MIN.
+#   Dazwischen ist alles in Ordnung — dann gibt es keinen Vorschlag.
+#
+# Der Schritt ist die kleinste sinnvolle Aenderung der jeweiligen Uebung
+# (weight_increment): 2,5 kg an der Maschine, 5 kg an der Langhantel.
 #
 # Bewusst als Zahlen und nicht als Formel: Das ist eine Trainingsentscheidung,
 # keine Rechnung, und sie soll nachlesbar und aenderbar sein.
-PROG = {"schwelle": 10, "oben": 10, "unten": 15, "runter_kg": 5.0}
+PROG = {"rep_min": 8, "rep_max": 12}
 
 
-def _scheme() -> dict[str, float]:
-    def num(key: str, fallback: float) -> float:
+def _scheme() -> dict[str, int]:
+    def num(key: str, fallback: int) -> int:
         try:
-            return float(get_setting(f"prog_{key}", str(fallback)) or fallback)
+            return int(float(get_setting(f"prog_{key}", str(fallback)) or fallback))
         except (TypeError, ValueError):
             return fallback
-    return {
-        "schwelle": int(num("schwelle", PROG["schwelle"])),
-        "oben": int(num("oben", PROG["oben"])),
-        "unten": int(num("unten", PROG["unten"])),
-        "runter_kg": num("runter_kg", PROG["runter_kg"]),
-    }
+    low = max(1, num("rep_min", PROG["rep_min"]))
+    high = max(low + 1, num("rep_max", PROG["rep_max"]))
+    return {"rep_min": low, "rep_max": high}
 
 
 def propose_for_day(day: str) -> list[dict[str, Any]]:
@@ -1060,6 +1075,7 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
     Tippen macht ihn zur neuen Vorgabe.
     """
     cfg = _scheme()
+    low, high = cfg["rep_min"], cfg["rep_max"]
     with get_db() as db:
         ids = [r["exercise_id"] for r in db.execute(
             "SELECT DISTINCT exercise_id FROM exercise_sets WHERE day=?",
@@ -1072,7 +1088,7 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
             continue
         sets = sets_for_day(ex_id, day)
         from_weight = ex["weight_kg"] or 0.0
-        from_reps = ex["target_reps"] or cfg["unten"]
+        from_reps = ex["target_reps"] or low
 
         best = _best_set(sets)
         if not best:
@@ -1085,47 +1101,53 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
             made.append(_store_proposal(
                 ex, day, from_weight, from_reps, top, from_reps,
                 f"{top:g} kg bewegt, Wiederholungen nicht gezählt",
-                f"Die Uhr hat nichts gezählt, aber {top:g} kg lagen auf — "
-                f"die Vorgabe zieht nach."))
+                f"{ex['name']}: Die Uhr hat nichts gezählt, aber {top:g} kg "
+                f"lagen auf — die Vorgabe zieht nach."))
             continue
 
         heaviest, reps = float(best["weight_kg"]), int(best["reps"])
         step = ex["weight_increment"] or 2.5
 
         # Bei unterstuetzten Uebungen hilft das Gewicht, statt zu belasten:
-        # 60 kg an der Klimmzugmaschine heisst, sie nimmt dir 60 kg ab. Die
-        # Richtung dreht sich also um — sonst schlaegt PULS nach einem zu
-        # schweren Satz noch mehr Hilfe als "mehr Gewicht" vor.
+        # 60 kg an der Klimmzugmaschine heisst, sie nimmt dir 60 kg ab, und am
+        # Band gilt dasselbe. Mehr Kilo sind dort weniger Anstrengung — die
+        # Richtung dreht sich also um.
         assisted = bool(ex.get("assisted"))
-        if reps > cfg["schwelle"]:
-            # Was getestet wurde, gilt ab jetzt — in beiden Faellen gleich.
-            to_weight = heaviest
-            to_reps = cfg["oben"]
-            evidence = (f"schwerster Satz: {reps}× {heaviest:g} kg "
-                        f"(mehr als {cfg['schwelle']} Wiederholungen)")
-            reason = (f"{reps} Wiederholungen bei {heaviest:g} kg "
-                      + ("Hilfe — das reicht noch nicht als Grenze. "
-                         if assisted else
-                         "— das Gewicht war nicht die Grenze. ")
-                      + f"Ab jetzt {heaviest:g} kg bei {to_reps} Wiederholungen.")
-        elif assisted:
-            # Zu schwer heisst hier: mehr Hilfe, dafuer mehr Wiederholungen.
-            to_weight = round_to_increment(heaviest + cfg["runter_kg"], step)
-            to_reps = cfg["unten"]
-            evidence = (f"schwerster Satz: {reps}× {heaviest:g} kg Hilfe "
-                        f"(höchstens {cfg['schwelle']} Wiederholungen)")
-            reason = (f"Nur {reps} Wiederholungen bei {heaviest:g} kg Hilfe — noch "
-                      f"zu schwer. Mit {to_weight:g} kg Unterstützung kommst du "
-                      f"sauber durch {to_reps} Wiederholungen.")
+        harder = -step if assisted else step
+        unit = " Hilfe" if assisted else ""
+
+        if reps > high:
+            to_weight = max(0.0, round_to_increment(heaviest + harder, step))
+            to_reps = low
+            evidence = f"schwerster Satz: {reps}× {heaviest:g} kg{unit}"
+            reason = (f"{ex['name']}: {reps} Wiederholungen bei {heaviest:g} kg"
+                      f"{unit} — mehr als {high}, also noch Luft. "
+                      + (f"Mit {to_weight:g} kg Unterstützung wird es wieder "
+                         f"fordernd" if assisted else
+                         f"Ab jetzt {to_weight:g} kg")
+                      + f", Ziel {to_reps} Wiederholungen.")
+        elif reps < low:
+            to_weight = max(0.0, round_to_increment(heaviest - harder, step))
+            to_reps = low
+            evidence = f"schwerster Satz: {reps}× {heaviest:g} kg{unit}"
+            reason = (f"{ex['name']}: Nur {reps} Wiederholungen bei "
+                      f"{heaviest:g} kg{unit} — weniger als {low}, also zu schwer. "
+                      + (f"Mit {to_weight:g} kg Unterstützung" if assisted else
+                         f"Mit {to_weight:g} kg")
+                      + f" kommst du sauber durch {to_reps} Wiederholungen.")
         else:
-            # Zu schwer: einen festen Schritt zurueck, dafuer mehr Wiederholungen.
-            to_weight = max(0.0, round_to_increment(heaviest - cfg["runter_kg"], step))
-            to_reps = cfg["unten"]
-            evidence = (f"schwerster Satz: {reps}× {heaviest:g} kg "
-                        f"(höchstens {cfg['schwelle']} Wiederholungen)")
-            reason = (f"Nur {reps} Wiederholungen bei {heaviest:g} kg — zu schwer. "
-                      f"{to_weight:g} kg bei {to_reps} Wiederholungen bringt dich "
-                      f"sauber durch die Sätze.")
+            # Die Spanne ist getroffen: Das Gewicht sitzt. Der einzige Grund,
+            # trotzdem etwas zu melden, ist eine Vorgabe, die nicht zu dem
+            # passt, was tatsaechlich auf der Maschine lag.
+            if abs(heaviest - from_weight) < 0.4:
+                continue
+            to_weight = heaviest
+            to_reps = max(low, min(high, reps))
+            evidence = f"schwerster Satz: {reps}× {heaviest:g} kg{unit}"
+            reason = (f"{ex['name']}: {reps} Wiederholungen bei {heaviest:g} kg"
+                      f"{unit} liegen in der Spanne {low}–{high} — das Gewicht "
+                      f"passt. In der Bibliothek stehen noch {from_weight:g} kg; "
+                      f"der Vorschlag zieht sie nach.")
 
         if abs(to_weight - from_weight) < 0.4 and to_reps == from_reps:
             continue
@@ -1176,6 +1198,10 @@ def open_proposals(limit: int = 20) -> list[dict[str, Any]]:
 
 def decide_proposal(proposal_id: int, accept: bool) -> dict[str, Any] | None:
     """Einen Vorschlag uebernehmen oder verwerfen."""
+    # Vor der Verbindung holen: _scheme() liest Einstellungen und oeffnet dafuer
+    # selbst die Datenbank. Die Sperre ist nicht reentrant — innerhalb eines
+    # offenen get_db() blockiert das dauerhaft, ohne Fehlermeldung.
+    cfg = _scheme()
     with get_db() as db:
         row = db.execute("SELECT * FROM progression_proposals WHERE id=? AND status='open'",
                          (proposal_id,)).fetchone()
@@ -1184,15 +1210,15 @@ def decide_proposal(proposal_id: int, accept: bool) -> dict[str, Any] | None:
         db.execute("UPDATE progression_proposals SET status=?, decided_at=datetime('now') "
                    "WHERE id=?", ("accepted" if accept else "declined", proposal_id))
         if accept:
-            # Die Spanne mitziehen, falls das neue Ziel ausserhalb liegt: Sonst
-            # stuende "10 Wiederholungen" bei einer Spanne von 12 bis 18, und
-            # die naechste Fortschreibung rechnete gegen die eigene Vorgabe.
+            # Die Spanne mitziehen: Sonst stuende "8 Wiederholungen" bei einer
+            # Spanne von 12 bis 18, und die naechste Fortschreibung rechnete
+            # gegen die eigene Vorgabe.
             db.execute(
                 """UPDATE exercises SET weight_kg=?, target_reps=?, fail_streak=0,
-                       rep_min=MIN(rep_min, ?), rep_max=MAX(rep_max, ?)
+                       rep_min=?, rep_max=?
                    WHERE id=?""",
-                (row["to_weight"], row["to_reps"], row["to_reps"],
-                 row["to_reps"], row["exercise_id"]))
+                (row["to_weight"], row["to_reps"], cfg["rep_min"], cfg["rep_max"],
+                 row["exercise_id"]))
             db.execute(
                 """INSERT INTO progression_log(exercise_id, action, from_weight,
                        to_weight, from_reps, to_reps, reason)

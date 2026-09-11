@@ -218,17 +218,19 @@
     <label>Klimmzüge <input type="number" id="setPullup" min="1" max="50"></label>
   </div>
 
-  <h4>Gewichtssprünge</h4>
-  <p class="hint">Schafft der schwerste Satz mehr als <b id="pvSchwelle">10</b>
-    Wiederholungen, gilt ab sofort dieses Gewicht bei
-    <b id="pvOben">10</b> Wiederholungen. Sonst
-    <b id="pvRunter">5</b> kg weniger bei <b id="pvUnten">15</b>.</p>
+  <h4>Wann sich ein Gewicht ändert</h4>
   <div class="row fields">
-    <label>Schwelle <input type="number" id="setSchwelle" min="1" max="50"></label>
-    <label>oben <input type="number" id="setOben" min="1" max="50"></label>
-    <label>unten <input type="number" id="setUnten" min="1" max="50"></label>
-    <label>−kg <input type="number" id="setRunter" min="0.5" max="50" step="0.5"></label>
+    <label>Spanne <input type="number" id="setRepMin" min="1" max="50"></label>
+    <label>bis <input type="number" id="setRepMax" min="2" max="60"></label>
+    <label>Wiederholungen</label>
   </div>
+  <p class="hint">Schaffst du im schwersten Satz mehr als <b id="pvMax">12</b>
+    Wiederholungen, geht das Gewicht einen Schritt hoch und das Ziel zurück auf
+    <b id="pvMin">8</b>. Schaffst du weniger als <b id="pvMin2">8</b>, geht es
+    einen Schritt runter. Dazwischen sitzt das Gewicht — dann kommt kein
+    Vorschlag. Der Schritt ist die kleinste sinnvolle Änderung der Übung
+    (2,5 kg an der Maschine, 5 kg an der Langhantel); er steht bei jeder Übung
+    einzeln.</p>
 
   <h4>Garmin</h4>
   <div id="garminBox"></div>

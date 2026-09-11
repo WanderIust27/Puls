@@ -119,13 +119,20 @@ check("Eine neue Übung angelegt", res["created"], ["Wadenheben stehend"])
 check("Bibliothek gewachsen", len(ex_lib.list_exercises()), before + 1)
 check("Lauf eingetragen", res["runs"], 1)
 
-# Der Kern des Ganzen: Aus dem Geschafften wird die neue Vorgabe.
+# Der Kern des Ganzen: Aus dem Geschafften folgt die neue Vorgabe.
+# 15 Wiederholungen bei 35 kg liegen über der Spanne 8–12 — also einen
+# Schritt hoch (Band: 2,5 kg) und das Ziel zurück auf 8.
 props = {p["name"]: p for p in res["proposals"]}
 ok("Vorschlag für die Hamstring-Curls", "Hamstring-Curls mit Band" in props,
    str(sorted(props)))
 curls = props["Hamstring-Curls mit Band"]
-check("Schwerster Satz wird zur neuen Grenze", curls["to_weight"], 35.0)
-check("… bei zehn Wiederholungen", curls["to_reps"], 10)
+check("Über der Spanne heisst: einen Schritt hoch", curls["to_weight"], 37.5)
+check("… und das Ziel zurück auf das Minimum", curls["to_reps"], 8)
+ok("Der Grund nennt die Übung beim Namen",
+   curls["reason"].startswith("Hamstring-Curls mit Band:"), curls["reason"])
+ok("… und nur Zahlen, die zu ihr gehören",
+   "35" in curls["reason"] and "37.5" in curls["reason"].replace(",", "."),
+   curls["reason"])
 
 # Zweimal dieselbe Beschreibung darf die Saetze nicht verdoppeln.
 again = logbook.commit(pv["day"], pv["items"], pv["runs"])
@@ -221,33 +228,109 @@ ok("Die Klimmzugmaschine ist eine eigene Übung",
    assist is not None and assist["name"] == "Klimmzüge an der Maschine",
    assist["name"] if assist else "—")
 check("… und ist als unterstützt gekennzeichnet", bool(assist["assisted"]), True)
-check("Das Band bleibt davon unberührt",
-      bool(logbook.find_exercise("Klimmzüge mit Band")["assisted"]), False)
+check("Auch am Band hilft das Gewicht",
+      bool(logbook.find_exercise("Klimmzüge mit Band")["assisted"]), True)
 
-hard_day = (TODAY - dt.timedelta(days=5)).isoformat()
-easy_day = (TODAY - dt.timedelta(days=4)).isoformat()
-for index, (day, reps, weight) in enumerate(((hard_day, 10, 60.0),
-                                             (easy_day, 14, 45.0))):
+
+def assisted_day(offset, reps, weight):
+    day = (TODAY - dt.timedelta(days=offset)).isoformat()
     for set_index in range(1, 4):
         ex_lib.record_set(assist["id"], reps=reps, weight_kg=weight, day=day,
                           set_index=set_index, source="text")
+    return ex_lib.propose_for_day(day)
 
-too_hard = ex_lib.propose_for_day(hard_day)[0]
-check("Zu schwer heisst: mehr Hilfe", too_hard["to_weight"], 65.0)
+
+# Über der Spanne heisst hier: weniger Hilfe, denn das macht es schwerer.
+easy = assisted_day(6, 14, 45.0)[0]
+check("Locker geschafft heisst: weniger Unterstützung", easy["to_weight"], 40.0)
+check("… und das Ziel zurück auf das Minimum", easy["to_reps"], 8)
+
+# Unter der Spanne heisst: mehr Hilfe.
+too_hard = assisted_day(5, 5, 60.0)[0]
+check("Zu schwer heisst: mehr Unterstützung", too_hard["to_weight"], 65.0)
 ok("… und sagt das auch so", "Unterstützung" in too_hard["reason"],
    too_hard["reason"])
-easy = ex_lib.propose_for_day(easy_day)[0]
-check("Locker geschafft heisst: diese Hilfe gilt ab jetzt", easy["to_weight"], 45.0)
-check("… bei zehn Wiederholungen", easy["to_reps"], 10)
 
-# Zur Gegenprobe: ohne das Kennzeichen laeuft es wie gewohnt herum.
+# Und in der Spanne bleibt alles, wie es ist — genau der Fall, über den sich
+# vorher jedes Mal ein Vorschlag gemeldet hat.
+ex_lib.upsert_exercise({"weight_kg": 60.0, "target_reps": 10}, assist["id"])
+inside = assisted_day(4, 10, 60.0)
+check("In der Spanne kommt kein Vorschlag", inside, [])
+
+# Steht in der Bibliothek etwas anderes als auf der Maschine lag, meldet sich
+# PULS trotzdem — aber als Buchhaltung, nicht als Trainingsänderung.
+stale = assisted_day(3, 10, 65.0)
+check("Eine veraltete Vorgabe wird nachgezogen", stale[0]["to_weight"], 65.0)
+ok("… und sagt, dass das Gewicht passt", "passt" in stale[0]["reason"],
+   stale[0]["reason"])
+
+
+# Zur Gegenprobe: ohne das Kennzeichen laeuft es andersherum.
+plain_day = (TODAY - dt.timedelta(days=7)).isoformat()
 normal = logbook.find_exercise("Beinpresse")
 for set_index in range(1, 4):
-    ex_lib.record_set(normal["id"], reps=9, weight_kg=100.0, day=hard_day,
+    ex_lib.record_set(normal["id"], reps=5, weight_kg=100.0, day=plain_day,
                       set_index=set_index, source="text")
-plain = next(p for p in ex_lib.propose_for_day(hard_day)
+plain = next(p for p in ex_lib.propose_for_day(plain_day)
              if p["name"] == "Beinpresse")
-check("Bei normalen Übungen bleibt es beim Minus", plain["to_weight"], 95.0)
+check("Zu schwer heisst dort: weniger Gewicht", plain["to_weight"], 95.0)
+
+for set_index in range(1, 4):
+    ex_lib.record_set(normal["id"], reps=16, weight_kg=100.0,
+                      day=(TODAY - dt.timedelta(days=8)).isoformat(),
+                      set_index=set_index, source="text")
+up = next(p for p in ex_lib.propose_for_day((TODAY - dt.timedelta(days=8)).isoformat())
+          if p["name"] == "Beinpresse")
+check("Zu leicht heisst dort: mehr Gewicht", up["to_weight"], 105.0)
+
+
+# ------------------------------ Ein zweiter Eintrag ersetzt den ganzen Tag
+#
+# Vorher wurde nur je Uebung geloescht. Wer eine falsche Zuordnung
+# richtigstellte und noch einmal eintrug, hatte danach beides in der Datenbank:
+# die neuen Saetze bei der richtigen Uebung und die alten bei der falschen. Aus
+# denen las die Fortschreibung ein Gewicht, das zu einer ganz anderen Uebung
+# gehoerte — sichtbar als Begruendung mit einer Zahl, die im Text nie neben
+# dieser Uebung stand.
+
+SWAP_DAY = (TODAY - dt.timedelta(days=9)).isoformat()
+
+
+def sets_on(day):
+    with get_db() as db:
+        return sorted((r["name"], r["weight_kg"]) for r in db.execute(
+            """SELECT e.name, s.weight_kg FROM exercise_sets s
+               JOIN exercises e ON e.id = s.exercise_id WHERE s.day=?""", (day,)))
+
+
+first = logbook.preview("Beinpresse 3x12 mit 80 kg", TODAY)
+logbook.commit(SWAP_DAY, first["items"], [])
+check("Erster Eintrag steht", len(sets_on(SWAP_DAY)), 3)
+
+second = logbook.preview("Latzug 3x12 mit 45 kg", TODAY)
+logbook.commit(SWAP_DAY, second["items"], [])
+check("Der zweite Eintrag ersetzt den ganzen Tag",
+      {name for name, _ in sets_on(SWAP_DAY)}, {"Latziehen"})
+
+# Saetze von der Uhr hat niemand getippt — die bleiben.
+ex_lib.record_set(logbook.find_exercise("Beinpresse")["id"], reps=10,
+                  weight_kg=100.0, day=SWAP_DAY, source="garmin")
+third = logbook.preview("Dips 3x8", TODAY)
+logbook.commit(SWAP_DAY, third["items"], [])
+check("Was die Uhr geliefert hat, bleibt stehen",
+      ("Beinpresse", 100.0) in sets_on(SWAP_DAY), True)
+check("… und das Getippte ist ersetzt",
+      {name for name, _ in sets_on(SWAP_DAY)}, {"Beinpresse", "Dips"})
+
+# Jede Begründung darf nur Zahlen nennen, die zu ihrer eigenen Übung gehören.
+for proposal in ex_lib.open_proposals(50):
+    weight = proposal["to_weight"]
+    ok(f"Begründung von {proposal['name']} nennt ihre eigene Zahl",
+       f"{weight:g}" in proposal["reason"].replace(",", "."),
+       proposal["reason"][:90])
+    ok(f"… und nennt {proposal['name']} beim Namen",
+       proposal["reason"].startswith(f"{proposal['name']}:"),
+       proposal["reason"][:60])
 
 
 # ------------------------------------------------- Das Modell erfindet nichts

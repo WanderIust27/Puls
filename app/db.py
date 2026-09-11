@@ -346,6 +346,9 @@ DEFAULT_SETTINGS = {
     "run_minutes": "45",
     "evening_mobility": "1",
     "prefer_machines": "1",
+    # Die Spanne, in der ein Gewicht richtig sitzt
+    "prog_rep_min": "8",
+    "prog_rep_max": "12",
     # Laufziel
     "run_goal_distance_km": "10",
     "run_goal_time_min": "60",
@@ -538,6 +541,23 @@ def _clean_sentinel_sets(db: sqlite3.Connection) -> None:
         db.execute("UPDATE exercises SET fail_streak=0 WHERE fail_streak > 0")
 
 
+def _drop_old_progression(db: sqlite3.Connection) -> None:
+    """Die Schluessel der alten Fortschreibung entfernen.
+
+    Bis zur Umstellung auf eine Wiederholungsspanne gab es vier Zahlen
+    (Schwelle, oben, unten, Minus-Kilo). Sie werden nicht mehr gelesen. Sie
+    stehen zu lassen hiesse: Einstellungen in der Datenbank, die nichts mehr
+    bewirken — und beim naechsten Blick in die Tabelle raet man, welche gilt.
+    """
+    gone = db.execute(
+        "DELETE FROM settings WHERE key IN "
+        "('prog_schwelle','prog_oben','prog_unten','prog_runter_kg')").rowcount
+    if gone:
+        import logging
+        logging.getLogger("puls.db").info(
+            "%d Einstellung(en) der alten Fortschreibung entfernt.", gone)
+
+
 def _merge_run_minutes(db: sqlite3.Connection) -> None:
     """Die zwei Dauer-Einstellungen zu einer machen.
 
@@ -568,6 +588,7 @@ def init_db() -> None:
         _fix_run_days(db)
         _clean_sentinel_sets(db)
         _merge_run_minutes(db)
+        _drop_old_progression(db)
         # Token für den Waagen-Webhook einmalig erzeugen
         row = db.execute("SELECT value FROM settings WHERE key='api_token'").fetchone()
         if not row or not row["value"]:
