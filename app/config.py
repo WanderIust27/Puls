@@ -3,8 +3,19 @@ import os
 from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("PULS_DATA_DIR", "/data"))
-DB_PATH = DATA_DIR / "puls.db"
+# PULS_DB kann die Datei einzeln setzen — die Wissensdatenbank und der
+# Eval-Harness lesen dieselbe Variable.
+DB_PATH = Path(os.environ["PULS_DB"]) if os.environ.get("PULS_DB") \
+    else DATA_DIR / "puls.db"
 GARMIN_TOKEN_DIR = DATA_DIR / "garmin_tokens"
+
+# Die geprueften Markdown-Quellen. Im Container ein Bind-Mount, lokal der
+# Ordner im Repo.
+KNOWLEDGE_DIR = Path(os.environ.get("PULS_KB")
+                     or Path(__file__).parent.parent / "knowledge")
+# Das Playbook steuert das Verhalten und gehoert in den System-Prompt, nicht
+# in den Abrufindex.
+PLAYBOOK_FILE = KNOWLEDGE_DIR / "11_Coach_Playbook.md"
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b")

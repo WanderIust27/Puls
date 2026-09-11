@@ -13,8 +13,17 @@ services:
       # in der App unter Mehr → KI-Modell wechselbar (auch qwen3:4b, gemma3:4b)
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
       - SYNC_INTERVAL_HOURS=${SYNC_INTERVAL_HOURS:-3}
+      # Einbettungsmodell der Wissensdatenbank: minilm (ONNX, schlank) oder
+      # e5 (braucht zusaetzlich sentence-transformers und damit PyTorch).
+      - PULS_EMBED=${PULS_EMBED:-minilm}
     volumes:
       - puls-data:/data
+      # Die Wissensdatenbank als Bind-Mount, damit du die Markdown-Dateien auf
+      # dem Server bearbeiten kannst, ohne das Image neu zu bauen. Nur lesen.
+      - ${PULS_KB_DIR:-./knowledge}:/knowledge:ro
+      # Modell-Cache. Ohne ihn laedt der Container das Einbettungsmodell bei
+      # jedem Neustart neu — 220 MB, jedes Mal.
+      - puls-models:/models
     depends_on:
       - ollama
 
@@ -89,3 +98,6 @@ volumes:
     external: true
   ollama-data:
     external: true
+  # Nicht external: Der Modell-Cache ist Wegwerfgut und darf mit dem Stack
+  # entstehen. Faellt er weg, wird das Modell eben neu geladen.
+  puls-models:
