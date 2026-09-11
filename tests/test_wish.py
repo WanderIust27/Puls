@@ -185,7 +185,7 @@ ok("Der Matten-Block ist danach gefüllt", mat >= 9, str(mat))
 check("Eigene Gewichte bleiben unangetastet", bp, 99.0)
 check("Selbst angelegte Übungen bleiben", eigen, 1)
 check("Ein zweiter Lauf ändert nichts", ex_lib.sync_seed_library(),
-      {"added": 0, "moved": 0})
+      {"added": 0, "moved": 0, "aliases": 0})
 
 print()
 if failures:

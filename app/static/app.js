@@ -381,42 +381,18 @@ function renderPreview(pv) {
   $("#btnRead").classList.toggle("ghost", ready);
 
   if (pv.hint) box.append(el("p", "hint", pv.hint));
-  if (!pv.items.length && !pv.runs.length) return;
+  if (!ready) return;
 
-  // „gestern (gestern)“ waere doppelt gemoppelt — die Herkunft steht nur
-  // dann daneben, wenn sie etwas hinzufuegt.
+  // „gestern (gestern)“ wäre doppelt gemoppelt — die Herkunft steht nur
+  // dann daneben, wenn sie etwas hinzufügt.
   const how = pv.day_how && !pv.day_label.startsWith(pv.day_how)
     ? ` — ${pv.day_how}` : "";
   box.append(el("div", "preview-day", `Trainingstag: ${pv.day_label}${how}`));
 
-  pv.items.forEach((item, index) => {
-    const row = el("label", "item preview-item");
-    const tick = el("input");
-    tick.type = "checkbox";
-    tick.checked = true;
-    tick.onchange = () => { pv.items[index].skip = !tick.checked; row.classList.toggle("off", !tick.checked); };
-    row.append(tick);
-    const main = el("div", "item-main");
-    const title = el("div", "item-title");
-    title.append(document.createTextNode(item.name));
-    if (!item.known) title.append(el("span", "tag new", "neu"));
-    main.append(title);
-    main.append(el("div", "item-sub", item.summary));
-    main.append(el("div", "item-sub faint",
-      item.known ? `${item.muscle_label} · ${item.current}`
-                 : `wird angelegt als ${item.muscle_label}` +
-                   ` · gelesen als „${item.read_name}“`));
-    row.append(main);
-    box.append(row);
-  });
-
+  pv.items.forEach((item, index) => box.append(previewItem(pv, item, index)));
   pv.runs.forEach((run, index) => {
-    const row = el("label", "item preview-item");
-    const tick = el("input");
-    tick.type = "checkbox";
-    tick.checked = true;
-    tick.onchange = () => { pv.runs[index].skip = !tick.checked; row.classList.toggle("off", !tick.checked); };
-    row.append(tick);
+    const row = el("div", "item preview-item");
+    row.append(tickFor(run, row));
     const main = el("div", "item-main");
     main.append(el("div", "item-title", `${run.name} (Lauf)`));
     main.append(el("div", "item-sub",
@@ -434,6 +410,139 @@ function renderPreview(pv) {
   }
 }
 
+function tickFor(entry, row) {
+  const tick = el("input");
+  tick.type = "checkbox";
+  tick.checked = !entry.skip;
+  tick.onchange = () => {
+    entry.skip = !tick.checked;
+    row.classList.toggle("off", !tick.checked);
+  };
+  return tick;
+}
+
+const CONFIDENCE = {
+  unsicher: ["unsicher", "warn"],
+  geprüft: ["KI geprüft", ""],
+  neu: ["neu", "new"],
+};
+
+function previewItem(pv, item, index) {
+  const row = el("div", "item preview-item");
+  row.append(tickFor(item, row));
+  const main = el("div", "item-main");
+
+  const title = el("div", "item-title");
+  title.append(document.createTextNode(item.name));
+  const mark = CONFIDENCE[item.confidence];
+  if (mark) title.append(el("span", `tag ${mark[1]}`, mark[0]));
+  main.append(title);
+
+  main.append(setsEditor(pv, item, index));
+
+  // Welche Übung gemeint ist, entscheidest du. Die Auswahl steht immer da,
+  // auch wenn die Zuordnung sicher aussah — eine falsche Zuordnung, die man
+  // nur abwählen statt richtigstellen kann, kostet mehr als sie spart.
+  const picker = el("select", "picker");
+  const seen = new Set();
+  const add = (value, label, parent) => {
+    const opt = el("option", null, label);
+    opt.value = value;
+    (parent || picker).append(opt);
+    return opt;
+  };
+  (item.alternatives || []).forEach((a) => {
+    seen.add(a.id);
+    add(String(a.id), a.name);
+  });
+  const fresh = add("new", `neu anlegen: ${item.read_name}`);
+  const rest = document.createElement("optgroup");
+  rest.label = "alle Übungen";
+  (state.strength?.exercises || []).forEach((e) => {
+    if (!seen.has(e.id)) add(String(e.id), e.name, rest);
+  });
+  if (rest.childElementCount) picker.append(rest);
+  picker.value = item.exercise_id && !item.force_new ? String(item.exercise_id) : "new";
+  if (picker.value === "new") fresh.selected = true;
+
+  picker.onchange = () => {
+    if (picker.value === "new") {
+      item.force_new = true;
+      item.exercise_id = null;
+    } else {
+      item.force_new = false;
+      item.exercise_id = Number(picker.value);
+    }
+    const chosen = (state.strength?.exercises || [])
+      .find((e) => e.id === item.exercise_id);
+    item.name = chosen ? chosen.name : item.read_name;
+    item.confidence = picker.value === "new" ? "neu" : "sicher";
+    renderPreview(pv);
+  };
+  main.append(picker);
+
+  main.append(el("div", "item-sub faint", item.exercise_id && !item.force_new
+    ? `${item.muscle_label}${item.current ? ` · ${item.current}` : ""}`
+      + ` · gelesen als „${item.read_name}“`
+    : `wird angelegt als ${item.muscle_label} · gelesen als „${item.read_name}“`));
+
+  row.append(main);
+  return row;
+}
+
+function setsEditor(pv, item, index) {
+  const box = el("div", "sets-edit");
+  const sets = item.sets || [];
+  const same = sets.every((s) => s.reps === sets[0].reps
+    && s.weight_kg === sets[0].weight_kg && s.duration_s === sets[0].duration_s);
+  if (!same || !sets.length) {
+    box.append(el("span", "item-sub", item.summary));
+    return box;
+  }
+
+  // Alle Sätze gleich: Dann lassen sie sich in drei Zahlen fassen — und
+  // nachbessern, wenn im Text keine Satzzahl stand.
+  const field = (label, value, unit, apply) => {
+    const wrap = el("label", "num");
+    const input = el("input");
+    input.type = "number";
+    input.step = unit === "kg" ? "0.5" : "1";
+    input.min = "0";
+    input.value = value ?? "";
+    input.onchange = () => {
+      apply(input.value === "" ? null : Number(input.value));
+      item.summary = summarise(item.sets);
+      renderPreview(pv);
+    };
+    wrap.append(input, el("span", "unit", label));
+    return wrap;
+  };
+
+  box.append(field("Sätze", sets.length, "", (n) => {
+    const count = Math.max(1, Math.min(20, n || 1));
+    const template = { ...sets[0] };
+    item.sets = Array.from({ length: count }, () => ({ ...template }));
+  }));
+  if (sets[0].duration_s) {
+    box.append(field("s", sets[0].duration_s, "",
+      (n) => item.sets.forEach((s) => { s.duration_s = n; })));
+  } else {
+    box.append(field("Wdh", sets[0].reps, "",
+      (n) => item.sets.forEach((s) => { s.reps = n; })));
+  }
+  box.append(field("kg", sets[0].weight_kg, "kg",
+    (n) => item.sets.forEach((s) => { s.weight_kg = n; })));
+  return box;
+}
+
+function summarise(sets) {
+  return sets.map((s) => {
+    let core = s.duration_s ? `${s.duration_s} s` : s.reps ? `${s.reps}×` : "1 Satz";
+    if (s.weight_kg) core += ` ${s.weight_kg} kg`;
+    return core;
+  }).join(" · ");
+}
+
 async function commitTraining() {
   const pv = state.preview;
   if (!pv) return;
@@ -444,6 +553,7 @@ async function commitTraining() {
     });
     const bits = [`${res.sets} Sätze eingetragen`];
     if (res.created.length) bits.push(`${res.created.length} neue Übung(en): ${res.created.join(", ")}`);
+    if (res.learned?.length) bits.push(`gemerkt: ${res.learned.join(", ")}`);
     if (res.runs) bits.push(`${res.runs} Lauf`);
     toast(`${bits.join(" · ")}.`, "good");
     $("#logText").value = "";
@@ -478,6 +588,7 @@ function openExercise(ex) {
   $("#exReps").value = ex?.target_reps ?? 12;
   $("#exSets").value = ex?.sets ?? 3;
   $("#exSetting").value = ex?.machine_setting || "";
+  $("#exAssisted").checked = Boolean(ex?.assisted);
   $("#btnExDelete").hidden = !ex;
   $("#exHistory").replaceChildren();
   $("#dlgExercise").showModal();
@@ -523,6 +634,7 @@ async function saveExercise() {
     target_reps: Number($("#exReps").value) || 12,
     sets: Number($("#exSets").value) || 3,
     machine_setting: $("#exSetting").value.trim() || null,
+    assisted: $("#exAssisted").checked ? 1 : 0,
   };
   if (!data.name) { toast("Name fehlt.", "bad"); return; }
   if (editing) await patch(`/exercises/${editing.id}`, data);

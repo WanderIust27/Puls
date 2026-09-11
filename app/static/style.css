@@ -176,6 +176,10 @@ button.danger { color: var(--bad); }
   font-size: 0.86em; color: var(--ink-2);
 }
 label.block { display: block; font-size: 0.86em; color: var(--ink-2); margin: 8px 0; }
+label.check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.86em; color: var(--ink-2); margin: 10px 0;
+}
 
 input, select, textarea {
   background: var(--surface-2); color: var(--ink);
@@ -213,6 +217,16 @@ input:focus, select:focus, textarea:focus {
 .change .to { color: var(--good); font-weight: 600; }
 
 .preview-day { font-size: 0.86em; color: var(--accent); margin: 12px 0 4px; }
+.item-title .tag.warn { background: rgba(201, 151, 63, 0.16); color: var(--warn); }
+.item-title .tag.new { background: var(--accent-soft); color: var(--accent); }
+select.picker {
+  margin: 6px 0 4px; font-size: 0.86em; padding: 5px 8px;
+  max-width: 22em; background: var(--surface-2);
+}
+.sets-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 2px 0; }
+.sets-edit .num { display: flex; align-items: center; gap: 4px; }
+.sets-edit input { width: 4.2em; padding: 4px 6px; font-size: 0.86em; }
+.sets-edit .unit { font-size: 0.8em; color: var(--ink-3); }
 .preview-item { cursor: pointer; }
 .preview-item.off { opacity: 0.4; }
 details.unread { margin-top: 10px; }

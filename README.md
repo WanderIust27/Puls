@@ -99,9 +99,11 @@ Erst als Vorschau, zum Abhaken. Erst der zweite Tipp schreibt.
 Beinpresse 3x15 mit 60 kg
 Beinpresse 3 Sätze à 15 Wdh mit 60 kg
 Beinpresse 3x15 60kg
-Beinpresse 15, 12, 10 mit 60 kg          → drei Sätze mit fallenden Wdh.
-Hamstring-Curls 15 Wdh @ 25 / 30 / 35    → drei Sätze mit steigendem Gewicht
-Unterarmstütz 3x60s                      → auf Zeit statt auf Wiederholungen
+Beinpresse drei Sätze 60 kg 15              → die letzte Zahl sind die Wdh.
+Beinpresse 15, 12, 10 mit 60 kg             → drei Sätze mit fallenden Wdh.
+Hamstring-Curls 15 Wdh @ 25 / 30 / 35       → drei Sätze mit steigendem Gewicht
+Unterarmstütz 3x60s                         → auf Zeit statt auf Wiederholungen
+Rückenstrecker 3 mal 15 mit Eigenkörpergewicht
 dreimal fünfzehn Beinpresse mit sechzig Kilo
 ```
 
@@ -109,9 +111,48 @@ Der Trainingstag kommt aus „gestern", „vorgestern", einem Wochentag oder ein
 Datum wie „am 9.3."; ohne Angabe ist es heute. Ein Datum ohne Jahr, das in der
 Zukunft läge, meint das Vorjahr.
 
-**Unbekannte Übungen** werden angelegt — mit geratener Muskelgruppe und
-geratenem Gerät, die sich in der Bibliothek mit zwei Tippern korrigieren
-lassen. Das Gewicht aus der Beschreibung ist sofort die Vorgabe.
+## Wie die Übung wiedergefunden wird
+
+Die erste Fassung verglich Zeichenketten und lag damit spektakulär daneben:
+„Rückenstrecker 3 mal 15 **wiederholungen**" kam als *Ausfallschritte* an, denn
+deren Alias `lunge` steckt in „wiederho-**lunge**-n". Und „Rudern am Kabelzug"
+landete beim Rudergerät, weil dessen Alias `rudern` nun einmal in „rudern
+kabelzug" vorkommt. Ein Vergleich, der Wörter mitten in anderen Wörtern findet,
+ist für Freitext unbrauchbar.
+
+Verglichen wird jetzt auf Wortebene, mit vier Zutaten:
+
+1. **Wörter zählen unterschiedlich viel.** „Rückenstrecker" kommt einmal in der
+   Bibliothek vor und sagt alles; „Gerät" kommt oft vor und sagt wenig.
+   Gewichtet wird mit Wortlänge mal Seltenheit.
+2. **Es zählt in beide Richtungen.** Was aus deiner Angabe fehlt und was die
+   Übung zusätzlich mitbringt. Nur so fällt „Rudern" gegen „Rudern am Kabelzug"
+   durch — beide enthalten „Rudern", aber eben nicht nur.
+3. **Tippfehler dürfen sein.** „Klimzug" und „Klimmzug" sind dasselbe Wort, und
+   „ü" und „ue" sind derselbe Buchstabe — sonst fände „Rückenstrecker" nie den
+   Alias `rueckenstrecker`, der genau dafür gedacht war.
+4. **Ein genanntes Gerät hat Einspruchsrecht.** Wer „am Kabelzug" schreibt,
+   meint nicht die Kurzhantel. Das Gerät entscheidet aber nicht allein — sonst
+   gewänne „Crunch am Kabelzug" gegen „Rudern am Kabelzug", weil beide dasselbe
+   Gerät nennen. Die Bewegung zählt, das Gerät qualifiziert.
+
+**Bleibt es unklar, fragt PULS das Modell — aus einer geschlossenen Liste.** Es
+bekommt deine Schreibweise und bis zu fünf nummerierte Kandidaten aus *deiner*
+Bibliothek und antwortet mit einer Zahl, oder mit 0 für „keine davon". Etwas
+anderes als eine gültige Zahl gilt als „keine". So kann aus einer Nachfrage
+keine erfundene Übung werden. Ist Ollama nicht erreichbar, bleibt der beste
+Treffer stehen — dann eben als *unsicher* gekennzeichnet.
+
+**Das letzte Wort hast du.** Jede Zeile der Vorschau hat ein Auswahlfeld mit
+den nächstbesten Treffern, der ganzen Bibliothek und „neu anlegen" — auch dann,
+wenn die Zuordnung sicher aussieht. Eine falsche Zuordnung, die man nur
+abwählen statt richtigstellen kann, kostet mehr als sie spart. Sätze,
+Wiederholungen und Gewicht stehen daneben als Zahlenfelder, falls im Text
+etwas fehlte.
+
+**Und eine Korrektur bleibt eine Korrektur.** Stellst du „Rückenstrecker" auf
+*Rückenstrecken am Boden* um, wird deine Schreibweise zum Alias dieser Übung —
+und der anderen weggenommen. Beim nächsten Mal sitzt sie auf Anhieb.
 
 **Gelesen wird mit Regeln, nicht mit dem Modell.** Zahlen sind das Einzige,
 worauf es hier ankommt, und ein Sprachmodell, das „60 kg" zu „65 kg" verliest,
@@ -147,6 +188,15 @@ Durchschnitt von 30, denn den hat es so nie gegeben.
 Maßgeblich ist der schwerste Satz des Tages, und darin die meisten
 Wiederholungen. Wer sich innerhalb einer Einheit hocharbeitet, hat mit dem
 letzten Satz gezeigt, was geht, nicht mit dem ersten.
+
+**Bei unterstützten Übungen dreht sich die Richtung um.** An der
+Klimmzugmaschine ist das Gewicht die *Hilfe*: 60 kg heißt, sie nimmt dir 60 kg
+ab. Mehr Kilo sind dort weniger Anstrengung. Solche Übungen tragen ein
+Kennzeichen (in der Übungsbibliothek umschaltbar), und die Fortschreibung
+rechnet dann andersherum: Zehn Wiederholungen bei 60 kg Hilfe ergeben *mehr*
+Unterstützung, vierzehn bei 45 kg machen diese 45 kg zur neuen Vorgabe. Ohne
+das Kennzeichen schlüge PULS nach einem zu schweren Satz „mehr Gewicht" vor und
+meinte damit „mehr Hilfe".
 
 **Geändert wird nichts von allein.** Jeder Vorschlag steht mit seinem Beleg da
 („schwerster Satz: 15× 35 kg — mehr als 10 Wiederholungen"), und ein Tipp macht
@@ -273,14 +323,16 @@ Update trägt nur nach, was fehlt.
 
 ## Übungsbibliothek
 
-Rund 56 Übungen zum Start, aufgeteilt in Blöcke (Kettlebell-Auftakt,
+Rund 60 Übungen zum Start, aufgeteilt in Blöcke (Kettlebell-Auftakt,
 Klimmzugarbeit, Hauptteil, Matte, Dehnen), jede mit Gewicht, Zielwiederholungen,
 Satzzahl, Pausenzeit und ihrer Entsprechung im Garmin-Katalog.
 
-Gesät wird beim ersten Start. Kommen mit einem Update neue Übungen dazu, würde
-sie sonst niemand sehen, der PULS schon benutzt — deshalb gleicht PULS beim
-Hochfahren ab und trägt nach, was fehlt. Deine Gewichte, Zielwerte und selbst
-angelegten Übungen bleiben dabei unberührt.
+Gesät wird beim ersten Start. Kommen mit einem Update neue Übungen oder neue
+Aliase dazu, würde sie sonst niemand sehen, der PULS schon benutzt — deshalb
+gleicht PULS beim Hochfahren ab und trägt nach, was fehlt. Aliase, die sich als
+zu grob erwiesen haben, werden dabei auch wieder entfernt: `rudern` am
+Rudergerät zog jede Rudervariante an sich. Deine Gewichte, Zielwerte, selbst
+angelegten Übungen und selbst gelernten Schreibweisen bleiben unberührt.
 
 Für zuhause reicht eine Matte und eine kleine Hantel: Über zwanzig Übungen
 brauchen kein Gerät.
@@ -300,7 +352,11 @@ Zwei davon decken die beiden Kernstücke ab. Die eine schickt jede Schreibweise
 durch den Textleser und prüft, dass genau die Sätze herauskommen, die
 dastehen — dass ein Dezimalkomma keine zwei Läufe macht, dass „15 Wdh @ 25 /
 30 / 35" drei Sätze mit steigendem Gewicht sind und nicht drei Wiederholungen,
-und dass eine Zahl, die im Originaltext nicht vorkommt, verworfen wird. Die
+und dass eine Zahl, die im Originaltext nicht vorkommt, verworfen wird. Ein
+ganzer Prüfsatz hält dabei den schwierigen Fall fest, an dem die erste Fassung
+gescheitert ist: fünf Übungen in einem Satz, mit Tippfehler, Zahlwörtern, einer
+Zahl ohne Einheit und einem Gerät, das widerspricht. Dazu gehört die Probe,
+dass „wiederholungen" keine Übung mehr findet. Die
 andere stellt die Tagesempfehlung in Lagen, die eine klare Antwort verlangen:
 erschöpft am Gym-Tag muss Pause ergeben, erholt am Gym-Tag eine harte Einheit,
 ein Knieschmerz muss die Beine aus dem Schwerpunkt nehmen, und was heute schon

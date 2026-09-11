@@ -80,6 +80,35 @@ with TestClient(app) as client:
     check("Drei Übungen erkannt", len(preview["items"]), 3)
     ok("Eine davon ist neu", any(not i["known"] for i in preview["items"]),
        str([i["name"] for i in preview["items"] if not i["known"]]))
+    ok("Jede Zeile sagt, wie sicher sie ist",
+       all(i["confidence"] in ("sicher", "geprüft", "unsicher", "neu")
+           for i in preview["items"]),
+       str([i["confidence"] for i in preview["items"]]))
+    ok("… und bietet Alternativen an",
+       all("alternatives" in i for i in preview["items"]))
+
+    # Die schwierige Beschreibung: Sie kam frueher vollstaendig falsch an.
+    hard = client.post("/api/strength/describe", json={"text": (
+        "Gestern deadlifts mit der langhantel drei sätze 40 kg 15, "
+        "Rückenstrecker 3 mal 15 wiederholungen mit eigenkörpergewicht, "
+        "Rudern am Kabelzug mit 50 kg 15 wdh")}).json()
+    check("Schwierige Beschreibung: Zuordnung",
+          [i["name"] for i in hard["items"]],
+          ["Kreuzheben (Langhantel)", "Rückenstrecker (Gerät)",
+           "Rudern am Kabelzug"])
+
+    # Eine Korrektur muss haengenbleiben.
+    fix = client.post("/api/strength/describe",
+                      json={"text": "Heute Rückenstrecker 3x12"}).json()
+    row = fix["items"][0]
+    other = next(a for a in row["alternatives"] if a["id"] != row["exercise_id"])
+    row["exercise_id"] = other["id"]
+    res = client.post("/api/strength/commit", json={
+        "day": fix["day"], "items": [row], "runs": []}).json()
+    ok("Die Korrektur wird gemerkt", bool(res["learned"]), str(res["learned"]))
+    again = client.post("/api/strength/describe",
+                        json={"text": "Heute Rückenstrecker 3x12"}).json()
+    check("… und gilt beim nächsten Mal", again["items"][0]["name"], other["name"])
 
     cm = client.post("/api/strength/commit", json={
         "day": preview["day"], "items": preview["items"], "runs": preview["runs"]})

@@ -18,7 +18,10 @@ Datenbank steht.
 from __future__ import annotations
 
 import datetime as dt
+import difflib
+import json
 import logging
+import math
 import re
 from typing import Any
 
@@ -127,8 +130,22 @@ FILLER = {"mit", "bei", "je", "à", "a", "und", "auf", "im", "in", "am", "der",
           "danach", "dann", "noch", "an", "für", "fuer", "zu", "von", "aus",
           "heute", "gestern", "vorgestern", "training", "trainiert", "jeweils",
           "insgesamt", "also", "waren", "ca", "etwa", "rund", "gym", "studio",
-          "fitnessstudio", "zuhause", "daheim", "heute", "morgens", "abends",
-          "mittags", "nachmittags", "einheit", "workout"}
+          "fitnessstudio", "zuhause", "daheim", "morgens", "abends",
+          "mittags", "nachmittags", "einheit", "workout",
+          # Einheitenwoerter. Sie stehen hier zusaetzlich zu den Mustern,
+          # weil ein Muster nur seine eigene Stelle verbraucht: Aus
+          # „3 mal 15 wiederholungen" liest „3 mal 15" die Zahlen, und das
+          # Wort „wiederholungen" bliebe sonst als Teil des Namens stehen —
+          # und mit ihm steckte „lunge" in „wiederho-lunge-n".
+          "wiederholung", "wiederholungen", "wdh", "wh", "reps", "rep",
+          "satz", "sätze", "saetze", "sätzen", "saetzen", "serie", "serien",
+          "set", "sets", "mal", "kg", "kilo", "kilogramm", "sek", "sekunde",
+          "sekunden", "min", "minute", "minuten", "std", "stunde", "stunden"}
+
+# Wenn das dransteht, ist kein Gewicht gemeint, sondern gar keins.
+BODYWEIGHT_WORDS = ("eigenkörpergewicht", "eigenkoerpergewicht", "körpergewicht",
+                    "koerpergewicht", "eigengewicht", "bodyweight",
+                    "ohne gewicht", "ohne zusatzgewicht")
 
 
 def _segments(text: str) -> list[str]:
@@ -240,10 +257,48 @@ def read_segment(segment: str) -> dict[str, Any]:
             for i in range(m.start(), m.end()):
                 mask[i] = " "
 
-    name = " ".join(w for w in re.split(r"\s+", "".join(mask))
-                    if w.strip(".,:;()-–—@/") and w.strip(".,:;()-–—@/") not in FILLER)
+    # Was an Zahlen uebrig blieb, ist meistens die Angabe, fuer die kein
+    # Wort dastand: „drei Sätze 40 kg 15" nennt zuletzt die Wiederholungen.
+    # Sie im Namen stehen zu lassen waere die schlechteste aller Deutungen.
+    rest = "".join(mask)
+    for leftover in (int(m.group(0)) for m in re.finditer(r"\b\d+\b", rest)):
+        if "reps" not in found and "rep_list" not in found and 1 <= leftover <= 50:
+            found["reps"] = leftover
+            break
+    mask = [" " if ch.isdigit() else ch for ch in mask]
+
+    low_segment = segment.lower()
+    if any(w in low_segment for w in BODYWEIGHT_WORDS):
+        found["bodyweight"] = True
+        found.pop("weight", None)
+        # Und aus dem Namen raus: „Rückenstrecker mit Eigenkörpergewicht" ist
+        # die Uebung Rückenstrecker, nicht eine mit langem Zusatz.
+        masked = "".join(mask)
+        for word in BODYWEIGHT_WORDS:
+            masked = re.sub(re.escape(word), " ", masked, flags=re.IGNORECASE)
+        mask = list(masked)
+
+    name = " ".join(_keep_words(re.split(r"\s+", "".join(mask))))
     name = re.sub(r"\s+", " ", name).strip(" .,:;()-–—@/")
     return {"raw": segment.strip(), "name": name, **found}
+
+
+def _keep_words(words: list[str]) -> list[str]:
+    """Fuellwoerter entfernen — ausser sie verbinden zwei Namensteile."""
+    cleaned = [(w, w.strip(".,:;()-–—@/")) for w in words]
+    cleaned = [(w, bare) for w, bare in cleaned if bare]
+    kept: list[str] = []
+    for index, (word, bare) in enumerate(cleaned):
+        low = bare.lower()
+        if low not in FILLER:
+            kept.append(bare)
+            continue
+        later = any(b.lower() not in FILLER for _, b in cleaned[index + 1:])
+        if low in CONNECTORS and kept and later:
+            kept.append(bare)
+    while kept and kept[-1].lower() in FILLER:
+        kept.pop()
+    return kept
 
 
 RUN_WORDS = ("lauf", "gelaufen", "joggen", "gejoggt", "run", "runde gedreht",
@@ -283,85 +338,403 @@ def _sets_of(item: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 # ------------------------------------------------------- Uebung wiederfinden
+#
+# Frueher wurde hier mit Teilzeichenketten verglichen. Das ging so lange gut,
+# bis "Rückenstrecker 3 mal 15 wiederholungen" als "Ausfallschritte" ankam:
+# deren Alias "lunge" steckt in "wiederho-lunge-n". Und "Rudern am Kabelzug"
+# landete beim Rudergeraet, weil dessen Alias "rudern" nun einmal in "rudern
+# kabelzug" vorkommt. Ein Vergleich, der Woerter in der Mitte anderer Woerter
+# findet, ist fuer Freitext unbrauchbar.
+#
+# Jetzt wird auf Wortebene verglichen, mit drei Zutaten:
+#   * Woerter zaehlen unterschiedlich viel. "ruckenstrecker" kommt einmal in
+#     der Bibliothek vor und sagt alles; "gerat" kommt oft vor und sagt wenig.
+#   * Tippfehler duerfen sein: "klimzug" und "klimmzug" sind dasselbe Wort.
+#   * Ein genanntes Geraet, das dem der Uebung widerspricht, schlaegt durch.
+#     Wer "am Kabelzug" schreibt, meint nicht die Kurzhantel.
 
-def _tokens(name: str) -> set[str]:
-    return {t for t in ex_lib.normalize(name).split() if len(t) >= 3}
+FOLD = str.maketrans({"ä": "a", "ö": "o", "ü": "u", "ß": "s",
+                      "é": "e", "è": "e", "á": "a", "í": "i"})
+
+# Endungen, die dasselbe Wort nur anders beugen.
+ENDINGS = ("en", "er", "es", "e", "n", "s")
+
+
+def canon(text: str) -> str:
+    """Ein Wort auf seine Vergleichsform bringen.
+
+    Umlaute fallen auf den Grundbuchstaben, und zwar in beiden Schreibweisen:
+    "ü" und "ue" werden gleich. Sonst faende "Rückenstrecker" nie den Alias
+    "rueckenstrecker", der genau dafuer gedacht war.
+    """
+    low = str(text or "").lower().translate(FOLD)
+    low = re.sub(r"ue|oe|ae", lambda m: m.group(0)[0], low)
+    return re.sub(r"[^a-z0-9]+", " ", low).strip()
+
+
+def _stem(word: str) -> str:
+    for ending in ENDINGS:
+        if len(word) > 4 + len(ending) and word.endswith(ending):
+            return word[: -len(ending)]
+    return word
+
+
+def tokens(text: str) -> list[str]:
+    return [_stem(w) for w in canon(text).split() if len(w) >= 3]
+
+
+def _similar(a: str, b: str) -> float:
+    """Wie gleich sind zwei Woerter? 1.0 gleich, 0 verschieden."""
+    if a == b:
+        return 1.0
+    if abs(len(a) - len(b)) > 4:
+        return 0.0
+    ratio = difflib.SequenceMatcher(None, a, b).ratio()
+    return ratio if ratio >= 0.84 else 0.0
+
+
+# Genanntes Geraet gegen das der Uebung. Nur Eindeutiges steht hier drin:
+# "Hantel" allein kann beides sein und taucht deshalb nicht auf.
+EQUIP_WORDS: dict[str, str] = {
+    "langhantel": "barbell", "barbell": "barbell", "stang": "barbell",
+    "kurzhantel": "dumbbell", "dumbbell": "dumbbell",
+    "kabel": "cable", "kabelzug": "cable", "seilzug": "cable", "cabl": "cable",
+    "band": "band", "gummiband": "band", "theraband": "band",
+    "maschin": "machine", "gerat": "machine",
+    "schlingentrain": "suspension", "trx": "suspension",
+    "kettlebell": "kettlebell",
+    "korpergewicht": "bodyweight", "eigengewicht": "bodyweight",
+    "eigenkorpergewicht": "bodyweight", "bodyweight": "bodyweight",
+}
+
+
+def _equipment_named(toks: list[str]) -> str | None:
+    for t in toks:
+        if t in EQUIP_WORDS:
+            return EQUIP_WORDS[t]
+    return None
+
+
+SURE = 0.72          # darueber gilt die Uebung als erkannt
+MAYBE = 0.34         # darunter lohnt nicht einmal eine Nachfrage
+
+
+def _index() -> list[dict[str, Any]]:
+    """Die Bibliothek als Wortlisten, mit Gewicht je Wort.
+
+    Das Gewicht ist Wortlaenge mal Seltenheit: Ein Wort, das in der halben
+    Bibliothek vorkommt, unterscheidet nichts.
+    """
+    library = ex_lib.list_exercises()
+    entries = []
+    for ex in library:
+        variants = [tokens(ex["name"])] + [tokens(a) for a in ex["aliases"]]
+        variants = [v for v in variants if v]
+        entries.append({"ex": ex, "variants": variants,
+                        "equipment": ex["equipment"]})
+
+    document_count = max(1, sum(len(e["variants"]) for e in entries))
+    seen: dict[str, int] = {}
+    for entry in entries:
+        for variant in entry["variants"]:
+            for t in set(variant):
+                seen[t] = seen.get(t, 0) + 1
+    for entry in entries:
+        entry["weights"] = [
+            {t: len(t) * math.log(document_count / (1 + seen.get(t, 0)) + 1.6)
+             for t in variant} for variant in entry["variants"]]
+    return entries
+
+
+def _weight_of(token: str, index: list[dict[str, Any]]) -> float:
+    """Gewicht eines Wortes aus der Anfrage — dieselbe Skala wie im Index."""
+    for entry in index:
+        for weights in entry["weights"]:
+            if token in weights:
+                return weights[token]
+    # Kommt in der Bibliothek nicht vor: ein eigenes, unterscheidendes Wort.
+    return len(token) * math.log(20.0)
+
+
+def _movement(toks: list[str]) -> list[str]:
+    """Nur die Woerter, die die Bewegung benennen.
+
+    Das Geraet steht daneben und wird eigens geprueft. Zaehlte es mit, gewaenne
+    „Crunch am Kabelzug" gegen „Rudern am Kabelzug", weil beide dasselbe Geraet
+    nennen und „Kabelzug" das seltenere Wort ist. Gemeint ist aber das Rudern.
+    """
+    movement = [t for t in toks if t not in EQUIP_WORDS]
+    return movement or toks
+
+
+def _pair_score(query: list[str], q_weights: dict[str, float],
+                candidate: list[str], c_weights: dict[str, float]) -> float:
+    """Wie gut deckt sich die Anfrage mit einer Uebungsschreibweise?
+
+    Gezaehlt wird in beide Richtungen: Was aus der Anfrage fehlt, und was die
+    Uebung zusaetzlich mitbringt. Nur so faellt "Rudern" gegen "Rudern am
+    Kabelzug" durch — beide enthalten "Rudern", aber eben nicht nur.
+    """
+    def coverage(left: list[str], left_w: dict[str, float],
+                 right: list[str]) -> float:
+        total = sum(left_w.get(t, 1.0) for t in left) or 1.0
+        hit = sum(left_w.get(t, 1.0) * max((_similar(t, r) for r in right),
+                                           default=0.0) for t in left)
+        return hit / total
+
+    q_move, c_move = _movement(query), _movement(candidate)
+    return 0.6 * coverage(q_move, q_weights, c_move) \
+        + 0.4 * coverage(c_move, c_weights, q_move)
+
+
+def candidates(name: str, limit: int = 5) -> list[dict[str, Any]]:
+    """Die plausibelsten Uebungen zu einer Schreibweise, beste zuerst."""
+    query = tokens(name)
+    if not query:
+        return []
+    index = _index()
+    q_weights = {t: _weight_of(t, index) for t in query}
+    wanted_equipment = _equipment_named(query)
+
+    scored: list[dict[str, Any]] = []
+    for entry in index:
+        best = 0.0
+        for variant, weights in zip(entry["variants"], entry["weights"]):
+            best = max(best, _pair_score(query, q_weights, variant, weights))
+        if wanted_equipment and entry["equipment"] != wanted_equipment:
+            # Ein genanntes Geraet, das nicht passt, ist ein Einspruch —
+            # kein Grund zum Ausschluss, aber die Uebung gewinnt so nicht.
+            best *= 0.45
+        if best > 0.12:
+            scored.append({"exercise": entry["ex"], "score": round(best, 3)})
+    scored.sort(key=lambda c: -c["score"])
+    return scored[:limit]
+
+
+def _exact(name: str) -> dict[str, Any] | None:
+    """Eine Uebung, deren Name oder Alias genau so heisst."""
+    wanted = canon(name)
+    if not wanted:
+        return None
+    for ex in ex_lib.list_exercises():
+        if canon(ex["name"]) == wanted:
+            return ex
+        if any(canon(a) == wanted for a in ex["aliases"]):
+            return ex
+    return None
 
 
 def find_exercise(name: str) -> dict[str, Any] | None:
-    """Die Uebung zum Namen — erst genau, dann ueber Wortueberschneidung."""
+    """Die eine Uebung zum Namen — oder nichts."""
+    found = resolve(name, ask_model=False)
+    return found["exercise"]
+
+
+def resolve(name: str, ask_model: bool = True) -> dict[str, Any]:
+    """Eine Schreibweise aufloesen und dazusagen, wie sicher das ist.
+
+    Drei Ausgaenge: sicher erkannt, unsicher (dann steht die Auswahl daneben),
+    oder nichts Passendes. Im unsicheren Fall darf das Modell aus genau diesen
+    Kandidaten einen auswaehlen — erfinden kann es dabei nichts, es gibt nur
+    eine Nummer zurueck, und die wird geprueft.
+    """
+    empty = {"exercise": None, "score": 0.0, "confidence": "neu",
+             "alternatives": [], "asked_model": False}
     if not name:
+        return empty
+
+    # Wortgleich ist wortgleich. Ohne diesen Vorrang entschiede bei zwei
+    # gleich guten Treffern die Reihenfolge in der Bibliothek — und eine
+    # einmal von Hand richtiggestellte Schreibweise bliebe wirkungslos,
+    # obwohl sie als Alias danebensteht.
+    exact = _exact(name)
+    if exact:
+        return {"exercise": exact, "score": 1.0, "confidence": "sicher",
+                "alternatives": [{"id": c["exercise"]["id"],
+                                  "name": c["exercise"]["name"],
+                                  "score": c["score"]} for c in candidates(name)],
+                "asked_model": False}
+
+    found = candidates(name)
+    if not found:
+        return empty
+
+    top = found[0]
+    runner_up = found[1]["score"] if len(found) > 1 else 0.0
+    alternatives = [{"id": c["exercise"]["id"], "name": c["exercise"]["name"],
+                     "score": c["score"]} for c in found]
+
+    if top["score"] >= SURE and top["score"] - runner_up >= 0.08:
+        return {"exercise": top["exercise"], "score": top["score"],
+                "confidence": "sicher", "alternatives": alternatives,
+                "asked_model": False}
+
+    if top["score"] < MAYBE:
+        return {**empty, "alternatives": alternatives}
+
+    picked = _model_pick(name, found) if ask_model else None
+    if picked:
+        return {"exercise": found[picked - 1]["exercise"],
+                "score": found[picked - 1]["score"], "confidence": "geprüft",
+                "alternatives": alternatives, "asked_model": True}
+    if picked == 0:
+        # Das Modell hat ausdruecklich "keine davon" gesagt. Das ist eine
+        # Antwort, keine Ratlosigkeit — also eine neue Uebung.
+        return {**empty, "alternatives": alternatives, "asked_model": True}
+
+    # Nicht fragen koennen ist etwas anderes als eine Absage. Ohne Modell
+    # bleibt der beste Treffer stehen, nur eben als unsicher gekennzeichnet:
+    # Eine zweite Übung „Rückenstrecker" neben „Rückenstrecker (Gerät)"
+    # anzulegen waere von allen Ausgaengen der schlechteste.
+    return {"exercise": top["exercise"], "score": top["score"],
+            "confidence": "unsicher", "alternatives": alternatives,
+            "asked_model": False}
+
+
+def _model_pick(name: str, found: list[dict[str, Any]]) -> int | None:
+    """Das Modell aus einer geschlossenen Liste waehlen lassen.
+
+    Es bekommt nur Nummern zur Auswahl und die Moeglichkeit, keine zu nehmen.
+    Antwortet es etwas anderes, gilt das als "keine". So kann aus einer
+    Nachfrage keine erfundene Uebung werden.
+
+    Rueckgabe: die Nummer (ab 1), 0 fuer "keine davon", None wenn gar nicht
+    gefragt werden konnte. Die beiden letzten Faelle auseinanderzuhalten ist
+    wichtig — ein nicht erreichbares Modell ist keine Absage.
+    """
+    try:
+        from .ollama_client import generate_json
+        liste = "\n".join(f"{i + 1}. {c['exercise']['name']}"
+                          for i, c in enumerate(found))
+        data = generate_json(
+            prompt=(
+                f"Jemand hat in sein Trainingstagebuch „{name.strip()[:80]}“ "
+                "geschrieben. Welche Übung aus dieser Liste ist gemeint?\n\n"
+                f"{liste}\n\nAntworte als JSON-Objekt mit dem Schlüssel "
+                "\"nummer\": die Nummer der gemeinten Übung, oder 0, wenn "
+                "keine davon passt. Nur eine Zahl, keine Erklärung. Im "
+                "Zweifel 0."),
+            system="Du ordnest zu. Du antwortest ausschliesslich mit JSON.",
+            temperature=0.1)
+        number = int(data.get("nummer", 0)) if isinstance(data, dict) else 0
+    except Exception as e:                                      # noqa: BLE001
+        log.debug("Zuordnung ohne Modell: %s", e)
         return None
-    wanted = ex_lib.normalize(name)
-    library = ex_lib.list_exercises()
-    for ex in library:
-        if ex_lib.normalize(ex["name"]) == wanted:
-            return ex
-        if any(ex_lib.normalize(a) == wanted for a in ex["aliases"]):
-            return ex
-    direct = ex_lib.match_exercise(name)
-    if direct:
-        return direct
-    mine = _tokens(name)
-    if not mine:
-        return None
-    best, best_score = None, 0.0
-    for ex in library:
-        theirs = _tokens(ex["name"]) | {t for a in ex["aliases"] for t in _tokens(a)}
-        if not theirs:
-            continue
-        shared = mine & theirs
-        if not shared or max(len(t) for t in shared) < 4:
-            continue
-        score = len(shared) / min(len(mine), len(theirs))
-        if score > best_score:
-            best, best_score = ex, score
-    return best if best_score >= 0.6 else None
+    return number if 1 <= number <= len(found) else 0
 
 
 # Was eine unbekannte Uebung wohl ist. Nur Stichworte, keine Kunst: Die
-# Zuordnung laesst sich in der Bibliothek mit zwei Tippern korrigieren.
+# Zuordnung laesst sich in der Vorschau mit einem Tipp korrigieren.
 MUSCLE_GUESS: list[tuple[str, str]] = [
-    (r"bauch|core|plank|planke|sit.?up|crunch|beinheben|rumpf|käfer|kaefer|"
-     r"klappmesser|seitstütz|seitstuetz|unterarmstütz|unterarmstuetz|hollow", "core"),
-    (r"bein|squat|kniebeuge|beinpresse|beinbeuger|beinstrecker|wade|calf|"
-     r"ausfallschritt|lunge|hip thrust|glute|gesäß|gesaess|hamstring|quad", "legs"),
-    (r"brust|bank|bench|butterfly|fly|flye|liegestütz|liegestuetz|push.?up|dip", "chest"),
-    (r"rücken|ruecken|lat|rudern|row|klimmzug|pull.?up|kreuzheben|deadlift|"
-     r"hyperextension|rückenstrecker|rueckenstrecker|face pull", "back"),
-    (r"schulter|shoulder|seitheben|lateral|nacken|shrug|overhead|"
-     r"military|pike", "shoulders"),
-    (r"bizeps|trizeps|biceps|triceps|curl|unterarm|handgelenk", "arms"),
-    (r"lauf|rad|fahrrad|rudergerät|rudergeraet|crosstrainer|ergometer|"
-     r"laufband|stepper", "cardio"),
+    (r"klim+ ?zug|klim+zug|pull ?up|klimmzug", "back"),
+    (r"bauch|core|plank|plank|sit ?up|situp|crunch|beinheb|rumpf|kafer|"
+     r"klappmess|seitstutz|unterarmstutz|hollow|hohlkorp|russisch", "core"),
+    (r"bein|squat|kniebeug|beinpress|wade|calf|ausfallschritt|lunge|"
+     r"hip ?thrust|glut|gesass|hamstring|quad|beinbeug|beinstreck", "legs"),
+    (r"brust|bank|bench|butterfly|fly|liegestutz|push ?up|dip|chest", "chest"),
+    (r"ruck|lat|rudern|row|kreuzheb|deadlift|hyperextension|face ?pull|"
+     r"uberzug|pullover|shrug|nackenzieh", "back"),
+    (r"schult|shoulder|seitheb|lateral|nacken|overhead|military|pike|"
+     r"handstand|halo", "shoulders"),
+    (r"bizeps|trizeps|bicep|tricep|curl|unterarm|handgelenk|arm", "arms"),
+    (r"lauf|rad|fahrrad|rudergerat|crosstrain|ergomet|laufband|stepp", "cardio"),
 ]
 
 EQUIPMENT_GUESS: list[tuple[str, str]] = [
-    (r"kabel|cable|kabelzug", "cable"),
+    (r"kabel|cable|seilzug", "cable"),
     (r"band|gummi|theraband", "band"),
-    (r"kurzhantel|dumbbell|\bkh\b|hantel", "dumbbell"),
-    (r"langhantel|barbell|stange", "barbell"),
+    (r"langhantel|barbell|stange|sz ?stange", "barbell"),
+    (r"kurzhantel|dumbbell|\bkh\b", "dumbbell"),
     (r"schling|trx|suspension", "suspension"),
-    (r"kettlebell", "dumbbell"),
-    (r"maschine|gerät|geraet|presse|zug\b", "machine"),
-    (r"plank|planke|sit.?up|crunch|liegestütz|liegestuetz|klimmzug|dip|"
-     r"beinheben|seitstütz|seitstuetz|käfer|kaefer|hollow|bodyweight|"
-     r"eigengewicht", "bodyweight"),
+    (r"kettlebell", "kettlebell"),
+    (r"maschin|gerat|presse|zug\b", "machine"),
+    (r"plank|sit ?up|situp|crunch|liegestutz|klim+ ?zug|dip|beinheb|"
+     r"seitstutz|kafer|hollow|bodyweight|eigengewicht|korpergewicht|"
+     r"handstand|kriech", "bodyweight"),
+    (r"hantel", "dumbbell"),
 ]
 
 
-def guess_new(name: str, has_weight: bool, has_time: bool) -> dict[str, Any]:
+def _clean_name(raw: str) -> str:
+    """Aus dem gelesenen Wortsalat einen Uebungsnamen machen.
+
+    Gross geschrieben werden das erste Wort und alles, was auf ein
+    Verbindungswort folgt: „Rudern am Kabelzug", „Kreuzheben mit Langhantel".
+    Der Rest bleibt, wie er dasteht — sonst entstuende „Wadenheben Stehend",
+    und Adjektive schreibt das Deutsche nun einmal klein.
+    """
+    words = [w for w in re.split(r"\s+", (raw or "").strip()) if w]
+    out: list[str] = []
+    for index, word in enumerate(words):
+        after_connector = index and words[index - 1].lower() in CONNECTORS
+        if (index == 0 or after_connector) and not word[:1].isupper():
+            word = word[:1].upper() + word[1:]
+        out.append(word)
+    return " ".join(out)
+
+
+# Kleine Woerter, die zwischen zwei Namensteilen stehen bleiben duerfen:
+# „Rudern am Kabelzug" liest sich besser als „Rudern Kabelzug".
+CONNECTORS = ("am", "an", "mit", "auf", "im", "vor", "hinter")
+
+
+def guess_new(name: str, has_weight: bool, has_time: bool,
+              bodyweight: bool = False) -> dict[str, Any]:
     """Eine unbekannte Uebung so anlegen, dass sie sofort brauchbar ist."""
-    low = ex_lib.normalize(name)
-    muscle = next((g for pattern, g in MUSCLE_GUESS if re.search(pattern, low)), "core")
+    low = canon(name)
+    muscle = next((g for pattern, g in MUSCLE_GUESS if re.search(pattern, low)), None)
     equipment = next((e for pattern, e in EQUIPMENT_GUESS if re.search(pattern, low)),
-                     "machine" if has_weight else "bodyweight")
+                     None)
+    if bodyweight:
+        equipment = "bodyweight"
+    guessed_by_model = False
+    if muscle is None or equipment is None:
+        asked = _model_guess(name)
+        if asked:
+            muscle = muscle or asked.get("muscle_group")
+            equipment = equipment or asked.get("equipment")
+            guessed_by_model = True
+    if equipment is None:
+        equipment = "machine" if has_weight else "bodyweight"
+    if muscle is None:
+        muscle = "core"
     mode = "time" if has_time and not has_weight else "reps"
     slot = "mat" if equipment == "bodyweight" and muscle == "core" else "main"
-    return {"name": name.strip().capitalize() if name.islower() else name.strip(),
-            "muscle_group": muscle, "equipment": equipment, "mode": mode,
-            "slot": slot}
+    return {"name": _clean_name(name), "muscle_group": muscle,
+            "equipment": equipment, "mode": mode, "slot": slot,
+            "guessed_by_model": guessed_by_model}
 
+
+def _model_guess(name: str) -> dict[str, str] | None:
+    """Muskelgruppe und Geraet vom Modell schaetzen lassen — aus fester Auswahl.
+
+    Geprueft wird beides gegen die erlaubten Werte. Etwas anderes als die
+    vorgegebenen Woerter kommt nicht durch.
+    """
+    try:
+        from .ollama_client import generate_json
+        data = generate_json(
+            prompt=(
+                f"Die Kraftübung heißt „{name.strip()[:80]}“. Ordne sie zu.\n"
+                "Antworte als JSON-Objekt mit zwei Schlüsseln:\n"
+                "\"muskelgruppe\": eines von legs, chest, back, shoulders, "
+                "arms, core, cardio\n"
+                "\"geraet\": eines von machine, cable, band, dumbbell, "
+                "barbell, bodyweight, kettlebell, suspension\n"
+                "Nur diese Wörter, nichts anderes."),
+            system="Du ordnest zu. Du antwortest ausschliesslich mit JSON.",
+            temperature=0.1)
+    except Exception as e:                                      # noqa: BLE001
+        log.debug("Zuordnung der neuen Übung ohne Modell: %s", e)
+        return None
+    if not isinstance(data, dict):
+        return None
+    muscle = str(data.get("muskelgruppe", "")).strip().lower()
+    equipment = str(data.get("geraet", "")).strip().lower()
+    return {
+        "muscle_group": muscle if muscle in ex_lib.MUSCLE_LABELS else "",
+        "equipment": equipment if equipment in ex_lib.EQUIPMENT_LABELS else "",
+    }
 
 # ------------------------------------------------------------------ Vorschau
 
@@ -423,28 +796,40 @@ def _read_all(text: str, verify_against: str | None = None
             unread.append(segment.strip())
             continue
 
-        known = find_exercise(parsed["name"])
+        found = resolve(parsed["name"])
+        known = found["exercise"]
         has_weight = any(s.get("weight_kg") for s in sets)
         has_time = any(s.get("duration_s") for s in sets)
         item = {
             "raw": parsed["raw"], "read_name": parsed["name"], "sets": sets,
             "known": bool(known),
             "exercise_id": known["id"] if known else None,
-            "name": known["name"] if known else
-                    guess_new(parsed["name"], has_weight, has_time)["name"],
+            "confidence": found["confidence"],
+            "score": found["score"],
+            # Die naechstbesten Treffer stehen immer daneben — auch wenn die
+            # Zuordnung sicher aussieht. Eine falsche Zuordnung, die man nur
+            # abwaehlen statt richtigstellen kann, kostet mehr als sie spart.
+            "alternatives": found["alternatives"],
             "summary": _summarise(sets),
         }
         if known:
-            item["muscle_group"] = known["muscle_group"]
-            item["muscle_label"] = ex_lib.MUSCLE_LABELS.get(known["muscle_group"], "")
-            item["current"] = _current_of(known)
+            item.update({
+                "name": known["name"],
+                "muscle_group": known["muscle_group"],
+                "muscle_label": ex_lib.MUSCLE_LABELS.get(known["muscle_group"], ""),
+                "equipment": known["equipment"],
+                "current": _current_of(known),
+            })
         else:
-            guess = guess_new(parsed["name"], has_weight, has_time)
-            item.update({"muscle_group": guess["muscle_group"],
+            guess = guess_new(parsed["name"], has_weight, has_time,
+                              bodyweight=bool(parsed.get("bodyweight")))
+            item.update({"name": guess["name"],
+                         "muscle_group": guess["muscle_group"],
                          "muscle_label": ex_lib.MUSCLE_LABELS.get(
                              guess["muscle_group"], ""),
                          "equipment": guess["equipment"], "mode": guess["mode"],
-                         "slot": guess["slot"]})
+                         "slot": guess["slot"],
+                         "guessed_by_model": guess["guessed_by_model"]})
         items.append(item)
     return items, runs, unread
 
@@ -522,12 +907,15 @@ def commit(day: str, items: list[dict[str, Any]],
     """Die bestaetigte Vorschau eintragen und die Gewichte fortschreiben."""
     day = day or dt.date.today().isoformat()
     created: list[str] = []
+    learned: list[str] = []
     written = 0
 
     for item in items or []:
         if item.get("skip"):
             continue
-        ex_id = item.get("exercise_id")
+        ex_id = None if item.get("force_new") else item.get("exercise_id")
+        if ex_id:
+            learned += _learn_alias(int(ex_id), item.get("read_name") or "")
         if not ex_id:
             guess = guess_new(item.get("name") or item.get("read_name") or "",
                               any(s.get("weight_kg") for s in item.get("sets") or []),
@@ -541,7 +929,7 @@ def commit(day: str, items: list[dict[str, Any]],
                           "rep_min": min(10, reps), "rep_max": max(15, reps),
                           "sets": len(item["sets"]),
                           "aliases": [item.get("read_name") or ""]})
-            existing = find_exercise(guess["name"])
+            existing = None if item.get("force_new") else find_exercise(guess["name"])
             if existing:
                 ex_id = existing["id"]
             else:
@@ -568,7 +956,48 @@ def commit(day: str, items: list[dict[str, Any]],
 
     proposals = ex_lib.propose_for_day(day) if written else []
     return {"day": day, "sets": written, "created": created,
-            "runs": logged_runs, "proposals": proposals}
+            "learned": learned, "runs": logged_runs, "proposals": proposals}
+
+
+def _learn_alias(exercise_id: int, written_as: str) -> list[str]:
+    """Wie du es geschrieben hast, als Alias merken.
+
+    Wer eine falsche Zuordnung einmal richtigstellt, soll sie nicht jedes Mal
+    wieder richtigstellen muessen. Die eigene Schreibweise wird zum Alias, und
+    beim naechsten Mal sitzt sie auf Anhieb.
+    """
+    written_as = " ".join((written_as or "").split())
+    if len(written_as) < 3:
+        return []
+    ex = ex_lib.get_exercise(exercise_id)
+    if not ex:
+        return []
+    known = {canon(ex["name"]), *(canon(a) for a in ex["aliases"])}
+    if canon(written_as) in known:
+        return []
+    # Wenn dieselbe Schreibweise bisher einer anderen Uebung gehoerte, gehoert
+    # sie ihr ab jetzt nicht mehr. Zwei Uebungen, die beide „Rückenstrecker"
+    # heissen wollen, machen die Korrektur wirkungslos — es entschiede weiter
+    # die Reihenfolge in der Bibliothek.
+    wanted = canon(written_as)
+    freed = []
+    for other in ex_lib.list_exercises():
+        if other["id"] == exercise_id:
+            continue
+        keep = [a for a in other["aliases"] if canon(a) != wanted]
+        if len(keep) != len(other["aliases"]):
+            with get_db() as db:
+                db.execute("UPDATE exercises SET aliases=? WHERE id=?",
+                           (json.dumps(keep, ensure_ascii=False), other["id"]))
+            freed.append(other["name"])
+
+    aliases = [*ex["aliases"], written_as.lower()]
+    with get_db() as db:
+        db.execute("UPDATE exercises SET aliases=? WHERE id=?",
+                   (json.dumps(aliases, ensure_ascii=False), exercise_id))
+    log.info("Schreibweise gemerkt: „%s“ heisst %s%s.", written_as, ex["name"],
+             f" (vorher {', '.join(freed)})" if freed else "")
+    return [f"„{written_as}“ → {ex['name']}"]
 
 
 def _record_run(day: str, run: dict[str, Any]) -> bool:

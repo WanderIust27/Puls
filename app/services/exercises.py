@@ -52,7 +52,10 @@ SEED_EXERCISES: list[dict[str, Any]] = [
     dict(name="Rudern (Aufwärmen)", muscle_group="cardio", equipment="cardio_machine",
          mode="time", target_duration_s=480, sets=1, rest_s=0, slot="cardio", priority=1,
          garmin_category="INDOOR_ROW", garmin_exercise="ROWING_MACHINE", sort_order=0,
-         aliases=["rowing machine", "indoor row", "rudern"]),
+         # Nicht "rudern": Das Wort steht in jeder Rudervariante, und der
+         # Alias zog sie alle hierher — auch das Kabelrudern mit 50 kg.
+         aliases=["rowing machine", "indoor row", "rudergerät", "rudergeraet",
+                  "ruderergometer", "ergometer"]),
 
     # ---- Kettlebell-Auftakt (ganzkörperlich, aktivierend) ----
     dict(name="Kettlebell Swings", muscle_group="legs", equipment="kettlebell",
@@ -81,7 +84,7 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          target_reps=5, rep_min=3, rep_max=12, sets=4, rest_s=150,
          weight_increment=0, slot="pullup", priority=1,
          garmin_category="PULL_UP", garmin_exercise="PULL_UP", sort_order=5,
-         aliases=["pull up", "klimmzug", "klimmzuege"],
+         aliases=["pull up", "pullup", "pull-up", "klimmzug", "klimmzuege"],
          notes="Ziel: saubere Wiederholungen, im letzten Satz alles rausholen"),
     dict(name="Negative Klimmzüge", muscle_group="back", equipment="bodyweight",
          mode="time", target_duration_s=25, sets=3, rest_s=120, weight_increment=0,
@@ -93,8 +96,21 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          target_reps=8, rep_min=6, rep_max=12, sets=3, rest_s=120, weight_increment=0,
          slot="pullup", priority=3,
          garmin_category="PULL_UP", garmin_exercise="BAND_ASSISTED_PULL_UP",
-         sort_order=7, aliases=["band assisted pull up", "klimmzug mit band"],
+         sort_order=7, aliases=["band assisted pull up", "klimmzug mit band",
+                  "klimmzug mit gummiband"],
          notes="Je stärker das Band, desto mehr Hilfe — Bandstärke notieren"),
+    dict(name="Klimmzüge an der Maschine", muscle_group="back", equipment="machine",
+         # Das Gewicht ist hier die Hilfe, nicht die Last: 60 kg heisst, die
+         # Maschine nimmt dir 60 kg ab. Deshalb assisted=1 — sonst liefe die
+         # Fortschreibung genau verkehrt herum.
+         assisted=True, weight_kg=60, weight_increment=5, target_reps=10,
+         rep_min=8, rep_max=15, sets=3, rest_s=120, slot="pullup", priority=2,
+         garmin_category="PULL_UP", garmin_exercise="ASSISTED_PULL_UP",
+         sort_order=8, aliases=["assisted pull up", "unterstützter klimmzug",
+                                "unterstützte klimmzüge", "klimmzug unterstützt",
+                                "klimmzugmaschine", "klimmzug an der maschine",
+                                "klimmzug maschine"]),
+
     dict(name="Beinpresse", muscle_group="legs", equipment="machine",
          weight_kg=60, weight_increment=5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="SQUAT", garmin_exercise="LEG_PRESS", sort_order=10,
@@ -116,10 +132,32 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          weight_kg=25, weight_increment=2.5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="FLYE", garmin_exercise="CABLE_CROSSOVER", sort_order=50,
          aliases=["flye", "fly", "butterfly", "cable crossover"]),
+    dict(name="Kreuzheben (Langhantel)", muscle_group="back", equipment="barbell",
+         weight_kg=60, weight_increment=5, target_reps=8, rep_min=5, rep_max=12,
+         sets=3, rest_s=150, slot="main", priority=2,
+         garmin_category="DEADLIFT", garmin_exercise="BARBELL_DEADLIFT",
+         sort_order=21, aliases=["deadlift", "deadlifts", "kreuzheben",
+                                 "langhantel kreuzheben", "kreuzheben langhantel"]),
+
+    dict(name="Rudern am Kabelzug", muscle_group="back", equipment="cable",
+         weight_kg=40, weight_increment=5, target_reps=12, rep_min=10, rep_max=15,
+         sets=3, rest_s=90, slot="main", priority=2,
+         garmin_category="ROW", garmin_exercise="CABLE_ROW_STANDING",
+         sort_order=22, aliases=["cable row", "kabelrudern", "sitzendes rudern",
+                                 "rudern kabel", "seated row"]),
+
+    dict(name="Dips", muscle_group="chest", equipment="bodyweight",
+         target_reps=8, rep_min=5, rep_max=15, sets=3, rest_s=120,
+         slot="main", priority=2,
+         garmin_category="TRICEPS_EXTENSION", garmin_exercise="BENCH_DIP",
+         sort_order=23, aliases=["dip", "barrenstütz", "trizeps dips",
+                                 "dips am barren"]),
+
     dict(name="Latziehen", muscle_group="back", equipment="machine",
          weight_kg=50, weight_increment=5, target_reps=12, rep_min=12, rep_max=15,
          garmin_category="PULL_UP", garmin_exercise="LAT_PULLDOWN", sort_order=60,
-         aliases=["lat pulldown", "latzug", "latziehen"]),
+         aliases=["lat pulldown", "lat pull down", "latzug", "latziehen",
+                  "latzug am kabel"]),
     dict(name="Sit-ups", muscle_group="core", equipment="bodyweight",
          target_reps=20, rep_min=12, rep_max=30, weight_increment=0, sets=3, rest_s=45,
          slot="mat", garmin_category="SIT_UP", garmin_exercise="SIT_UP",
@@ -143,7 +181,8 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          sets=3, rest_s=60, slot="main",
          garmin_category="HYPEREXTENSION", garmin_exercise="HYPEREXTENSION",
          sort_order=74, notes="Nur bis zur Geraden, nicht ins Hohlkreuz",
-         aliases=["rueckenstrecker", "hyperextension", "back extension"]),
+         aliases=["rueckenstrecker", "rückenstrecker", "hyperextension",
+                  "back extension", "rückenstrecken am gerät"]),
     dict(name="Hängendes Beinheben", muscle_group="core", equipment="bodyweight",
          target_reps=10, rep_min=6, rep_max=18, weight_increment=0, sets=3, rest_s=60,
          slot="main", garmin_category="LEG_RAISE", garmin_exercise="HANGING_LEG_RAISE",
@@ -271,7 +310,8 @@ SEED_EXERCISES: list[dict[str, Any]] = [
          sets=3, rest_s=60, slot="home", garmin_category="DEADLIFT",
          garmin_exercise="DUMBBELL_DEADLIFT", sort_order=340,
          notes="Beine fast gestreckt, Bewegung aus der Hüfte",
-         aliases=["romanian deadlift", "kreuzheben kurzhantel"]),
+         aliases=["romanian deadlift", "kreuzheben kurzhantel",
+                  "rumänisches kreuzheben"]),
     dict(name="Kurzhantel-Seitheben", muscle_group="shoulders", equipment="dumbbell",
          weight_kg=6, weight_increment=2, target_reps=12, rep_min=10, rep_max=18,
          sets=3, rest_s=45, slot="home", garmin_category="LATERAL_RAISE",
@@ -460,12 +500,26 @@ def _seed_row(ex: dict[str, Any]) -> dict[str, Any]:
         "rest_s": ex.get("rest_s", 90),
         "machine_setting": ex.get("machine_setting"),
         "slot": ex.get("slot", "main"),
+        "assisted": 1 if ex.get("assisted") else 0,
         "priority": ex.get("priority", 2),
         "garmin_category": ex.get("garmin_category"),
         "garmin_exercise": ex.get("garmin_exercise"),
         "sort_order": ex.get("sort_order", 100),
         "notes": ex.get("notes"),
     }
+
+
+# Aliase, die sich als zu grob erwiesen haben. Sie werden bei bestehenden
+# Bibliotheken entfernt, nicht nur in der Startbibliothek weggelassen.
+RETIRED_ALIASES: list[tuple[str, str]] = [
+    ("Rudern (Aufwärmen)", "rudern"),
+    # Die unterstuetzten Klimmzuege haben eine eigene Uebung bekommen: An der
+    # Maschine ist das Gewicht die Hilfe, am Band gibt es gar keins.
+    ("Klimmzüge mit Band", "unterstützter klimmzug"),
+    ("Klimmzüge mit Band", "unterstützte klimmzüge"),
+    ("Klimmzüge mit Band", "assisted pull up"),
+    ("Klimmzüge mit Band", "klimmzugmaschine"),
+]
 
 
 def sync_seed_library() -> dict[str, int]:
@@ -477,12 +531,12 @@ def sync_seed_library() -> dict[str, int]:
     Gewichte, Zielwerte und selbst angelegte Uebungen bleiben, wie sie sind.
     Nur der Block wird nachgezogen, wenn eine Uebung umgeraeumt wurde.
     """
-    added = moved = 0
+    added = moved = renamed = 0
     with get_db() as db:
-        known = {r["name"]: r["slot"] for r in db.execute(
-            "SELECT name, slot FROM exercises").fetchall()}
+        known = {r["name"]: dict(r) for r in db.execute(
+            "SELECT name, slot, aliases FROM exercises").fetchall()}
         if not known:
-            return {"added": 0, "moved": 0}
+            return {"added": 0, "moved": 0, "aliases": 0}
         for ex in SEED_EXERCISES:
             if ex["name"] not in known:
                 row = _seed_row(ex)
@@ -490,13 +544,39 @@ def sync_seed_library() -> dict[str, int]:
                     f"INSERT OR IGNORE INTO exercises({', '.join(row)}) "
                     f"VALUES({', '.join(':' + k for k in row)})", row)
                 added += 1
-            elif ex.get("slot", "main") != known[ex["name"]]:
+                continue
+            current = known[ex["name"]]
+            if ex.get("slot", "main") != current["slot"]:
                 db.execute("UPDATE exercises SET slot=? WHERE name=?",
                            (ex.get("slot", "main"), ex["name"]))
                 moved += 1
-    if added or moved:
-        log.info("Bibliothek ergänzt: %d neu, %d umsortiert.", added, moved)
-    return {"added": added, "moved": moved}
+            # Aliase sind das, woran die Texterkennung haengt. Kommen mit
+            # einem Update neue dazu, muessen sie auch bei einer bestehenden
+            # Bibliothek ankommen — sonst findet "unterstützter Klimmzug"
+            # weiterhin nichts. Selbst angelegte Aliase bleiben erhalten.
+            #
+            # Ergaenzen und Entfernen passieren in einem Zug und werden einmal
+            # geschrieben. Zwei getrennte Durchlaeufe ueber denselben Stand
+            # wuerden sich gegenseitig ueberschreiben — der zweite Lauf haette
+            # dann nie Ruhe gegeben.
+            try:
+                have = json.loads(current["aliases"] or "[]")
+            except ValueError:
+                have = []
+            retired = {drop for name, drop in RETIRED_ALIASES if name == ex["name"]}
+            kept = [a for a in have if str(a).lower() not in retired]
+            lower = {str(a).lower() for a in kept}
+            fresh = [a for a in ex.get("aliases", []) if a.lower() not in lower]
+            final = kept + fresh
+            if final != have:
+                db.execute("UPDATE exercises SET aliases=? WHERE name=?",
+                           (json.dumps(final, ensure_ascii=False), ex["name"]))
+                renamed += len(fresh) + (len(have) - len(kept))
+
+    if added or moved or renamed:
+        log.info("Bibliothek ergänzt: %d neu, %d umsortiert, %d Aliase.",
+                 added, moved, renamed)
+    return {"added": added, "moved": moved, "aliases": renamed}
 
 
 def seed_default_exercises() -> None:
@@ -510,18 +590,13 @@ def seed_default_exercises() -> None:
             set_setting("exercises_seeded", "1")
             return
         for ex in SEED_EXERCISES:
+            # Spaltenliste aus der Zeile selbst, nicht von Hand gepflegt: Eine
+            # neu hinzugekommene Spalte fehlte hier sonst stillschweigend und
+            # stuende in jeder frischen Bibliothek auf ihrem Vorgabewert.
             row = _seed_row(ex)
             db.execute(
-                """INSERT OR IGNORE INTO exercises
-                   (name, aliases, muscle_group, equipment, mode, weight_kg,
-                    weight_increment, target_reps, rep_min, rep_max, target_duration_s,
-                    sets, rest_s, machine_setting, slot, priority, garmin_category,
-                    garmin_exercise, sort_order, notes)
-                   VALUES(:name,:aliases,:muscle_group,:equipment,:mode,:weight_kg,
-                          :weight_increment,:target_reps,:rep_min,:rep_max,
-                          :target_duration_s,:sets,:rest_s,:machine_setting,:slot,
-                          :priority,:garmin_category,:garmin_exercise,:sort_order,
-                          :notes)""", row)
+                f"INSERT OR IGNORE INTO exercises({', '.join(row)}) "
+                f"VALUES({', '.join(':' + k for k in row)})", row)
     set_setting("exercises_seeded", "1")
     log.info("Übungsbibliothek mit %d Einträgen initialisiert.", len(SEED_EXERCISES))
 
@@ -551,7 +626,7 @@ def get_exercise(ex_id: int) -> dict[str, Any] | None:
 EDITABLE = ("name", "muscle_group", "equipment", "mode", "weight_kg", "weight_increment",
             "target_reps", "rep_min", "rep_max", "target_duration_s", "sets", "rest_s",
             "machine_setting", "slot", "priority", "garmin_category", "garmin_exercise",
-            "active", "sort_order", "notes")
+            "active", "sort_order", "notes", "assisted")
 
 
 def upsert_exercise(data: dict[str, Any], ex_id: int | None = None) -> int:
@@ -1017,15 +1092,31 @@ def propose_for_day(day: str) -> list[dict[str, Any]]:
         heaviest, reps = float(best["weight_kg"]), int(best["reps"])
         step = ex["weight_increment"] or 2.5
 
+        # Bei unterstuetzten Uebungen hilft das Gewicht, statt zu belasten:
+        # 60 kg an der Klimmzugmaschine heisst, sie nimmt dir 60 kg ab. Die
+        # Richtung dreht sich also um — sonst schlaegt PULS nach einem zu
+        # schweren Satz noch mehr Hilfe als "mehr Gewicht" vor.
+        assisted = bool(ex.get("assisted"))
         if reps > cfg["schwelle"]:
-            # Das Gewicht war nicht die Grenze: Es gilt ab jetzt.
+            # Was getestet wurde, gilt ab jetzt — in beiden Faellen gleich.
             to_weight = heaviest
             to_reps = cfg["oben"]
             evidence = (f"schwerster Satz: {reps}× {heaviest:g} kg "
                         f"(mehr als {cfg['schwelle']} Wiederholungen)")
-            reason = (f"{reps} Wiederholungen bei {heaviest:g} kg — das Gewicht "
-                      f"war nicht die Grenze. Ab jetzt {heaviest:g} kg bei "
-                      f"{to_reps} Wiederholungen.")
+            reason = (f"{reps} Wiederholungen bei {heaviest:g} kg "
+                      + ("Hilfe — das reicht noch nicht als Grenze. "
+                         if assisted else
+                         "— das Gewicht war nicht die Grenze. ")
+                      + f"Ab jetzt {heaviest:g} kg bei {to_reps} Wiederholungen.")
+        elif assisted:
+            # Zu schwer heisst hier: mehr Hilfe, dafuer mehr Wiederholungen.
+            to_weight = round_to_increment(heaviest + cfg["runter_kg"], step)
+            to_reps = cfg["unten"]
+            evidence = (f"schwerster Satz: {reps}× {heaviest:g} kg Hilfe "
+                        f"(höchstens {cfg['schwelle']} Wiederholungen)")
+            reason = (f"Nur {reps} Wiederholungen bei {heaviest:g} kg Hilfe — noch "
+                      f"zu schwer. Mit {to_weight:g} kg Unterstützung kommst du "
+                      f"sauber durch {to_reps} Wiederholungen.")
         else:
             # Zu schwer: einen festen Schritt zurueck, dafuer mehr Wiederholungen.
             to_weight = max(0.0, round_to_increment(heaviest - cfg["runter_kg"], step))

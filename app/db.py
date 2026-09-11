@@ -265,6 +265,10 @@ CREATE TABLE IF NOT EXISTS exercises (
     rest_s INTEGER NOT NULL DEFAULT 90,
     machine_setting TEXT,                         -- z. B. "Stufe 7 bei Füße"
     slot TEXT NOT NULL DEFAULT 'main',            -- kettlebell|main|pullup|stretch|cardio
+    -- 1 = das Gewicht hilft, statt zu belasten (unterstuetzte Klimmzuege).
+    -- Mehr Kilo heisst dort weniger Anstrengung, die Progression laeuft
+    -- also andersherum.
+    assisted INTEGER NOT NULL DEFAULT 0,
     priority INTEGER NOT NULL DEFAULT 2,          -- 1=immer dabei, 2=normal, 3=Rotation
     garmin_category TEXT,
     garmin_exercise TEXT,
@@ -383,6 +387,7 @@ COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("exercises", "priority", "INTEGER NOT NULL DEFAULT 2"),
     ("exercises", "est_1rm", "REAL"),
     ("exercises", "fail_streak", "INTEGER NOT NULL DEFAULT 0"),
+    ("exercises", "assisted", "INTEGER NOT NULL DEFAULT 0"),
     ("body_metrics", "water_pct", "REAL"),
     ("body_metrics", "bone_kg", "REAL"),
     ("body_metrics", "lbm_kg", "REAL"),

@@ -386,6 +386,7 @@ class ExerciseIn(BaseModel):
     machine_setting: str | None = None
     slot: str | None = None
     priority: int | None = None
+    assisted: int | None = None
     active: int | None = None
     notes: str | None = None
 

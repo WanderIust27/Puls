@@ -145,6 +145,29 @@ try:
            page.eval_on_selector_all("#logPreview .tag.new", "e => e.length") == 1)
         ok("Der Eintragen-Knopf erscheint", page.is_visible("#btnCommit"))
 
+        # Jede Zeile muss sich richtigstellen lassen. Eine falsche Zuordnung,
+        # die man nur abwaehlen statt korrigieren kann, kostet mehr als sie
+        # spart — und genau daran ist die erste Fassung gescheitert.
+        pickers = page.eval_on_selector_all("#logPreview select.picker", "e => e.length")
+        ok("Jede Zeile hat eine Auswahl", pickers == 3, f"{pickers} Auswahlfelder")
+        options = page.eval_on_selector(
+            "#logPreview select.picker", "e => e.options.length")
+        ok("… mit der ganzen Bibliothek darin", options > 20, f"{options} Einträge")
+        first_label = page.inner_text("#logPreview .preview-item .item-title")
+        page.select_option("#logPreview select.picker", label="Klimmzüge")
+        page.wait_for_timeout(600)
+        changed = page.inner_text("#logPreview .preview-item .item-title")
+        ok("Eine Korrektur schlägt sofort durch",
+           "Klimmzüge" in changed and changed != first_label,
+           f"{first_label.strip()} → {changed.strip()}")
+        page.select_option("#logPreview select.picker", label="Beinpresse")
+        page.wait_for_timeout(600)
+
+        # Satzzahl nachbessern, wenn im Text keine stand.
+        boxes = page.eval_on_selector_all("#logPreview .sets-edit input", "e => e.length")
+        ok("Gleiche Sätze lassen sich in Zahlen nachbessern", boxes >= 3,
+           f"{boxes} Felder")
+
         # Die Haekchen muessen wirklich schaltbar sein — sonst kann man ein
         # Missverstaendnis sehen, aber nicht abwaehlen.
         box = page.query_selector("#logPreview .preview-item input")
