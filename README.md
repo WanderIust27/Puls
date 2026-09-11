@@ -353,6 +353,100 @@ brauchen kein Gerät.
 
 ---
 
+## Geprüftes Wissen statt Modellgedächtnis
+
+Unter `knowledge/` liegen dreizehn geprüfte Markdown-Dateien zu Training,
+Ernährung, Supplementen, Cardio, Regeneration und Mythen. PULS schlägt darin
+nach, statt aus den Modellgewichten zu improvisieren.
+
+```
+knowledge/          die .md-Dateien, im Container als /knowledge gemountet
+app/puls_knowledge.py   Chunking, Index, hybride Suche, Prompt-Vorlage
+app/constants.py    Zahlen, die in Text und Code vorkommen — einmal
+app/services/facts.py   was gerechnet wird, bevor das Modell etwas sagt
+```
+
+**Was wo hingehört.** `11_Coach_Playbook.md` steuert das Verhalten und steht im
+System-Prompt, nicht im Abrufindex; `00_README.md` ist Metainformation. Beide
+sind in `SKIP_FILES` ausgenommen. `12_Quellen.md` wird indexiert, aber
+abgewertet — sonst gewinnen Literaturangaben gegen inhaltliche Abschnitte.
+
+**Der Index** liegt in denselben Tabellen wie alles andere, mit Präfix `kb_`.
+Gesucht wird hybrid: Vektorähnlichkeit über `sqlite-vec` und Volltextsuche über
+FTS5, zusammengeführt per Reciprocal Rank Fusion. Kein zweiter Container, keine
+zweite Datenbank.
+
+**Der Ingest** läuft beim Start im Hintergrund und ist idempotent: Jede Datei
+wird über ihren SHA256 erkannt, Unverändertes übersprungen. Der erste Start
+dauert mit Modell-Download zwei bis drei Minuten, jeder weitere Sekunden. Geht
+dabei etwas schief, läuft PULS ohne Wissensbasis weiter und sagt das in der
+Oberfläche — eine Anwendung, die wegen eines Nachschlagewerks nicht startet,
+wäre die schlechtere Lösung. Von Hand:
+
+```bash
+docker compose exec puls python -m app.puls_knowledge ingest /knowledge
+docker compose exec puls python -m app.puls_knowledge ingest /knowledge --force
+```
+
+**Das Einbettungsmodell** wählt `PULS_EMBED`:
+
+| Wert | Modell | Platz |
+|---|---|---|
+| `minilm` *(Vorgabe)* | paraphrase-multilingual-MiniLM-L12-v2 über fastembed | ~220 MB, kein PyTorch |
+| `e5` | intfloat/multilingual-e5-small über sentence-transformers | ~470 MB Modell, ~2 GB Image |
+| `stub` | Pseudovektoren ohne Modell | nur für Tests |
+
+`fastembed` unterstützt e5-**small** nicht — von den e5-Modellen nur `-large`
+mit 2,24 GB. Deshalb der Umweg über MiniLM, das ebenfalls 384 Dimensionen
+liefert und damit dieselbe Tabelle benutzt. Welches besser trifft, sagt keine
+Theorie, sondern der Eval-Harness. Ein Wechsel macht die gespeicherten
+Vektoren unvergleichbar; `kb_meta` merkt sich, womit indexiert wurde, und der
+Ingest baut bei einem Wechsel von selbst neu auf.
+
+Die Einbettungen laufen bewusst auf der CPU im PULS-Prozess, nicht über
+Ollama: Bei `OLLAMA_MAX_LOADED_MODELS=1` würfe Ollama sonst bei jeder Frage
+das Chat-Modell aus dem Speicher.
+
+**Der wichtigste Punkt der ganzen Anbindung** ist `num_ctx`. Ollamas Vorgabe
+sind 4096 Token. Der fertige Prompt aus Playbook, Auszügen und gerechneten
+Werten ist rund 15 000 Zeichen lang — Ollama schnitte ihn stillschweigend
+**von vorne** ab, und vorne steht das Playbook. Von außen sieht man davon
+nichts: Es kommt eine flüssige, höflich formulierte Antwort, der nur die
+Hälfte ihrer Grundlage fehlt. Deshalb setzt `ollama_client` das Fenster nicht
+an den Aufrufstellen, sondern bestimmt es aus der Prompt-Länge (Stufen bis
+16384, per `OLLAMA_NUM_CTX_MAX` begrenzbar). Eine Zahl, die man an sechs
+Stellen richtig setzen muss, wird irgendwann an einer vergessen.
+
+**Was gerechnet wird, rechnet Python.** Das lokale Modell bekommt fertige
+Ergebnisse und formuliert sie nur: fraktionales Satzvolumen je Muskelgruppe,
+längster Lauf der letzten 30 Tage samt 110-Prozent-Limit, Gewichtstrend als
+Wochendurchschnitt, stagnierende Übungen, Schlafschnitt. Fehlt eine Größe,
+fällt die Zeile weg — eine Zeile „Protein: 0 g" liest das Modell als Messwert.
+
+**Woher die Antwort kommt**, steht unter jeder Antwort: die tatsächlich
+abgerufenen Dateinamen, aus dem Abruf und nicht aus dem, was das Modell selbst
+an Quellen nennt. Kleine Modelle erfinden Quellenangaben, und eine falsche
+Quelle ist schlimmer als keine. Bei einer merkwürdigen Antwort ist das die
+erste Frage: lag es am Abruf oder am Modell?
+
+### Wissensdatenbank prüfen
+
+```bash
+# Trefferquote, braucht kein Modell von Ollama
+PULS_DB=/data/puls.db PULS_EMBED=minilm python3 tests/eval_knowledge.py retrieval
+
+# Antwortqualität, mit A/B gegen "ohne Wissensbasis"
+PULS_DB=/data/puls.db PULS_KB=/knowledge \
+  python3 tests/eval_knowledge.py antworten --model qwen3:8b
+```
+
+Abnahme: Recall@5 mindestens 85 %. Darunter erst das Retrieval in Ordnung
+bringen — `--k` erhöhen, `CHUNK_TARGET` verkleinern, Überschriften präzisieren —
+und nicht am Prompt drehen. Der Unterschied bei den Fallenfragen (Eisbäder,
+BCAA, die 10-Prozent-Laufregel) ist der eigentliche Nachweis, dass die Anbindung
+wirkt: Dort ist die verbreitete Meinung falsch, und genau dort zeigt sich, ob
+der Kontext gelesen wird oder das Modell seinem Vorwissen folgt.
+
 ## Tests
 
 ```bash
