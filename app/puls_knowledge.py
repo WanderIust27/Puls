@@ -51,9 +51,18 @@ from pathlib import Path
 
 log = logging.getLogger("puls.knowledge")
 
-import sqlite_vec
-
 EMBED_DIM = 384
+
+
+def _vec():
+    """sqlite-vec erst laden, wenn wirklich eine Datenbank geoeffnet wird.
+
+    PROMPT_TEMPLATE und die Chunking-Funktionen sollen auch dann importierbar
+    sein, wenn die Erweiterung fehlt — sonst startet PULS wegen eines
+    Nachschlagewerks gar nicht.
+    """
+    import sqlite_vec
+    return sqlite_vec
 
 # Zielgröße eines Chunks in Zeichen. ~800 Zeichen ≈ 200–250 Token Deutsch.
 CHUNK_TARGET = 900
@@ -274,10 +283,11 @@ def _connect(db_path: str) -> sqlite3.Connection:
     # check_same_thread=False, weil FastAPI die Endpunkte in einem Threadpool
     # ausfuehrt: Die Verbindung entsteht im Startup-Thread und wird spaeter aus
     # Arbeiter-Threads benutzt. Der Zugriff ist durch _db_lock serialisiert.
+    vec = _vec()
     db = sqlite3.connect(db_path, check_same_thread=False)
     try:
         db.enable_load_extension(True)
-        sqlite_vec.load(db)
+        vec.load(db)
         db.enable_load_extension(False)
     except AttributeError as e:                                 # noqa: BLE001
         raise RuntimeError(
@@ -385,7 +395,7 @@ class KnowledgeBase:
                 )
                 self.db.execute(
                     "INSERT INTO kb_vec (rowid, embedding) VALUES (?, ?)",
-                    (rowid, sqlite_vec.serialize_float32(vec)),
+                    (rowid, _vec().serialize_float32(vec)),
                 )
 
             self.db.execute(
@@ -433,7 +443,7 @@ class KnowledgeBase:
         dense = [r[0] for r in self.db.execute(
             "SELECT rowid FROM kb_vec "
             "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
-            (sqlite_vec.serialize_float32(vec), pool),
+            (_vec().serialize_float32(vec), pool),
         )]
 
         sparse: list[int] = []
@@ -474,17 +484,31 @@ class KnowledgeBase:
 
     # -- Prompt ------------------------------------------------------------
 
-    def build_context(self, query: str, k: int = 5, max_chars: int = 4500) -> str:
-        """Fertiger Kontextblock für den Prompt. Leerer String = nichts gefunden."""
-        hits = self.search(query, k=k)
-        blocks, total = [], 0
-        for h in hits:
+    def context_with_sources(self, query: str, k: int = 5,
+                             max_chars: int = 4500) -> tuple[str, list[str]]:
+        """Kontextblock und die Dateien, die wirklich hineingekommen sind.
+
+        Die Quellenliste kommt aus dem Code, nicht aus der Antwort des Modells.
+        Kleine Modelle erfinden Quellenangaben, und eine falsche Quelle ist
+        schlimmer als keine: Sie sieht aus wie ein Beleg.
+
+        Gezaehlt wird, was den Platz noch hergab — was wegen max_chars
+        wegfaellt, hat die Antwort auch nicht beeinflusst.
+        """
+        blocks, sources, total = [], [], 0
+        for h in self.search(query, k=k):
             block = f"[Quelle: {h['source']}]\n{h['text']}"
             if total + len(block) > max_chars:
                 break
             blocks.append(block)
             total += len(block)
-        return "\n\n---\n\n".join(blocks)
+            if h["source"] not in sources:
+                sources.append(h["source"])
+        return "\n\n---\n\n".join(blocks), sources
+
+    def build_context(self, query: str, k: int = 5, max_chars: int = 4500) -> str:
+        """Fertiger Kontextblock für den Prompt. Leerer String = nichts gefunden."""
+        return self.context_with_sources(query, k=k, max_chars=max_chars)[0]
 
 
 # --------------------------------------------------------------------------
@@ -510,6 +534,9 @@ PROMPT_TEMPLATE = """{playbook}
 - Nutze die Wissensauszüge als Grundlage. Widersprich ihnen nicht.
 - Übernimm die berechneten Werte unverändert. Rechne selbst nichts aus.
 - Steht die Antwort nicht in den Auszügen: sag das, statt zu raten.
+- Widersprechen die Auszüge deiner eigenen Einschätzung, gelten die Auszüge.
+- Betrifft die Frage konkret meine Person (Schmerzen, aktuelle Werte, Termine),
+  haben meine Angaben Vorrang vor den allgemeinen Auszügen.
 - Nenne die Dateiquelle, wenn du eine konkrete Zahl oder Empfehlung nutzt.
 - Antworte auf Deutsch, knapp und direkt. Keine Motivationsfloskeln."""
 
