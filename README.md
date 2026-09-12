@@ -14,9 +14,10 @@ steht dahinter.
 | **Plan** | Die Empfehlung für heute, Einheiten auf Zuruf, deine Woche, was geplant ist |
 | **Kraft** | Training in Worten nachtragen, neue Gewichte, Muskelgruppen, Übungen |
 | **Laufen** | Form und Tempi, Trend, alle Läufe mit Karte und Kurven |
+| **Vital** | Erholung, Einschlafzeit, was gerade ausschlägt, sechs Werte mit Erklärung |
 | **Gemüt** | Stimmung, Energie, Stress, Beschwerden — und was daraus fürs Training folgt |
 
-Einstellungen stehen nicht als fünfter Reiter im Weg, sondern hinter dem Knopf
+Einstellungen stehen nicht als eigener Reiter im Weg, sondern hinter dem Knopf
 oben rechts: Ziel, Wochenstruktur, Gewichtssprünge, Garmin, Modell.
 
 ---
@@ -302,6 +303,51 @@ der harte Anteil, kommt ein Tempolauf; ist die längste Einheit geschrumpft und
 steht Ausdauer im Ziel, ein langer Lauf; an einem schwachen Tag immer locker.
 
 ---
+
+## Schlaf und Vitalwerte
+
+Die Uhr liefert vierzig Zahlen pro Tag. Die meisten sagen einem Menschen
+nichts, und eine Zahl, die man nicht einordnen kann, ist keine Information,
+sondern Beunruhigung. Der Vital-Reiter zeigt deshalb **sechs**, und jede
+bringt drei Dinge mit:
+
+1. **Was sie heute ist** — gegen deine eigene Basislinie der letzten vier
+   Wochen, nicht gegen einen Tabellenwert. 52 Schläge Ruhepuls sind für den
+   einen hoch und für den anderen niedrig.
+2. **Wohin sie sich bewegt** — die letzten sieben Tage gegen die drei Wochen
+   davor, mit Pfeil und Prozentwert.
+3. **Was sie überhaupt bedeutet.** Ein Satz beim Aufklappen, kein Lehrbuch.
+
+Die sechs sind Schlaf, Herzratenvariabilität, Ruhepuls, Körperakku beim
+Aufwachen, Stress am Tag und Atemfrequenz. Die letzte ist der leiseste
+Frühwarnwert, den die Uhr hat: Sie steigt oft ein bis zwei Nächte, bevor man
+etwas spürt.
+
+**Was gerade ausschlägt** steht obenan — aber höchstens drei. Ausschlag heißt:
+mehr als 1,4 Standardabweichungen von deinem eigenen Schnitt entfernt. Darüber
+steht ein Satz, der sie zusammen einordnet; liegen drei gleichzeitig daneben,
+ist das selten Zufall. Die Bewertung steht dort einmal und nicht hinter jeder
+Zeile — sechsmal „das sollte man beobachten" liest niemand zu Ende.
+
+### Wann du ins Bett solltest
+
+    Zubettgehzeit = Aufstehziel − Schlafbedarf − Einschlafdauer
+
+Das **Aufstehziel** stellst du unter *Einstellungen* ein. Der **Schlafbedarf**
+ist keine feste Zahl: acht Stunden als Grundlage, plus je eine halbe Stunde bei
+schwacher Trainingsbereitschaft, bei einer HRV unter deiner Basislinie und nach
+einer langen Einheit, dazu bis zu einer halben Stunde für den Rückstand der
+letzten Nächte. **Jeder Zuschlag wird benannt** — eine Zahl, die von acht auf
+neuneinhalb springt, ohne dass jemand sagt warum, hält man für einen Fehler.
+
+Die **Einschlafdauer** kommt aus deinen eigenen Nächten (Zeit im Bett minus
+tatsächlich geschlafene Zeit), sobald fünf davon vorliegen; vorher gilt ein
+Vorgabewert von 15 Minuten, und das steht auch so da.
+
+Daneben steht, wie **regelmäßig** du ins Bett gehst: die typische Uhrzeit und
+die Streuung über zwei Wochen. Der Zeitpunkt zählt fast so viel wie die Dauer —
+ein Körper, der jeden Abend zu einer anderen Zeit schlafen geht, erholt sich
+schlechter als einer mit sieben ruhigen Stunden nach Plan.
 
 ## Gemüt und Beschwerden
 

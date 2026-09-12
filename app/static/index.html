@@ -22,6 +22,7 @@
   <button data-view="plan" class="active">Plan</button>
   <button data-view="strength">Kraft</button>
   <button data-view="running">Laufen</button>
+  <button data-view="vital">Vital</button>
   <button data-view="mood">Gemüt</button>
 </nav>
 
@@ -159,6 +160,45 @@
   <article class="card wide">
     <h3>Läufe</h3>
     <div id="runList" class="list"></div>
+  </article>
+
+</section>
+
+<!-- ============================== VITAL ================================= -->
+<section id="view-vital" hidden>
+
+  <article class="card">
+    <h3>Erholung</h3>
+    <div class="today-head">
+      <p class="lead" id="vitalLead">…</p>
+      <div class="ready" id="vitalReady" hidden>
+        <div class="ready-num" id="vitalNum">–</div>
+        <div class="ready-label" id="vitalLabel"></div>
+      </div>
+    </div>
+    <details id="vitalPartsBox" hidden>
+      <summary>Woraus sich die Zahl ergibt</summary>
+      <ul class="parts" id="vitalParts"></ul>
+    </details>
+  </article>
+
+  <article class="card">
+    <h3>Ins Bett um <span class="bedtime" id="bedTime">–</span></h3>
+    <p class="hint" id="bedFormula"></p>
+    <ul class="reasons" id="bedReasons"></ul>
+    <div id="bedRhythm"></div>
+  </article>
+
+  <article class="card wide" id="spikeCard" hidden>
+    <h3>Was gerade ausschlägt</h3>
+    <div id="spikeList"></div>
+  </article>
+
+  <article class="card wide">
+    <h3>Deine Werte</h3>
+    <p class="hint">Verglichen wird mit deinem eigenen Schnitt der letzten vier
+      Wochen, nicht mit einer Tabelle. Tippen erklärt, was der Wert bedeutet.</p>
+    <div id="vitalList"></div>
   </article>
 
 </section>

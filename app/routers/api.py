@@ -19,7 +19,7 @@ from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..version import BUILT_AT, VERSION
 from ..services import (body, fit_import, garmin_sync, gym_analysis, logbook,
                         mood, ollama_client, planner, run_analysis, running,
-                        session_request, today as today_svc, trends)
+                        session_request, today as today_svc, trends, vital)
 from ..services import activity_details as activity_details_svc
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
@@ -522,6 +522,14 @@ async def upload_fit(file: UploadFile) -> dict[str, Any]:
         return fit_import.import_fit(content, file.filename or "upload.fit")
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+# ---------------------------------------------------------------------- Vital
+
+@router.get("/vital")
+def vital_view() -> dict[str, Any]:
+    """Schlaf und Vitalwerte — das Wenige, das etwas entscheidet."""
+    return vital.overview()
 
 
 # ---------------------------------------------------------------------- Gemüt

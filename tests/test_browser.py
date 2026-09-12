@@ -58,12 +58,20 @@ with get_db() as _db:
             _db.execute("""INSERT INTO mood_entries(day, recorded_at, mood,
                                energy, stress) VALUES(?,?,?,?,?)""",
                         (_day, f"{_day}T{_h:02d}:15:00", _m, _m, 3))
-    _db.execute("""INSERT INTO daily_metrics(day, sleep_seconds, resting_hr,
-                       training_readiness, body_battery_wake)
-                   VALUES(?, 27000, 52, 74, 88)""", (dt.date.today().isoformat(),))
+    for _i in range(0, 21):
+        _d = (dt.date.today() - dt.timedelta(days=_i))
+        _db.execute("""INSERT OR REPLACE INTO daily_metrics(day, sleep_seconds,
+                           resting_hr, training_readiness, body_battery_wake,
+                           hrv_avg, stress_avg, respiration_avg,
+                           sleep_start, sleep_end)
+                       VALUES(?, ?, ?, 74, ?, ?, ?, ?, ?, ?)""",
+                    (_d.isoformat(), 27000 + _i * 120, 52 + _i % 3, 88 - _i % 5,
+                     55 - _i % 4, 28 + _i % 6, 13.5,
+                     (_d - dt.timedelta(days=1)).isoformat() + "T22:20:00",
+                     _d.isoformat() + "T06:05:00"))
 
 PORT = 8899
-VIEWS = ("plan", "strength", "running", "mood")
+VIEWS = ("plan", "strength", "running", "vital", "mood")
 failures: list[str] = []
 
 
@@ -191,6 +199,23 @@ try:
         left = page.eval_on_selector_all("#propList .prop", "e => e.length")
         ok("Ein übernommener Vorschlag verschwindet", left == props - 1,
            f"{left} statt {props}")
+
+        # --- Vital: Erholung, Ausschlaege, Einschlafzeit -----------------
+        page.click('nav.tabs button[data-view="vital"]')
+        page.wait_for_timeout(2000)
+        ok("Die Einschlafzeit steht da",
+           ":" in page.inner_text("#bedTime"), page.inner_text("#bedTime"))
+        ok("… mit der Rechnung daneben",
+           "Aufstehen" in page.inner_text("#bedFormula"),
+           page.inner_text("#bedFormula")[:70])
+        rows = page.eval_on_selector_all("#vitalList .vital-row", "e => e.length")
+        ok("Die Werte stehen als Zeilen da", rows >= 3, f"{rows} Zeilen")
+        # Aufklappen muss erklaeren, was der Wert bedeutet — eine Zahl ohne
+        # Einordnung ist keine Information, sondern Beunruhigung.
+        page.click("#vitalList .vital-row summary")
+        page.wait_for_timeout(500)
+        ok("Eine Zeile erklärt sich beim Aufklappen",
+           len(page.inner_text("#vitalList .vital-row .hint")) > 30)
 
         # --- Gemüt: die Zahlen müssen sichtbar reagieren ----------------
         page.click('nav.tabs button[data-view="mood"]')

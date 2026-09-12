@@ -319,6 +319,32 @@ button.x {
 #toast.good { border-color: var(--good); }
 #toast.bad { border-color: var(--bad); }
 
+/* ------------------------------------------------------------------ Vital */
+.bedtime { color: var(--accent); letter-spacing: 0; font-size: 1.4em; }
+.vital-row { border-bottom: 1px solid var(--border-soft); margin: 0; }
+.vital-row:last-child { border-bottom: none; }
+.vital-row > summary {
+  display: grid; grid-template-columns: 1fr auto; gap: 3px 10px;
+  align-items: baseline; padding: 11px 0; font-size: 0.9em; list-style: none;
+}
+.vital-row > summary::-webkit-details-marker { display: none; }
+.v-name { color: var(--ink); }
+.v-meta {
+  grid-column: 1 / -1; display: flex; gap: 10px; align-items: baseline;
+  flex-wrap: wrap; font-size: 0.88em;
+}
+.v-name::before { content: "▸ "; color: var(--ink-3); }
+.vital-row[open] .v-name::before { content: "▾ "; }
+.v-val { font-weight: 600; font-size: 1.08em; text-align: right; }
+.v-val.good { color: var(--good); }
+.v-val.off { color: var(--warn); }
+.v-base { color: var(--ink-3); font-size: 0.88em; }
+.v-trend { color: var(--ink-3); }
+.v-trend.good { color: var(--good); }
+.v-trend.off { color: var(--warn); }
+.v-chart { margin: 4px 0 6px; }
+.spike-lead { margin: 0 0 10px; font-size: 0.9em; }
+
 /* ---------------------------------------------------------- Diagramme */
 svg { width: 100%; height: auto; display: block; }
 .muted { color: var(--ink-3); font-size: 0.86em; }

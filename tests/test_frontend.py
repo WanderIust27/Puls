@@ -45,7 +45,7 @@ views = set(re.findall(r'id="view-([a-z-]+)"', html))
 buttons = set(re.findall(r'data-view="([a-z-]+)"', html))
 check("Jede Ansicht ist über die Navigation erreichbar", sorted(views - buttons), [])
 check("Jeder Navigationsknopf hat eine Ansicht", sorted(buttons - views), [])
-check("Vier Reiter", len(buttons), 4)
+check("Fünf Reiter", len(buttons), 5)
 
 # --- Jede Ansicht wird auch geladen --------------------------------------
 loaders = re.search(r"const LOADERS = \{(.*?)\n\};", js, re.S)
@@ -93,7 +93,7 @@ def section(name):
 
 
 def titles_of(name):
-    return re.findall(r"<h[23][^>]*>([^<]+)", section(name))
+    return [t.strip() for t in re.findall(r"<h[23][^>]*>([^<]*)", section(name))]
 
 
 EXPECTED = {
@@ -101,6 +101,7 @@ EXPECTED = {
     "strength": ("Training nachtragen", "Muskelgruppen", "Letzte Einheiten"),
     "running": ("Form", "Trend", "Läufe"),
     "mood": ("Wie geht es dir?", "Verlauf", "Was daraus folgt"),
+    "vital": ("Erholung", "Was gerade ausschlägt", "Deine Werte"),
 }
 for view, wanted in EXPECTED.items():
     have = [t.strip() for t in titles_of(view)]

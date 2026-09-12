@@ -74,7 +74,8 @@ function fmtPace(secPerKm) {
 /* --------------------------------------------------------------- Reiter */
 
 const LOADERS = {
-  plan: loadPlan, strength: loadStrength, running: loadRunning, mood: loadMood,
+  plan: loadPlan, strength: loadStrength, running: loadRunning,
+  vital: loadVital, mood: loadMood,
 };
 
 function show(view) {
@@ -753,6 +754,118 @@ async function openRun(run) {
   } catch (e) {
     box.replaceChildren(el("p", "hint", e.message));
   }
+}
+
+/* ================================================================ VITAL */
+
+const ARROW = { steigt: "↑", fällt: "↓", hält: "→" };
+
+async function loadVital() {
+  const data = await api("/vital");
+
+  // --- Erholung ---------------------------------------------------------
+  const ready = data.readiness || {};
+  $("#vitalReady").hidden = ready.score === null || ready.score === undefined;
+  if (!$("#vitalReady").hidden) {
+    $("#vitalNum").textContent = ready.score;
+    $("#vitalNum").className = `ready-num ${ready.score >= 72 ? "good"
+      : ready.score >= 52 ? "" : ready.score >= 35 ? "warn" : "bad"}`;
+    $("#vitalLabel").textContent = ready.label || "";
+  }
+  const READY_TEXT = {
+    erholt: "Du bist erholt — heute darf es wehtun.",
+    belastbar: "Normal belastbar. Eine ordentliche Einheit geht.",
+    angeschlagen: "Angeschlagen. Trainieren ja, aber kürzer und leichter.",
+    leer: "Der Akku ist leer. Heute kostet eine Einheit mehr, als sie bringt.",
+  };
+  $("#vitalLead").textContent = ready.hint
+    || (READY_TEXT[ready.label] || "")
+    + " Die Zahl fasst Schlaf, Herz und deinen eigenen Eintrag zusammen.";
+  const parts = $("#vitalParts");
+  parts.replaceChildren();
+  (ready.parts || []).forEach((p) => {
+    const li = el("li");
+    li.append(el("span", "pk", p.label), el("span", "pv", p.detail),
+              el("span", "ps", p.score));
+    parts.append(li);
+  });
+  $("#vitalPartsBox").hidden = !(ready.parts || []).length;
+
+  // --- Einschlafzeit ----------------------------------------------------
+  const bed = data.bedtime;
+  $("#bedTime").textContent = bed.bedtime;
+  $("#bedFormula").textContent = `${bed.formula}. Die Einschlafdauer von `
+    + `${bed.latency_min} Minuten stammt ${bed.latency_from}.`;
+  const reasons = $("#bedReasons");
+  reasons.replaceChildren();
+  if (bed.need_extra > 0) {
+    reasons.append(el("li", null,
+      `${bed.need_base} h Grundbedarf, dazu ${bed.need_extra} h:`));
+    bed.need_reasons.forEach((r) => reasons.append(el("li", null, r)));
+  } else {
+    reasons.append(el("li", null,
+      `${bed.need_base} h Grundbedarf, keine Zuschläge — deine Werte geben `
+      + "keinen Anlass dazu."));
+  }
+  const rhythm = $("#bedRhythm");
+  rhythm.replaceChildren();
+  if (data.regularity) {
+    const r = data.regularity;
+    rhythm.append(el("p", "hint",
+      `Du gehst meist gegen ${r.typical} schlafen, mit ±${r.spread_min} Minuten `
+      + `Streuung über ${r.nights} Nächte — ${r.verdict}. ${r.note}`));
+  }
+
+  // --- Ausschläge -------------------------------------------------------
+  $("#spikeCard").hidden = !data.spikes.length;
+  const spikes = $("#spikeList");
+  spikes.replaceChildren();
+  if (data.spike_lead) spikes.append(el("p", "spike-lead", data.spike_lead));
+  data.spikes.forEach((m) => {
+    spikes.append(el("p", `note ${m.good ? "good" : "warn"}`, m.sentence));
+  });
+
+  // --- Die sechs Werte --------------------------------------------------
+  const list = $("#vitalList");
+  list.replaceChildren();
+  if (data.hint) { list.append(el("p", "hint", data.hint)); return; }
+  data.metrics.forEach((m) => list.append(vitalRow(m)));
+}
+
+function vitalRow(m) {
+  const box = el("details", "vital-row");
+  const head = el("summary");
+
+  const name = el("span", "v-name", m.label);
+  const value = el("span", `v-val${m.good === false ? " off" : m.good ? " good" : ""}`,
+                   `${m.value}${m.unit ? ` ${m.unit}` : ""}`);
+  const base = el("span", "v-base", `Schnitt ${m.baseline}${m.unit ? ` ${m.unit}` : ""}`);
+  const trend = el("span", `v-trend${m.better === true ? " good"
+    : m.better === false ? " off" : ""}`,
+    `${ARROW[m.direction] || "→"}${m.change_pct !== null
+      ? ` ${Math.abs(m.change_pct)} %` : ""}`);
+  // Name und Wert in die erste Zeile, alles Erklärende darunter. Nebeneinander
+  // passt es auf einem Telefon nicht, und dann steht „Ausschlag“ allein in
+  // der nächsten Zeile wie ein verirrtes Wort.
+  const meta = el("span", "v-meta");
+  meta.append(base, trend);
+  if (m.spike) meta.append(el("span", "tag warn", "Ausschlag"));
+  head.append(name, value, meta);
+  box.append(head);
+
+  const chart = el("div", "v-chart");
+  box.append(chart);
+  if (window.timeChart && m.points.length > 2) {
+    timeChart(chart, [{
+      key: m.key, label: m.label,
+      points: m.points.map((p) => ({
+        t: new Date(`${p.day}T12:00:00`).getTime(), value: p.value,
+      })),
+    }], { height: 120, legend: false });
+  }
+  box.append(el("p", "hint", m.what));
+  box.append(el("p", "hint", m.why));
+  return box;
 }
 
 /* ================================================================ GEMÜT */

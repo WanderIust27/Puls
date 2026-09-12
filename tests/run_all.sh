@@ -30,6 +30,7 @@ run "Körperdaten"     python3 tests/test_body.py
 run "Detaildaten"     python3 tests/test_activity_details.py
 run "Gym-Auswertung"  python3 tests/test_gym_analysis.py
 run "Gemüt"            python3 tests/test_mood.py
+run "Schlaf & Vitalwerte" python3 tests/test_vital.py
 run "Trends & Wochenplan" python3 tests/test_trends.py
 run "Training in Worten" python3 tests/test_logbook.py
 run "Tagesempfehlung"  python3 tests/test_today.py
