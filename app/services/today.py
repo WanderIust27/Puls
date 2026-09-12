@@ -489,21 +489,54 @@ def _plain_sentence(verdict: dict[str, Any]) -> str:
             + verdict["reasons"][-1]["detail"])
 
 
+def _knowledge(verdict: dict[str, Any]) -> tuple[str, list[str]]:
+    """Passende Auszuege zur heutigen Entscheidung — falls die Basis da ist.
+
+    Gefragt wird nicht nach einem Stichwort, sondern nach dem, was heute
+    ansteht. Bei einem langen Lauf soll die Regel zur Steigerung danebenstehen,
+    bei einer Pause das Kapitel zur Erholung.
+    """
+    try:
+        from ..main import app
+        kb = getattr(app.state, "kb", None)
+        if kb is None:
+            return "", []
+        focus = ", ".join(verdict.get("focus_labels") or []) or ""
+        query = {
+            "gym": f"Krafttraining {focus} Volumen Sätze Intensität",
+            "home": f"Training ohne Geräte {focus}",
+            "run": f"Laufen {verdict.get('run_label') or 'Dauerlauf'} "
+                   "Umfang Intensität steigern",
+            "mobility": "Beweglichkeit Dehnen Aufwärmen",
+            "rest": "Regeneration Pause Erholung Schlaf",
+            "done": "Regeneration nach dem Training",
+        }.get(verdict["kind"], "Training")
+        return kb.context_with_sources(query, k=3, max_chars=2200)
+    except Exception as e:                                      # noqa: BLE001
+        log.debug("Tagesempfehlung ohne Wissensbasis: %s", e)
+        return "", []
+
+
 def _phrase(verdict: dict[str, Any]) -> str:
     """Das Modell die fertige Entscheidung in zwei Saetze fassen lassen."""
-    facts = [f"- {r['label']}: {r['detail']}" for r in verdict["reasons"]]
+    reasons = [f"- {r['label']}: {r['detail']}" for r in verdict["reasons"]]
     ready = verdict["readiness"]
     if ready.get("parts"):
-        facts += [f"- {p['label']}: {p['detail']}" for p in ready["parts"]]
+        reasons += [f"- {p['label']}: {p['detail']}" for p in ready["parts"]]
     goal = (verdict["goal"].get("text") or "").strip()
     plan = _plain_sentence(verdict)
+
+    context, sources = _knowledge(verdict)
+    verdict["sources"] = sources
     try:
         from .ollama_client import generate
         text = generate(
             prompt=(
                 "Das ist die Empfehlung für heute, sie steht schon fest:\n"
-                f"{plan}\n\nDie Gründe dafür:\n" + "\n".join(facts)
+                f"{plan}\n\nDie Gründe dafür:\n" + "\n".join(reasons)
                 + (f"\n\nSein Ziel: {goal}" if goal else "")
+                + (f"\n\nGeprüfte Auszüge, falls sie hierher passen:\n{context}"
+                   if context else "")
                 + "\n\nFasse das in höchstens zwei Sätzen zusammen, direkt "
                   "und motivierend, auf Deutsch, per Du. Ändere die "
                   "Empfehlung nicht und nenne keine Zahlen, die oben nicht "
@@ -533,5 +566,6 @@ def recommendation(today: dt.date | None = None, phrase: bool = True
     if verdict["kind"] == "run" and verdict.get("run_label"):
         verdict["headline"] = verdict["run_label"]
     verdict["plain"] = _plain_sentence(verdict)
+    verdict.setdefault("sources", [])
     verdict["text"] = _phrase(verdict) if phrase else verdict["plain"]
     return verdict

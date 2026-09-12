@@ -11,21 +11,23 @@ import logging
 import threading
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Header, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..version import BUILT_AT, VERSION
-from ..services import (body, fit_import, garmin_sync, gym_analysis, logbook,
-                        mood, ollama_client, planner, run_analysis, running,
-                        session_request, today as today_svc, trends, vital)
+from ..services import (body, facts, fit_import, garmin_sync, gym_analysis,
+                        logbook, mood, ollama_client, planner, run_analysis,
+                        running, session_request, today as today_svc, trends,
+                        vital)
 from ..services import activity_details as activity_details_svc
 from ..services import exercises as ex_lib
 from ..services.garmin_sync import GarminNotLinked
 from ..services.ollama_client import (OllamaUnavailable, is_available,
                                       model_present)
 from ..services.workout_builder import build_fit_workout, build_garmin_workout
+from ..puls_knowledge import PROMPT_TEMPLATE
 
 log = logging.getLogger("puls.api")
 router = APIRouter(prefix="/api")
@@ -80,6 +82,64 @@ def set_model(payload: ModelIn) -> dict[str, Any]:
 @router.get("/system/model/progress")
 def model_progress() -> dict[str, Any]:
     return ollama_client.pull_state()
+
+
+# --------------------------------------------------------------- Coach-Frage
+
+class AskIn(BaseModel):
+    frage: str
+
+
+@router.get("/coach/status")
+def coach_status(request: Request) -> dict[str, Any]:
+    """Steht die Wissensdatenbank bereit — und wenn nicht, warum nicht?"""
+    kb = getattr(request.app.state, "kb", None)
+    return {
+        "bereit": kb is not None,
+        "abschnitte": kb.size() if kb else 0,
+        "modell": kb.embedder.profile.model if kb else None,
+        "fehler": getattr(request.app.state, "kb_error", None),
+    }
+
+
+@router.post("/coach/ask")
+def coach_ask(payload: AskIn, request: Request) -> dict[str, Any]:
+    """Eine Frage an den Coach — mit geprüftem Wissen statt aus dem Gedächtnis.
+
+    Die Quellenliste kommt aus dem Abruf, nicht aus der Antwort. Was das
+    Modell selbst an Dateinamen nennt, ist nicht überprüfbar; was hier steht,
+    lag ihm tatsächlich vor. Genau das ist bei einer merkwürdigen Antwort die
+    erste Frage: Lag es am Abruf oder am Modell?
+    """
+    question = (payload.frage or "").strip()
+    if len(question) < 4:
+        raise HTTPException(400, "Stell eine Frage.")
+
+    kb = getattr(request.app.state, "kb", None)
+    playbook = getattr(request.app.state, "playbook", "") or ""
+    computed = facts.computed_block()
+
+    if kb is None:
+        context, sources = "", []
+    else:
+        context, sources = kb.context_with_sources(question)
+
+    prompt = PROMPT_TEMPLATE.format(
+        playbook=playbook.strip(),
+        kontext=context or "(Keine passenden Auszüge gefunden.)",
+        berechnet=computed or "—",
+        frage=question,
+    )
+    try:
+        answer = ollama_client.generate(prompt, temperature=0.3)
+    except OllamaUnavailable as e:
+        raise HTTPException(503, f"Das Modell antwortet nicht: {e}")
+
+    return {"antwort": answer, "quellen": sources, "berechnet": computed,
+            "wissensbasis": kb is not None,
+            "hinweis": None if kb is not None else
+                       "Ohne Wissensdatenbank — die Antwort stammt allein aus "
+                       "dem Modell und ist nicht belegt."}
 
 
 # -------------------------------------------------------------------- Heute

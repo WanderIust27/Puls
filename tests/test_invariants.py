@@ -15,6 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["PULS_DATA_DIR"] = tempfile.mkdtemp(prefix="puls-test-")
+# Ohne Modell-Download: Die Verdrahtung prueft tests/test_knowledge.py,
+# die Trefferqualitaet tests/eval_knowledge.py mit echtem Modell.
+os.environ["PULS_EMBED"] = "stub"
 logging.disable(logging.INFO)
 
 for name, attrs in (("garminconnect", {"Garmin": type("Garmin", (), {})}),

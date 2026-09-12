@@ -88,7 +88,63 @@ function show(view) {
 /* =========================================================== PLAN / HEUTE */
 
 async function loadPlan() {
-  await Promise.all([loadToday(), loadPlanned()]);
+  await Promise.all([loadToday(), loadPlanned(), loadKbState()]);
+}
+
+async function loadKbState() {
+  const box = $("#kbState");
+  try {
+    const st = await api("/coach/status");
+    if (st.bereit) {
+      box.textContent = `${st.abschnitte} Abschnitte`;
+      box.className = "kb-state ok";
+    } else {
+      box.textContent = "ohne Wissensbasis";
+      box.className = "kb-state warn";
+      box.title = st.fehler || "";
+    }
+  } catch (e) {
+    box.textContent = "";
+  }
+}
+
+async function ask() {
+  const frage = $("#askText").value.trim();
+  if (frage.length < 4) { toast("Stell eine Frage.", "bad"); return; }
+  const box = $("#askAnswer");
+  box.replaceChildren(el("p", "hint", "denkt nach …"));
+  $("#btnAsk").disabled = true;
+  try {
+    const res = await post("/coach/ask", { frage });
+    box.replaceChildren();
+    if (res.hinweis) box.append(el("p", "note warn", res.hinweis));
+    box.append(el("p", "answer", res.antwort));
+
+    // Woher die Antwort kommt — aus dem Abruf, nicht aus dem, was das Modell
+    // selbst an Quellen nennt. Bei einer merkwürdigen Antwort ist das die
+    // erste Frage: lag es am Abruf oder am Modell?
+    if (res.quellen?.length) {
+      const src = el("div", "sources");
+      src.append(el("span", "src-label", "Gelesen:"));
+      res.quellen.forEach((q) => src.append(el("span", "src", q)));
+      box.append(src);
+    } else if (res.wissensbasis) {
+      box.append(el("div", "sources",
+        "Kein passender Auszug gefunden — die Antwort ist nicht belegt."));
+    }
+    if (res.berechnet) {
+      const det = el("details", "computed");
+      det.append(el("summary", null, "Werte, die dem Coach vorlagen"));
+      res.berechnet.split("\n").forEach((line) => {
+        if (line.trim()) det.append(el("div", "item-sub", line.replace(/^-\s*/, "")));
+      });
+      box.append(det);
+    }
+  } catch (e) {
+    box.replaceChildren(el("p", "note bad", e.message));
+  } finally {
+    $("#btnAsk").disabled = false;
+  }
 }
 
 async function loadToday(phrase = true) {
@@ -1091,6 +1147,11 @@ function bind() {
     .then((r) => toast(`${r.pushed.length} auf der Uhr`
       + (r.failed.length ? `, ${r.failed.length} nicht` : "."), r.failed.length ? "bad" : "good"))
     .catch((e) => toast(e.message, "bad"));
+  $("#btnAsk").onclick = () => ask();
+  $("#askText").onkeydown = (e) => {
+    // Strg+Enter schickt ab — eine Frage ist meist einzeilig, aber nicht immer.
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ask();
+  };
   $("#btnWish").onclick = () => {
     const text = $("#wishText").value.trim();
     if (!text) { toast("Schreib deinen Wunsch hin.", "bad"); return; }

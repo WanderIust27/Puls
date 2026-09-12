@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import logging
 from typing import Any
 
@@ -117,20 +118,51 @@ def pull_model(name: str | None = None) -> None:
         log.error("Download von %s fehlgeschlagen: %s", name, e)
 
 
+# Ollamas Vorgabe ist ein Kontextfenster von 4096 Token. Ist der Prompt
+# laenger, schneidet Ollama ihn stillschweigend VON VORNE ab — und vorne steht
+# bei uns das Playbook, also genau die Verhaltenssteuerung. Von aussen sieht
+# man davon nichts: Es kommt eine fluessige, hoeflich formulierte Antwort, der
+# nur die Haelfte ihrer Grundlage fehlt.
+#
+# Deshalb wird die Fenstergroesse hier aus der Prompt-Laenge bestimmt und nicht
+# an den Aufrufstellen gesetzt. Eine Zahl, die man an sechs Stellen richtig
+# setzen muss, wird irgendwann an einer vergessen.
+CTX_STEPS = (4096, 8192, 16384)
+CHARS_PER_TOKEN = 3.2          # Deutsch, grosszuegig geschaetzt
+CTX_HEADROOM = 1.35            # Platz fuer die Antwort und den System-Prompt
+
+
+def context_window(*parts: str | None) -> int:
+    """Das kleinste Fenster, in das Prompt und Antwort sicher passen."""
+    chars = sum(len(p or "") for p in parts)
+    needed = int(chars / CHARS_PER_TOKEN * CTX_HEADROOM)
+    cap = CTX_STEPS[-1]
+    try:
+        cap = int(os.environ.get("OLLAMA_NUM_CTX_MAX") or cap)
+    except ValueError:
+        pass
+    for step in CTX_STEPS:
+        if needed <= step:
+            return min(step, cap)
+    return cap
+
+
 def generate(prompt: str, system: str | None = None,
              json_mode: bool = False, temperature: float = 0.7) -> str:
     """Eine Antwort vom lokalen Modell holen. Wirft OllamaUnavailable bei Problemen."""
+    num_ctx = context_window(prompt, system)
     payload: dict[str, Any] = {
         "model": active_model(),
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": temperature, "num_ctx": 4096},
+        "options": {"temperature": temperature, "num_ctx": num_ctx},
     }
     if system:
         payload["system"] = system
     if json_mode:
         payload["format"] = "json"
     try:
+        log.debug("Ollama: %d Zeichen Prompt, num_ctx=%d", len(prompt), num_ctx)
         r = httpx.post(f"{OLLAMA_URL}/api/generate", json=payload,
                        timeout=OLLAMA_TIMEOUT)
         r.raise_for_status()
