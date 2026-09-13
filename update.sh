@@ -133,8 +133,13 @@ if docker volume inspect puls-data >/dev/null 2>&1; then
 fi
 
 # Nur die Programmdateien ersetzen. Alles andere im Ordner bleibt liegen.
-for item in app miscale tests Dockerfile docker-compose.yml requirements.txt \
-            README.md .env.example deploy.sh puls.sh update.sh .gitignore; do
+# knowledge gehoert dazu: Die docker-compose.yml haengt den Ordner als
+# Bind-Mount ein. Fehlt er hier, legt Docker ein leeres Verzeichnis an und
+# schiebt es ueber die Dateien im Image — die Wissensdatenbank waere nach
+# jedem Update still leer, ohne dass irgendwo ein Fehler erscheint.
+for item in app knowledge miscale tests Dockerfile docker-compose.yml \
+            requirements.txt README.md .env.example deploy.sh puls.sh \
+            update.sh .gitignore; do
     [ -e "$src/$item" ] || continue
     rm -rf "./$item"
     cp -R "$src/$item" "./$item"

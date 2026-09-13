@@ -438,6 +438,14 @@ Gesucht wird hybrid: Vektorähnlichkeit über `sqlite-vec` und Volltextsuche üb
 FTS5, zusammengeführt per Reciprocal Rank Fusion. Kein zweiter Container, keine
 zweite Datenbank.
 
+**Die Dateien kommen mit dem Update.** `./update.sh` lädt `knowledge/` aus dem
+Paket mit und legt es neben `deploy.sh`; `deploy.sh` hängt den Ordner dann in
+den Container. Liegt dort nichts, nimmt PULS die Kopie aus dem Image — ein
+leerer Bind-Mount schöbe sich sonst über die Dateien im Image, und die
+Wissensbasis bliebe still leer. Willst du die Texte selbst bearbeiten, ohne
+dass ein Update sie überschreibt, setze `PULS_KB_DIR` in der `.env` auf einen
+eigenen Ordner.
+
 **Der Ingest** läuft beim Start im Hintergrund und ist idempotent: Jede Datei
 wird über ihren SHA256 erkannt, Unverändertes übersprungen. Der erste Start
 dauert mit Modell-Download zwei bis drei Minuten, jeder weitere Sekunden. Geht
@@ -446,8 +454,8 @@ Oberfläche — eine Anwendung, die wegen eines Nachschlagewerks nicht startet,
 wäre die schlechtere Lösung. Von Hand:
 
 ```bash
-docker compose exec puls python -m app.puls_knowledge ingest /knowledge
-docker compose exec puls python -m app.puls_knowledge ingest /knowledge --force
+docker exec puls-coach python -m app.puls_knowledge ingest /knowledge
+docker exec puls-coach python -m app.puls_knowledge ingest /knowledge --force
 ```
 
 **Das Einbettungsmodell** wählt `PULS_EMBED`:
@@ -495,11 +503,10 @@ erste Frage: lag es am Abruf oder am Modell?
 
 ```bash
 # Trefferquote, braucht kein Modell von Ollama
-PULS_DB=/data/puls.db PULS_EMBED=minilm python3 tests/eval_knowledge.py retrieval
+docker exec puls-coach python3 tests/eval_knowledge.py retrieval
 
 # Antwortqualität, mit A/B gegen "ohne Wissensbasis"
-PULS_DB=/data/puls.db PULS_KB=/knowledge \
-  python3 tests/eval_knowledge.py antworten --model qwen3:8b
+docker exec puls-coach python3 tests/eval_knowledge.py antworten --model qwen3:8b
 ```
 
 Abnahme: Recall@5 mindestens 85 %. Darunter erst das Retrieval in Ordnung

@@ -11,8 +11,33 @@ GARMIN_TOKEN_DIR = DATA_DIR / "garmin_tokens"
 
 # Die geprueften Markdown-Quellen. Im Container ein Bind-Mount, lokal der
 # Ordner im Repo.
-KNOWLEDGE_DIR = Path(os.environ.get("PULS_KB")
-                     or Path(__file__).parent.parent / "knowledge")
+_BUNDLED_KB = Path(__file__).parent.parent / "knowledge"
+
+
+def _knowledge_dir() -> Path:
+    """Wo die Markdown-Dateien liegen — mit Rueckfallebene.
+
+    Ein Bind-Mount auf einen leeren Ordner schiebt sich ueber die Dateien im
+    Image. Dann steht /knowledge zwar da, ist aber leer, und die
+    Wissensdatenbank bliebe still ohne Inhalt. Liegt dort nichts, wird deshalb
+    die mitgelieferte Kopie genommen.
+    """
+    named = os.environ.get("PULS_KB")
+    if named:
+        chosen = Path(named)
+        if any(chosen.glob("*.md")):
+            return chosen
+        if any(_BUNDLED_KB.glob("*.md")):
+            import logging
+            logging.getLogger("puls.config").warning(
+                "%s enthält keine .md-Dateien — nehme die Kopie aus dem Image "
+                "(%s).", chosen, _BUNDLED_KB)
+            return _BUNDLED_KB
+        return chosen
+    return _BUNDLED_KB
+
+
+KNOWLEDGE_DIR = _knowledge_dir()
 # Das Playbook steuert das Verhalten und gehoert in den System-Prompt, nicht
 # in den Abrufindex.
 PLAYBOOK_FILE = KNOWLEDGE_DIR / "11_Coach_Playbook.md"

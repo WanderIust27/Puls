@@ -43,6 +43,13 @@ TZ="${TZ:-Europe/Berlin}"
 PULS_PORT="${PULS_PORT:-1337}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3:8b}"
 SYNC_INTERVAL_HOURS="${SYNC_INTERVAL_HOURS:-3}"
+# Einbettungsmodell der Wissensdatenbank: minilm (ONNX, ~220 MB) oder e5
+# (braucht sentence-transformers und damit PyTorch im Image).
+PULS_EMBED="${PULS_EMBED:-minilm}"
+# Wo die geprueften Markdown-Dateien liegen. Standard ist der Ordner neben
+# diesem Skript — dann laesst sich der Text auf dem Server aendern, ohne das
+# Image neu zu bauen.
+PULS_KB_DIR="${PULS_KB_DIR:-$(pwd)/knowledge}"
 PULS_URL="${PULS_URL:-http://localhost:${PULS_PORT}}"
 PULS_TOKEN="${PULS_TOKEN:-}"
 SCALE_MAC="${SCALE_MAC:-}"
@@ -217,7 +224,7 @@ echo
 c_info "Netzwerk und Volumes vorbereiten …"
 docker network create "$NET" >/dev/null 2>&1 && c_ok "Netzwerk $NET angelegt" \
     || c_ok "Netzwerk $NET vorhanden"
-for v in puls-data ollama-data; do
+for v in puls-data ollama-data puls-models; do
     docker volume create "$v" >/dev/null && c_ok "Volume $v bereit"
 done
 
@@ -323,6 +330,16 @@ else
 fi
 
 # ----------------------------------------------------------------------- App
+#
+# Den Wissensordner nur einhaengen, wenn dort auch etwas liegt. Ein leerer
+# Bind-Mount schiebt sich sonst ueber die Dateien im Image, und die
+# Wissensdatenbank waere still leer — ohne Fehlermeldung, nur ohne Antworten.
+if [ -d "$PULS_KB_DIR" ] && [ -n "$(ls "$PULS_KB_DIR"/*.md 2>/dev/null)" ]; then
+    KB_MOUNT="-v $PULS_KB_DIR:/knowledge:ro"
+else
+    KB_MOUNT=""
+fi
+
 echo
 c_info "PULS starten …"
 docker rm -f puls-coach >/dev/null 2>&1 || true
@@ -335,9 +352,17 @@ docker run -d \
     -e "OLLAMA_URL=http://puls-ollama:11434" \
     -e "OLLAMA_MODEL=${OLLAMA_MODEL}" \
     -e "SYNC_INTERVAL_HOURS=${SYNC_INTERVAL_HOURS}" \
+    -e "PULS_EMBED=${PULS_EMBED}" \
     -v puls-data:/data \
+    -v puls-models:/models \
+    $KB_MOUNT \
     "$IMG_APP" >/dev/null
 c_ok "puls-coach läuft auf Port ${PULS_PORT}"
+if [ -n "$KB_MOUNT" ]; then
+    c_ok "Wissensdatenbank aus $PULS_KB_DIR ($(ls "$PULS_KB_DIR"/*.md 2>/dev/null | wc -l) Dateien)"
+else
+    c_info "Wissensdatenbank aus dem Image — $PULS_KB_DIR ist leer oder fehlt"
+fi
 
 # ------------------------------------------------------------ Bluetooth-Brücke
 if [ "$WANT_SCALE" = 1 ]; then

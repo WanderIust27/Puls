@@ -21,6 +21,9 @@ printf 'PULS_PORT=1337\nOLLAMA_GPU=all\n' > "$work/run/.env"
 # --- Docker-Attrappe: bestaetigt alles, ohne etwas zu tun ---------------
 cat > "$work/bin/docker" <<'STUB'
 #!/bin/sh
+# Mitschreiben, womit gestartet wird — sonst prueft der Test nur, dass das
+# Skript durchlaeuft, und nicht, ob der Container die richtigen Mounts bekommt.
+echo "$@" >> "$DOCKER_LOG"
 case "$1" in
   info)    echo " Runtimes: io.containerd.runc.v2 nvidia runc" ;;
   exec)    exit 0 ;;                 # Karte im Container sichtbar
@@ -39,7 +42,15 @@ echo '{"app":"ok","version":"testtest01"}'
 STUB
 chmod +x "$work/bin/curl"
 
+# Die Wissensdatenbank gehoert zum Paket — ohne sie prueft der Test den
+# interessanten Fall nicht.
+mkdir -p "$work/run/knowledge"
+cp "$ROOT"/knowledge/*.md "$work/run/knowledge/" 2>/dev/null
+
 cd "$work/run" || exit 1
+DOCKER_LOG="$work/docker.log"
+export DOCKER_LOG
+: > "$DOCKER_LOG"
 out=$(PATH="$work/bin:$PATH" bash ./deploy.sh 2>&1)
 status=$?
 
@@ -66,6 +77,40 @@ for needle in "Ollama starten" "PULS starten" "Bluetooth-Brücke starten" \
         fail=1
     fi
 done
+
+# Die Wissensdatenbank muss auch wirklich im Container ankommen. deploy.sh
+# benutzt kein docker compose, sondern baut den Stack mit einzelnen
+# docker-Befehlen nach — eine Aenderung an der docker-compose.yml erreicht
+# den Server also gar nicht. Genau das war hier schon einmal der Fall.
+run_line=$(grep -E '^run -d|^run  *-d' "$DOCKER_LOG" | grep -- "--name puls-coach")
+for needle in "-v puls-data:/data" "-v puls-models:/models"               "/knowledge:ro" "PULS_EMBED"; do
+    if echo "$run_line" | grep -q -- "$needle"; then
+        say "OK  " "Container bekommt: $needle"
+    else
+        say "FAIL" "Container bekommt NICHT: $needle"
+        fail=1
+    fi
+done
+
+if grep -q "volume create puls-models" "$DOCKER_LOG"; then
+    say "OK  " "Modell-Cache wird angelegt"
+else
+    say "FAIL" "Volume puls-models fehlt — das Modell lädt bei jedem Start neu"
+    fail=1
+fi
+
+# Ein leerer Wissensordner darf nicht eingehaengt werden: Der Mount schoebe
+# sich sonst ueber die Dateien im Image, und die Datenbank bliebe still leer.
+rm -f "$work/run/knowledge"/*.md
+: > "$DOCKER_LOG"
+PATH="$work/bin:$PATH" bash ./deploy.sh >/dev/null 2>&1
+if grep -E '^run -d' "$DOCKER_LOG" | grep -- "--name puls-coach"    | grep -q -- "/knowledge:ro"; then
+    say "FAIL" "Leerer Wissensordner wird trotzdem eingehängt"
+    fail=1
+else
+    say "OK  " "Leerer Wissensordner wird übersprungen"
+fi
+cp "$ROOT"/knowledge/*.md "$work/run/knowledge/" 2>/dev/null
 
 # Und das ohne "inference compute"-Zeile im Log, genau der Fall von damals
 if echo "$out" | grep -q "Grafikkarte"; then

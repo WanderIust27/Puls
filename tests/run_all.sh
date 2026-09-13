@@ -44,6 +44,7 @@ run "Frontend"        python3 tests/test_frontend.py
 run "Invarianten"     python3 tests/test_invariants.py
 run "Browser"         python3 tests/test_browser.py
 run "Deploy-Skript"   sh tests/test_deploy.sh
+run "Update-Skript"   sh tests/test_update.sh
 
 echo
 if [ -n "$failed" ]; then
