@@ -3,6 +3,12 @@
    solange app.js zufaellig vorher geladen war und sie noch enthielt. Eine
    Kopplung, die erst im Browser auffiel, und dort als leeres Diagramm. */
 
+// Achsenbeschriftungen mit Komma. Der Rest der Oberfläche schreibt deutsch;
+// eine "83.2" mitten darin sieht aus wie ein anderer Wert.
+function deNum(value, digits = 0) {
+  return value.toFixed(digits).replace(".", ",");
+}
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"]/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -669,7 +675,7 @@ function timeChart(container, series, opts = {}) {
     `<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${W - padR}" y2="${Y(v).toFixed(1)}"
        stroke="var(--border)"></line>
      <text x="2" y="${(Y(v) + 3).toFixed(1)}" font-size="10"
-       fill="var(--ink-3)">${v.toFixed(Math.abs(max - min) < 5 ? 1 : 0)}</text>`).join("");
+       fill="var(--ink-3)">${deNum(v, Math.abs(max - min) < 5 ? 1 : 0)}</text>`).join("");
 
   const body = lines.map((s, si) => {
     const color = s.color || `var(--chart-${(si % 4) + 1}, var(--teal))`;

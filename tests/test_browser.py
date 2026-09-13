@@ -51,6 +51,16 @@ from app.main import app                                    # noqa: E402
 
 init_db()
 with get_db() as _db:
+    # Acht Wochen Gewicht, langsam steigend — sonst hat die Karte nichts
+    # einzuordnen und der Test prueft eine leere Flaeche.
+    for _i in range(0, 57):
+        _d = dt.date.today() - dt.timedelta(days=_i)
+        _kg = 82.0 + 0.3 * (56 - _i) / 7
+        _db.execute("""INSERT INTO body_metrics(day, measured_at, weight_kg,
+                           weight_adj_kg, in_window, body_fat_pct, source)
+                       VALUES(?,?,?,?,1,?,'miscale')""",
+                    (_d.isoformat(), _d.isoformat() + "T07:10:00",
+                     round(_kg, 2), round(_kg, 2), 16.0))
     _db.execute("""INSERT INTO activities(sport, start_time, duration_s,
                        distance_m, avg_hr, source, name)
                    VALUES('running', ?, 2400, 7000, 142, 'manual', 'Testlauf')""",
@@ -211,6 +221,11 @@ try:
         ok("… mit der Rechnung daneben",
            "Aufstehen" in page.inner_text("#bedFormula"),
            page.inner_text("#bedFormula")[:70])
+        ok("Das Gewicht steht da mit Einordnung",
+           len(page.inner_text("#weightLead")) > 30, page.inner_text("#weightLead")[:60])
+        ok("… und die Kurve zeigt Wochenmittel",
+           page.eval_on_selector_all("#weightChart svg path", "e => e.length") >= 1)
+
         rows = page.eval_on_selector_all("#vitalList .vital-row", "e => e.length")
         ok("Die Werte stehen als Zeilen da", rows >= 3, f"{rows} Zeilen")
         # Aufklappen muss erklaeren, was der Wert bedeutet — eine Zahl ohne

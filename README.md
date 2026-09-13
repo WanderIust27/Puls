@@ -329,6 +329,34 @@ steht ein Satz, der sie zusammen einordnet; liegen drei gleichzeitig daneben,
 ist das selten Zufall. Die Bewertung steht dort einmal und nicht hinter jeder
 Zeile — sechsmal „das sollte man beobachten" liest niemand zu Ende.
 
+### Gewicht
+
+Gerechnet wird auf Wochenmitteln der geglätteten Reihe — nicht auf
+Einzelmessungen. Die schwanken um mehr als jede sinnvolle wöchentliche
+Veränderung; aus ihnen einen Trend zu lesen hieße, Rauschen zu deuten. Die
+Rate entsteht per kleinster Quadrate über die letzten vier Wochenmittel, damit
+eine einzelne schwere Woche die Aussage nicht kippt.
+
+**Eingeordnet wird gegen dein Ziel.** Ob Aufbau, Abnehmen oder Halten gemeint
+ist, liest PULS aus dem Freitext-Ziel — kein eigener Schalter, denn zwei
+Stellen, die dasselbe sagen sollen, sagen irgendwann Verschiedenes. Was
+gelesen wurde, steht in der Karte; wer nicht einverstanden ist, ändert das
+Ziel.
+
+| Ziel | Korridor | darunter | darüber |
+|---|---|---|---|
+| Aufbau | 0,25–0,5 %/Woche | zu langsam, ~150 kcal mehr | zu schnell — schneller heißt nicht mehr Muskel, sondern mehr Fett |
+| Abnehmen | 0,5–1 %/Woche | steht | zu schnell — ab hier geht ein Teil davon als Muskel weg |
+| Halten | ±0,15 %/Woche | stabil | driftet, und über ein Quartal wird daraus eine Größe |
+
+Körperfett und Muskelmasse stehen darunter, mit ihrer Veränderung über acht
+Wochen — und mit dem Hinweis, dass beides aus der Impedanz *geschätzt* ist.
+Gut für die Richtung, nicht als Wahrheit.
+
+Dieselbe Rechnung steht auch im `berechnet`-Block, den der Coach zu lesen
+bekommt. Vorher gab es dort eine eigene Mittelung über die rohen Messwerte,
+die das Referenzfenster ignorierte — und damit eine zweite Zahl für dasselbe.
+
 ### Wann du ins Bett solltest
 
     Zubettgehzeit = Aufstehziel − Schlafbedarf − Einschlafdauer

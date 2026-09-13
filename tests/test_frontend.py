@@ -101,7 +101,7 @@ EXPECTED = {
     "strength": ("Training nachtragen", "Muskelgruppen", "Letzte Einheiten"),
     "running": ("Form", "Trend", "Läufe"),
     "mood": ("Wie geht es dir?", "Verlauf", "Was daraus folgt"),
-    "vital": ("Erholung", "Was gerade ausschlägt", "Deine Werte"),
+    "vital": ("Erholung", "Was gerade ausschlägt", "Deine Werte", "Gewicht"),
 }
 for view, wanted in EXPECTED.items():
     have = [t.strip() for t in titles_of(view)]

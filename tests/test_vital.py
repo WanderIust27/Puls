@@ -188,6 +188,104 @@ ok("… und Mitternacht macht keinen Sprung in der Rechnung",
    wobbly["spread_min"] < 24 * 60, str(wobbly["spread_min"]))
 
 
+# ---------------------------------------------------------------- Gewicht
+
+
+def weigh(weeks, start, per_week, fat_per_week=0.0):
+    with get_db() as db:
+        db.execute("DELETE FROM body_metrics")
+        for i in range(weeks * 7, -1, -1):
+            day = TODAY - dt.timedelta(days=i)
+            passed = (weeks * 7 - i) / 7
+            kg = start + per_week * passed
+            db.execute("""INSERT INTO body_metrics(day, measured_at, weight_kg,
+                              weight_adj_kg, in_window, body_fat_pct, source)
+                          VALUES(?,?,?,?,1,?,'miscale')""",
+                       (day.isoformat(), day.isoformat() + "T07:10:00",
+                        round(kg, 2), round(kg, 2), round(16.0 + fat_per_week * passed, 1)))
+
+
+clear()
+with get_db() as db:
+    db.execute("DELETE FROM body_metrics")
+leer = vital.weight(TODAY)
+check("Ohne Messungen keine Wochen", leer["weeks"], [])
+ok("… aber ein Hinweis", bool(leer["hint"]))
+check("… und keine Einordnung", leer["verdict"], "offen")
+
+# Die Richtung wird aus dem Ziel gelesen — kein eigener Schalter, der dem
+# Ziel widersprechen koennte.
+for text, direction in (("10 km unter 60 Minuten", "hold"),
+                        ("Muskeln aufbauen und schwerer werden", "gain"),
+                        ("abnehmen und definieren", "lose"),
+                        ("endlich ein Sixpack", "lose")):
+    set_setting("goal_text", text)
+    check(f"Ziel „{text[:28]}“", vital.weight_goal()["direction"], direction)
+
+ok("Und die Anzeige sagt, woher das kommt",
+   bool(vital.weight_goal()["from"]), vital.weight_goal()["from"])
+
+# Jede Lage muss die Einordnung treffen, die sie verdient.
+FAELLE = [
+    ("10 km unter 60 Minuten", 0.0, "stabil"),
+    ("10 km unter 60 Minuten", 0.30, "driftet"),
+    ("Muskeln aufbauen", 0.30, "im Korridor"),
+    ("Muskeln aufbauen", 0.05, "zu langsam"),
+    ("Muskeln aufbauen", 1.00, "zu schnell"),
+    ("Muskeln aufbauen", -0.30, "falsche Richtung"),
+    ("abnehmen", -0.65, "im Korridor"),
+    ("abnehmen", -0.10, "steht"),
+    ("abnehmen", -1.50, "zu schnell"),
+    ("abnehmen", 0.30, "falsche Richtung"),
+]
+for text, per_week, expected in FAELLE:
+    set_setting("goal_text", text)
+    weigh(8, 82.0, per_week)
+    got = vital.weight(TODAY)
+    check(f"{text[:16]:<16} {per_week:+.2f} kg/Woche", got["verdict"], expected)
+    ok("   … mit einem Satz dazu", len(got["sentence"]) > 40, got["sentence"][:70])
+
+# Der Satz darf keine Zahl nennen, die nicht zur Lage passt.
+set_setting("goal_text", "Muskeln aufbauen")
+weigh(8, 82.0, 0.30)
+aufbau = vital.weight(TODAY)
+ok("Der Satz nennt die eigene Rate",
+   f"{abs(aufbau['rate_pct']):.2f}".replace(".", ",") in aufbau["sentence"],
+   aufbau["sentence"])
+ok("Gerechnet wird über mehrere Wochen", aufbau["weeks_used"] >= 3,
+   str(aufbau["weeks_used"]))
+ok("Die Kurve zeigt Wochenmittel, keine Einzelwerte",
+   len(aufbau["weeks"]) <= 10, f"{len(aufbau['weeks'])} Punkte aus 8 Wochen")
+
+# Eine einzelne schwere Woche darf die Aussage nicht kippen.
+with get_db() as db:
+    db.execute("UPDATE body_metrics SET weight_kg = weight_kg + 1.5, "
+               "weight_adj_kg = weight_adj_kg + 1.5 WHERE day >= ?",
+               ((TODAY - dt.timedelta(days=6)).isoformat(),))
+nach_ausreisser = vital.weight(TODAY)
+ok("Eine Ausreißerwoche kippt die Einordnung nicht",
+   nach_ausreisser["verdict"] in ("im Korridor", "zu schnell"),
+   nach_ausreisser["verdict"])
+
+# Körperzusammensetzung, wenn die Waage sie liefert.
+weigh(8, 82.0, 0.30, fat_per_week=-0.15)
+comp = {c["key"]: c for c in vital.weight(TODAY)["composition"]}
+ok("Körperfett wird ausgewiesen", "body_fat_pct" in comp, str(list(comp)))
+ok("… fallend", comp["body_fat_pct"]["change"] < 0, str(comp["body_fat_pct"]["change"]))
+ok("… und als Schätzung gekennzeichnet",
+   "geschätzt" in comp["body_fat_pct"]["what"], comp["body_fat_pct"]["what"])
+
+# Der berechnete Block und der Reiter müssen dieselbe Zahl nennen — zwei
+# Zahlen für dasselbe sind schlimmer als eine ungenaue.
+from app.services import facts                                   # noqa: E402
+block = facts.computed_block(TODAY)
+kg = f"{vital.weight(TODAY)['current_kg']:g}".replace(".", ",")
+ok("Block und Reiter nennen dasselbe Gewicht", kg in block,
+   [l for l in block.split(chr(10)) if "Körpergewicht" in l])
+
+set_setting("goal_text", "10 km unter 60 Minuten")
+
+
 # ---------------------------------------------------------- Gesamtansicht
 
 clear()
@@ -196,7 +294,8 @@ for i in range(0, 20):
           body_battery_wake=84, stress_avg=29, respiration_avg=13.5,
           training_readiness=70)
 view = vital.overview(TODAY)
-for key in ("readiness", "metrics", "spikes", "bedtime", "regularity"):
+for key in ("readiness", "metrics", "spikes", "bedtime", "regularity",
+            "weight"):
     ok(f"Die Ansicht liefert „{key}“", key in view)
 ok("Die Erholung ist eine Zahl", view["readiness"]["score"] is not None,
    str(view["readiness"]["score"]))

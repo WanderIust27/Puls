@@ -872,6 +872,9 @@ async function loadVital() {
       + `Streuung über ${r.nights} Nächte — ${r.verdict}. ${r.note}`));
   }
 
+  // --- Gewicht ----------------------------------------------------------
+  renderWeight(data.weight);
+
   // --- Ausschläge -------------------------------------------------------
   $("#spikeCard").hidden = !data.spikes.length;
   const spikes = $("#spikeList");
@@ -886,6 +889,66 @@ async function loadVital() {
   list.replaceChildren();
   if (data.hint) { list.append(el("p", "hint", data.hint)); return; }
   data.metrics.forEach((m) => list.append(vitalRow(m)));
+}
+
+// Deutsche Zahlen: Der Text wird gelesen, nicht geparst.
+const de = (n, sign = false) =>
+  `${sign && n > 0 ? "+" : ""}${String(n).replace(".", ",")}`;
+
+const VERDICT_TONE = {
+  "im Korridor": "good", stabil: "good",
+  "zu schnell": "warn", "zu langsam": "warn", driftet: "warn", steht: "warn",
+  "falsche Richtung": "bad", offen: "",
+};
+
+function renderWeight(w) {
+  $("#weightGoal").textContent = w.goal ? `Ziel: ${w.goal.label}` : "";
+  $("#weightGoal").title = w.goal?.from || "";
+  $("#weightNote").textContent = w.goal
+    ? `Gemessen wird gegen „${w.goal.label}“ — ${w.goal.from}.` : "";
+
+  if (!w.weeks?.length) {
+    $("#weightNum").textContent = "–";
+    $("#weightRate").textContent = "";
+    $("#weightLead").textContent = w.hint || "Noch keine Messungen.";
+    $("#weightChart").replaceChildren();
+    $("#weightBody").replaceChildren();
+    return;
+  }
+
+  const tone = VERDICT_TONE[w.verdict] ?? "";
+  $("#weightNum").textContent = de(w.current_kg);
+  $("#weightNum").className = `ready-num ${tone === "good" ? "good"
+    : tone === "warn" ? "warn" : tone === "bad" ? "bad" : ""}`;
+  $("#weightRate").textContent = w.rate_pct === null ? "kg"
+    : `kg · ${de(w.rate_pct, true)} %/Woche`;
+  $("#weightLead").textContent = w.sentence;
+
+  // Wochenmittel, keine Einzelmessungen: Die schwanken um mehr als jede
+  // sinnvolle wöchentliche Veränderung.
+  const chart = $("#weightChart");
+  chart.replaceChildren();
+  if (window.timeChart && w.weeks.length > 2) {
+    timeChart(chart, [{
+      key: "weight", label: "Wochenmittel",
+      points: w.weeks.map((p) => ({
+        t: new Date(`${p.day}T12:00:00`).getTime(), value: p.value,
+      })),
+    }], { height: 150, legend: false });
+  }
+
+  const body = $("#weightBody");
+  body.replaceChildren();
+  (w.composition || []).forEach((c) => {
+    const row = el("div", "item");
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title",
+      `${c.label}: ${de(c.value)} ${c.unit}`));
+    main.append(el("div", "item-sub",
+      `${de(c.change, true)} ${c.unit} über ${c.weeks} Wochen · ${c.what}`));
+    row.append(main);
+    body.append(row);
+  });
 }
 
 function vitalRow(m) {

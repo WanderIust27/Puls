@@ -86,33 +86,22 @@ def run_limit(today: dt.date | None = None) -> dict[str, float] | None:
 
 # -------------------------------------------------------- Koerpergewicht
 
-def weight_trend(today: dt.date | None = None) -> dict[str, float] | None:
-    """Wochendurchschnitte statt Einzelwerte, plus Veraenderung in Prozent.
+def weight_trend(today: dt.date | None = None) -> dict[str, Any] | None:
+    """Gewicht und Veraenderungsrate — aus derselben Rechnung wie der Reiter.
 
-    Einzelmessungen schwanken um mehr als jede sinnvolle Woechentliche
-    Veraenderung — daraus einen Trend zu lesen, hiesse Rauschen zu deuten.
+    Frueher stand hier eine eigene Mittelung ueber die rohen Messwerte. Die
+    ignorierte das Referenzfenster und die Tageszeit-Korrektur, und damit stand
+    im Reiter eine andere Zahl als im Block, den das Modell zu lesen bekam.
+    Zwei Zahlen fuer dasselbe sind schlimmer als eine ungenaue.
     """
-    today = today or dt.date.today()
-    with get_db() as db:
-        rows = rows_to_dicts(db.execute(
-            "SELECT day, weight_kg FROM body_metrics "
-            "WHERE day >= ? AND weight_kg IS NOT NULL ORDER BY day",
-            ((today - dt.timedelta(days=21)).isoformat(),)).fetchall())
-    if len(rows) < 4:
-        return None
+    from . import vital
 
-    def mean_between(start: dt.date, end: dt.date) -> float | None:
-        values = [r["weight_kg"] for r in rows
-                  if start.isoformat() <= r["day"] < end.isoformat()]
-        return sum(values) / len(values) if values else None
-
-    this_week = mean_between(today - dt.timedelta(days=7), today + dt.timedelta(days=1))
-    last_week = mean_between(today - dt.timedelta(days=14), today - dt.timedelta(days=7))
-    if this_week is None or last_week is None:
+    data = vital.weight(today or dt.date.today())
+    if not data.get("weeks") or data.get("rate_pct") is None:
         return None
-    change = (this_week - last_week) / last_week * 100
-    return {"now_kg": round(this_week, 1), "before_kg": round(last_week, 1),
-            "change_pct": round(change, 2)}
+    return {"now_kg": data["current_kg"], "rate_pct": data["rate_pct"],
+            "rate_kg": data["rate_kg"], "goal": data["goal"]["label"],
+            "verdict": data["verdict"], "weeks": data["weeks_used"]}
 
 
 # ------------------------------------------------------------- Protein
@@ -217,12 +206,14 @@ def computed_block(today: dt.date | None = None) -> str:
 
     weight = weight_trend(today)
     if weight:
-        direction = ("zugenommen" if weight["change_pct"] > 0 else "abgenommen"
-                     if weight["change_pct"] < 0 else "gehalten")
+        way = ("steigend" if weight["rate_pct"] > 0 else "fallend"
+               if weight["rate_pct"] < 0 else "unverändert")
         lines.append(
-            f"- Körpergewicht im Wochenschnitt: {_de(weight['now_kg'])} kg "
-            f"(Vorwoche {_de(weight['before_kg'])} kg, "
-            f"{_de(round(abs(weight['change_pct']), 2))} % {direction}).")
+            f"- Körpergewicht: {_de(weight['now_kg'])} kg, über "
+            f"{weight['weeks']} Wochen {way} mit "
+            f"{_de(abs(weight['rate_pct']))} % pro Woche "
+            f"({_de(abs(weight['rate_kg']))} kg). Ziel {weight['goal']} — "
+            f"Einordnung: {weight['verdict']}.")
 
     prot = protein(today)
     if prot:
