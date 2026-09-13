@@ -35,6 +35,9 @@ run "Trends & Wochenplan" python3 tests/test_trends.py
 run "Training in Worten" python3 tests/test_logbook.py
 run "Tagesempfehlung"  python3 tests/test_today.py
 run "Laufauswertung"   python3 tests/test_run_coach.py
+run "Push/Pull/Beine"   python3 tests/test_split.py
+run "Körperwerte"      python3 tests/test_body_coach.py
+run "Rückblick"        python3 tests/test_session_review.py
 run "Wissensdatenbank" python3 tests/test_knowledge.py
 run "Zuhause-Einheit"   python3 tests/test_home.py
 run "Wunsch & Bibliothek" python3 tests/test_wish.py

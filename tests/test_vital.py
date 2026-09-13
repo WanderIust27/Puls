@@ -267,13 +267,14 @@ ok("Eine Ausreißerwoche kippt die Einordnung nicht",
    nach_ausreisser["verdict"] in ("im Korridor", "zu schnell"),
    nach_ausreisser["verdict"])
 
-# Körperzusammensetzung, wenn die Waage sie liefert.
+# Körperfett und Muskelmasse standen hier einmal als zwei Zeilen neben dem
+# Gewicht. Sie haben inzwischen eine eigene Auswertung mit Referenzbereichen
+# und der Aufteilung Muskel/Fett — siehe tests/test_body_coach.py. Diese
+# Prüfung hält fest, dass es die zweite Fassung nicht mehr gibt: Zwei Stellen,
+# die dasselbe sagen sollen, sagen irgendwann Verschiedenes.
 weigh(8, 82.0, 0.30, fat_per_week=-0.15)
-comp = {c["key"]: c for c in vital.weight(TODAY)["composition"]}
-ok("Körperfett wird ausgewiesen", "body_fat_pct" in comp, str(list(comp)))
-ok("… fallend", comp["body_fat_pct"]["change"] < 0, str(comp["body_fat_pct"]["change"]))
-ok("… und als Schätzung gekennzeichnet",
-   "geschätzt" in comp["body_fat_pct"]["what"], comp["body_fat_pct"]["what"])
+ok("Die Körperwerte stehen nicht mehr doppelt am Gewicht",
+   "composition" not in vital.weight(TODAY), str(sorted(vital.weight(TODAY))))
 
 # Der berechnete Block und der Reiter müssen dieselbe Zahl nennen — zwei
 # Zahlen für dasselbe sind schlimmer als eine ungenaue.

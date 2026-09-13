@@ -35,6 +35,23 @@ INDIRECT_SET_WEIGHT = 0.5
 # Einheiten wird die Variante gewechselt.
 STAGNATION_SESSIONS = 3
 
+# 02_Training_Gym.md, "Split-Auswahl nach Trainingstagen": Welcher Aufbau bei
+# wie vielen Gym-Tagen pro Woche sinnvoll ist. Die Datei sagt ausdruecklich,
+# dass bei drei Tagen Ganzkoerper meist besser ist als Push/Pull/Beine — jede
+# Muskelgruppe wird dreimal statt einmal getroffen, und ein ausgefallener Tag
+# streicht keine ganze Gruppe. Genau deshalb steht hier bei 3 "fullbody" und
+# nicht "ppl": Wer PPL will, waehlt es in den Einstellungen ausdruecklich.
+SPLIT_BY_DAYS: dict[int, str] = {
+    0: "fullbody",
+    1: "fullbody",
+    2: "fullbody",      # Ganzkoerper A/B, Frequenz 2x
+    3: "fullbody",      # Ganzkoerper A/B/C, Frequenz 3x — oder PPL auf Wunsch
+    4: "upper_lower",   # Oberkoerper/Unterkoerper x2, Frequenz 2x
+    5: "upper_lower",
+    6: "ppl",           # Push/Pull/Beine x2, Frequenz 2x
+    7: "ppl",
+}
+
 # --- Koerpergewicht -------------------------------------------------------
 # 05_Ernaehrung_Grundlagen.md und Playbook Abschnitt 5, als Prozent pro Woche.
 GAIN_RATE_RANGE = (0.25, 0.5)

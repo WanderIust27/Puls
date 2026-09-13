@@ -640,6 +640,22 @@ function timeTicks(from, to, axis) {
 
 /* points: [{ t: Millisekunden, value, label?, tip? }]
    series: mehrere Linien als [{ key, label, color, points }] */
+// Ab wann zwei Punkte nicht mehr verbunden werden: der Median der Abstände
+// dieser Reihe, mal 2,5. Bei täglichen Werten reißt die Linie damit ab dem
+// dritten fehlenden Tag, bei wöchentlichen erst nach über zwei Wochen — in
+// beiden Fällen dann, wenn wirklich etwas fehlt.
+const GAP_FACTOR = 2.5;
+const MIN_GAP_MS = 2.2 * 86400e3;
+
+function seriesGap(pts) {
+  if (pts.length < 3) return Infinity;      // zwei Punkte verbindet man immer
+  const deltas = [];
+  for (let i = 1; i < pts.length; i += 1) deltas.push(pts[i].t - pts[i - 1].t);
+  deltas.sort((a, b) => a - b);
+  const median = deltas[Math.floor(deltas.length / 2)] || MIN_GAP_MS;
+  return Math.max(MIN_GAP_MS, median * GAP_FACTOR);
+}
+
 function timeChart(container, series, opts = {}) {
   const lines = (series || []).filter((s) => s.points && s.points.length);
   if (!lines.length) {
@@ -682,7 +698,13 @@ function timeChart(container, series, opts = {}) {
     const pts = [...s.points].sort((a, b) => a.t - b.t);
     // Eine Lücke bleibt eine Lücke: Zwischen zwei Punkten, die weiter
     // auseinanderliegen als der übliche Abstand, wird nicht durchgezogen.
-    const gapMs = opts.maxGapMs || span / 4;
+    //
+    // „Üblich" ist dabei der Abstand DIESER Reihe, nicht ein Bruchteil des
+    // Zeitraums. Vorher stand hier span/4: Bei täglichen Werten stimmte das
+    // ungefähr, bei Einträgen, die man von Hand macht, nicht mehr. Wer alle
+    // paar Tage sein Gemüt einträgt, bekam lauter einzelne Punkte ohne Linie
+    // — obwohl genau diese Punkte die Reihe sind.
+    const gapMs = opts.maxGapMs || seriesGap(pts);
     let d = "", open = false;
     pts.forEach((p, i) => {
       const jump = i && p.t - pts[i - 1].t > gapMs;

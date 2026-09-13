@@ -12,9 +12,9 @@ steht dahinter.
 | Reiter | Was dort steht |
 |---|---|
 | **Plan** | Die Empfehlung für heute, Einheiten auf Zuruf, deine Woche, was geplant ist |
-| **Kraft** | Training in Worten nachtragen, neue Gewichte, Muskelgruppen, Übungen |
+| **Kraft** | Training in Worten nachtragen, neue Gewichte, Muskelgruppen, Wochenkorridor, Rückblick mit Vergleich, Übungen |
 | **Laufen** | Form und Tempi, VO2max mit Renn-Prognose, Puls und Zonen, Laufform, Tipps, alle Läufe mit Karte und Kurven |
-| **Vital** | Erholung, Einschlafzeit, was gerade ausschlägt, sechs Werte mit Erklärung |
+| **Vital** | Erholung, Einschlafzeit, Gewicht und Zielgewicht, Muskel gegen Fett, Körperwerte, sechs Vitalwerte mit Erklärung |
 | **Gemüt** | Stimmung, Energie, Stress, Beschwerden — und was daraus fürs Training folgt |
 
 Einstellungen stehen nicht als eigener Reiter im Weg, sondern hinter dem Knopf
@@ -236,6 +236,80 @@ denen las die Fortschreibung dann ein Gewicht, das zu einer ganz anderen Übung
 gehörte. Sätze von der Uhr bleiben dabei unangetastet — die hat niemand
 getippt.
 
+## Push, Pull, Beine — welcher Aufbau
+
+Bis vor kurzem war jede Gym-Einheit eine Ganzkörpereinheit. Für zwei oder drei
+Tage die Woche ist das die richtige Antwort, und `02_Training_Gym.md` sagt das
+auch: Bei drei Tagen trifft Ganzkörper jede Muskelgruppe dreimal statt einmal,
+und ein ausgefallener Tag streicht keine ganze Gruppe. Ab vier Tagen kippt es.
+
+PULS leitet den Aufbau deshalb aus der Zahl deiner Gym-Tage ab — die Tabelle
+steht in `app/constants.py` und stammt aus derselben Datei:
+
+| Gym-Tage | Aufbau |
+|---|---|
+| 1–3 | Ganzkörper |
+| 4–5 | Oberkörper / Unterkörper |
+| 6–7 | Push / Pull / Beine |
+
+In den Einstellungen lässt sich das überschreiben. Wer Push/Pull will, bekommt
+Push/Pull, auch bei drei Tagen — es ist seine Woche, und PULS schreibt daneben,
+was die Tabelle dazu sagt.
+
+**Welcher Tag als Nächstes dran ist, hängt nicht am Kalender, sondern an dem,
+was du tatsächlich trainiert hast.** Wer den Push-Tag hat ausfallen lassen,
+macht Push nach — ein Plan, der stur weiterzählt, würde ihn überspringen, und
+dann fehlt die Brust eine Woche lang, ohne dass es jemandem auffällt. Erkannt
+wird die letzte Einheit an den Sätzen: Übungen zählen nach ihrer
+Bewegungsrichtung, und es gewinnt die, auf die mehr als die Hälfte der Sätze
+entfällt. Eine halb/halb-Einheit sagt über die Rotation nichts, und dann sagt
+PULS das auch.
+
+Ziehen oder Drücken steht nicht in der Datenbank — dort heißen Bizeps und
+Trizeps beide „arms". Die Unterscheidung macht eine Wortliste über den
+Übungsnamen, mit einer Regel davor: **Beine und Rumpf entscheidet die Gruppe,
+bevor der Name gefragt wird.** Sonst landet die Beinpresse wegen „press" am
+Push-Tag und der Hamstring-Curl wegen „curl" am Pull-Tag. Beide Fälle stehen
+als Prüfung in `tests/test_split.py`.
+
+Zwei Dinge sind beim Bauen aufgefallen und behoben:
+
+- Auf der Zugseite standen neun Übungen, auf der Druckseite fünf. Bei
+  Ganzkörper fällt das nie auf. Ein reiner Push-Tag war dadurch eine halbe
+  Stunde zu kurz — Brustpresse, Schrägbankdrücken, Schulterdrücken und
+  Überkopf-Trizeps sind dazugekommen, alle vier aus Template A und B der
+  Wissensdatenbank.
+- Der Hauptteil hörte bei fünf Übungen auf, egal wie viele angefordert waren:
+  Die Auswahl griff mit jeder Runde einen Eintrag weiter in eine Liste, die
+  schon um das Genommene bereinigt war, und übersprang so immer mehr.
+
+---
+
+## Was eine Einheit gebracht hat
+
+Im Rückblick standen früher drei Zahlen: Datum, Übungen, Sätze. Das ist ein
+Beleg, kein Befund — die Frage, die man sich beim Draufschauen stellt, ist eine
+andere. Jede Einheit trägt deshalb jetzt ihren Vergleich:
+
+- **Jede Übung gegen das letzte Mal, an dem du sie gemacht hast** — nicht gegen
+  den Vortag. Zwei Kilo mehr bei gleichen Wiederholungen sind ein Fortschritt;
+  zwei Wiederholungen mehr beim gleichen Gewicht auch. Beides stand immer schon
+  in den Sätzen und wurde nie gezeigt. Bei unterstützten Klimmzügen zählt
+  weniger Band als Fortschritt, nicht als Rückschritt.
+- **Die Einheit gegen die letzte gleicher Art.** Was an einem Push-Tag zählt,
+  ist der vorige Push-Tag und nicht der Beintag dazwischen.
+- **Die Volumenlast nur über die Übungen, die beide Einheiten gemeinsam
+  haben.** Sonst meldet eine zusätzlich gemachte Übung „+122 %" — was stimmt
+  und trotzdem das Falsche sagt: Es war nicht mehr Leistung, es war eine Übung
+  mehr. Dass eine dazukam, steht daneben.
+
+Darüber steht die Woche: 12–20 harte Sätze je Muskelgruppe, der Korridor aus
+`01_Grundlagen_Muskelaufbau.md`, als Balken mit dem Korridor als hellem
+Streifen darin. Ein Satz zählt für die trainierte Gruppe voll und für die
+mitbelasteten halb — ein Klimmzug geht also auch auf den Bizeps.
+
+---
+
 ## Deine Woche
 
 Gym-Tage und Lauftage klickst du getrennt an, dazu je eine Dauer. Der Rest
@@ -417,6 +491,63 @@ Dieselbe Rechnung steht auch im `berechnet`-Block, den der Coach zu lesen
 bekommt. Vorher gab es dort eine eigene Mittelung über die rohen Messwerte,
 die das Referenzfenster ignorierte — und damit eine zweite Zahl für dasselbe.
 
+### Körperwerte: Muskel oder Fett?
+
+Die Waage liefert nach jeder Messung ein halbes Dutzend Zahlen. Einzeln sagt
+keine davon etwas: 17,4 % Körperfett ist erst dann eine Information, wenn
+danebensteht, was es vorigen Monat war und was es für einen 24-jährigen Mann
+bedeutet.
+
+**Die wichtigste Frage beim Aufbauen beantwortet keine der Zahlen für sich:**
+Von den Kilos, die dazugekommen sind, wie viel war Muskel? Zwei Kilo mehr auf
+der Waage sind ein Erfolg oder ein Versehen, je nachdem — und das Gewicht
+allein sagt es nicht. PULS rechnet deshalb die Fettmasse aus (Gewicht mal
+Fettanteil) und nimmt die fettfreie Masse als Rest. Was davon in zwölf Wochen
+dazugekommen ist, steht als zwei Balken nebeneinander, mit einem Satz, der es
+einordnet: *„2,31 kg in 13 Wochen dazugekommen — davon +1,53 kg fettfreie
+Masse und +0,79 kg Fett. So soll ein Aufbau aussehen."* Bei reinem Fettaufbau
+steht dort etwas anderes, und beim Abnehmen ebenfalls.
+
+Die Kurve darunter zeigt die **Veränderung** gegenüber der ersten Woche, nicht
+die Absolutwerte: Die liegen 50 Kilo auseinander, und dann sind beide Linien
+flach. Das Auseinanderlaufen ist die ganze Aussage.
+
+**Das Zielgewicht kommt aus deiner Magermasse, nicht aus einer Tabelle.** Der
+übliche Weg — BMI 22 mal Größe im Quadrat — beantwortet die Frage für einen
+Durchschnittskörper. Wer schon 69 kg fettfreie Masse mit sich trägt, landet bei
+12 % Körperfett zwangsläufig bei 79 kg, ganz gleich was eine Tabelle sagt. PULS
+nimmt also die Magermasse, rechnet den Zielfettanteil darauf, und legt den
+BMI-Korridor nur als Gegenprobe daneben. Dazu der **FFMI**, der die fettfreie
+Masse ins Verhältnis zur Größe setzt und Muskeln nicht als Übergewicht liest.
+Wer aufbauen will und unter dem Korridor liegt, bekommt die Dauer dazu — bei
+0,1 bis 0,25 kg fettfreier Masse pro Woche, was beim Erwachsenen realistisch
+ist.
+
+Fünf Werte stehen einzeln darunter, jeder mit Wochenverlauf, dem Vergleich zu
+vor vier und zwölf Wochen und einem Referenzbereich für Alter und Geschlecht:
+Körperfett, Muskelmasse, Wasseranteil, Viszeralfett und Knochenmasse. Die
+letzte ist ein Kontrollwert: Sie ändert sich beim Erwachsenen praktisch nicht,
+und wenn sie springt, hat die Waage schlecht gemessen — dann taugen an dem Tag
+auch die anderen Werte nichts.
+
+Eine Feinheit, die auffällt, wenn sie fehlt: Beim Aufbauen steigt der
+Fettanteil fast immer ein wenig mit. Das als „falsche Richtung" zu melden wäre
+Panikmache, denn die Frage beantwortet ohnehin die Aufteilung darüber. Solange
+es unter 0,8 Prozentpunkten in vier Wochen bleibt, schreibt PULS *„in dieser
+Größenordnung ist das normal"* — beim Abnehmen steht bei derselben Bewegung
+etwas anderes.
+
+### Wiegen: Uhrzeit und Referenzfenster
+
+Über den Tag schwankt das Gewicht um ein bis zwei Kilo. Ohne Umrechnung wäre
+jede Abendmessung ein scheinbarer Rückschlag. PULS rechnet deshalb jede Messung
+auf ein Referenzfenster um (Voreinstellung 06:00–09:00, in den Einstellungen zu
+ändern) — und **wie stark dein Körper schwankt, lernt es aus deinen eigenen
+Doppelmessungen**: Tage mit einer Messung im Fenster und einer außerhalb
+ergeben einen persönlichen Faktor gegen das Standardmodell. Unter fünf solchen
+Paaren bleibt es beim Standardmodell. Der Faktor und wie viele Messungen im
+Fenster lagen stehen als Fußnote unter den Körperwerten.
+
 ### Wann du ins Bett solltest
 
     Zubettgehzeit = Aufstehziel − Schlafbedarf − Einschlafdauer
@@ -436,6 +567,38 @@ Daneben steht, wie **regelmäßig** du ins Bett gehst: die typische Uhrzeit und
 die Streuung über zwei Wochen. Der Zeitpunkt zählt fast so viel wie die Dauer —
 ein Körper, der jeden Abend zu einer anderen Zeit schlafen geht, erholt sich
 schlechter als einer mit sieben ruhigen Stunden nach Plan.
+
+## Wie die Antworten gesetzt werden
+
+Das Modell antwortet in Markdown — Überschriften, Listen, Fettes. Das landete
+früher als eine Textblase in der Seite, mit Sternchen und Bindestrichen zum
+Selberlesen. Jetzt wird daraus, was gemeint war: Absätze sind Absätze, Listen
+sind Listen, Tabellen sind Tabellen.
+
+Gebaut wird über DOM-Knoten, **nicht über `innerHTML`**. Das ist nicht
+Umständlichkeit: Der Text kommt aus einem Modell, das seinerseits Auszüge aus
+Dateien gelesen hat. Was da an spitzen Klammern drinsteht, gehört angezeigt und
+nicht ausgeführt.
+
+Im Prompt steht dazu, welche Form erwünscht ist — kurze Absätze, Aufzählungen
+nur bei mehreren Punkten, `**fett**` höchstens ein- bis zweimal, Überschriften
+erst ab drei Absätzen, keine Emojis. Ohne diese Vorgabe setzt ein Modell gern
+jede Antwort als dreistufige Gliederung.
+
+### Wann eine Linie abreißt
+
+Ein Diagramm soll eine Lücke als Lücke zeigen und nicht quer durch sie
+durchziehen. Die Grenze dafür war ein Viertel des dargestellten Zeitraums. Bei
+täglichen Werten stimmte das ungefähr; bei Einträgen, die man von Hand macht,
+nicht mehr — wer alle paar Tage sein Gemüt einträgt, bekam lauter einzelne
+Punkte ohne Linie, obwohl genau diese Punkte die Reihe sind.
+
+Jetzt entscheidet der **Median der Abstände dieser Reihe**, mal 2,5. Bei
+täglichen Werten reißt die Linie ab dem dritten fehlenden Tag, bei
+wöchentlichen erst nach über zwei Wochen — in beiden Fällen dann, wenn wirklich
+etwas fehlt.
+
+---
 
 ## Gemüt und Beschwerden
 
@@ -626,7 +789,7 @@ der Kontext gelesen wird oder das Modell seinem Vorwissen folgt.
 ./tests/run_all.sh
 ```
 
-Dreiundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine
+Sechsundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine
 Daten werden nicht angefasst.
 
 Zwei davon decken die beiden Kernstücke ab. Die eine schickt jede Schreibweise
@@ -662,6 +825,20 @@ Kilometern nicht in den Formschnitt rutschen, und dass jeder Tipp die gemessene
 Zahl mitträgt. Ein Prüfsatz stellt dabei sicher, dass im Reiter und in dem
 Text, den das Modell zu lesen bekommt, dieselben Zahlen stehen — zwei Zahlen
 für dasselbe sind schlimmer als eine ungenaue.
+
+Drei Suiten kamen mit dem Umbau dazu und prüfen jeweils die Stelle, an der ein
+Fehler nicht auffiele. Beim Split: dass die Beinpresse trotz „press" nicht am
+Push-Tag landet und der Hamstring-Curl trotz „curl" nicht am Pull-Tag, dass ein
+verpasster Tag nachgeholt und nicht übersprungen wird, und dass in einer
+Push-Einheit keine einzige Zugübung steht. Bei den Körperwerten: dass reiner
+Fettaufbau nicht als gelungener Aufbau durchgeht, dass ein stillstehendes
+Gewicht mit sinkendem Fettanteil trotzdem als Bewegung erkannt wird, und dass
+Prozentpunkte Prozentpunkte heißen. Beim Rückblick: dass mit dem letzten Mal
+DIESER Übung verglichen wird und nicht mit dem Vortag, dass weniger Band bei
+unterstützten Klimmzügen ein Fortschritt ist, und dass eine zusätzliche Übung
+keine Mehrleistung meldet. Der letzte Test hat beim ersten Lauf einen echten
+Fehler gefunden: Die Wochenauswertung las die Wiederholungen nicht aus und kam
+deshalb für jede Muskelgruppe auf null.
 
 Eine Suite klickt die App in einem **echten Browser** durch: jeden Reiter, das
 Nachtragen bis zum übernommenen Vorschlag, die geschalteten Wochentage bis über

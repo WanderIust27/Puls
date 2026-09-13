@@ -347,6 +347,8 @@ DEFAULT_SETTINGS = {
     "evening_mobility": "1",
     "prefer_machines": "1",
     # Die Spanne, in der ein Gewicht richtig sitzt
+    # auto | fullbody | upper_lower | ppl — siehe app/services/split.py
+    "gym_split": "auto",
     "prog_rep_min": "8",
     "prog_rep_max": "12",
     # Laufziel

@@ -98,11 +98,13 @@ def titles_of(name):
 
 EXPECTED = {
     "plan": ("Einheit auf Zuruf", "Deine Woche", "Geplante Einheiten"),
-    "strength": ("Training nachtragen", "Muskelgruppen", "Letzte Einheiten"),
+    "strength": ("Training nachtragen", "Muskelgruppen", "Diese Woche",
+                 "Letzte Einheiten"),
     "running": ("Form", "Trend", "VO2max", "Puls", "Laufform",
                 "Woran du arbeiten solltest", "Läufe"),
     "mood": ("Wie geht es dir?", "Verlauf", "Was daraus folgt"),
-    "vital": ("Erholung", "Was gerade ausschlägt", "Deine Werte", "Gewicht"),
+    "vital": ("Erholung", "Was gerade ausschlägt", "Deine Werte", "Gewicht",
+              "Muskel oder Fett?", "Zielgewicht", "Körperwerte"),
 }
 for view, wanted in EXPECTED.items():
     have = [t.strip() for t in titles_of(view)]

@@ -108,6 +108,114 @@ async function loadKbState() {
   }
 }
 
+/* ================================================== Antworten formatieren */
+
+/* Das Modell antwortet in Markdown — Überschriften, Listen, Fettes. Bisher
+   landete das als eine Textblase in der Seite, mit Sternchen und Bindestrichen
+   zum Selberlesen. Hier wird daraus, was gemeint war.
+
+   Gebaut wird über DOM-Knoten, nicht über innerHTML. Das ist nicht Umständ-
+   lichkeit: Der Text kommt aus einem Modell, das seinerseits Auszüge aus
+   Dateien gelesen hat. Was da an spitzen Klammern drinsteht, gehört angezeigt
+   und nicht ausgeführt. */
+
+const MD_INLINE = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_|`[^`]+`)/g;
+
+function inlineMd(text, into) {
+  text.split(MD_INLINE).forEach((part, i) => {
+    if (!part) return;
+    if (i % 2 === 0) { into.append(document.createTextNode(part)); return; }
+    if (part.startsWith("**") || part.startsWith("__")) {
+      into.append(el("b", null, part.slice(2, -2)));
+    } else if (part.startsWith("`")) {
+      into.append(el("code", null, part.slice(1, -1)));
+    } else {
+      into.append(el("i", null, part.slice(1, -1)));
+    }
+  });
+  return into;
+}
+
+const MD_BULLET = /^\s*[-*•]\s+(.*)$/;
+const MD_NUMBER = /^\s*(\d+)[.)]\s+(.*)$/;
+const MD_HEADING = /^\s*(#{1,6})\s+(.*)$/;
+const MD_RULE = /^\s*([-*_]\s*){3,}$/;
+const MD_ROW = /^\s*\|(.+)\|\s*$/;
+const MD_SEP = /^[\s|:-]+$/;
+
+function cells(line) {
+  return line.replace(/^\s*\|/, "").replace(/\|\s*$/, "")
+    .split("|").map((c) => c.trim());
+}
+
+function renderMarkdown(text, box) {
+  const lines = String(text || "").split("\n");
+  let list = null;            // offene <ul>/<ol>
+  let para = [];              // gesammelte Zeilen eines Absatzes
+
+  const flushPara = () => {
+    if (!para.length) return;
+    box.append(inlineMd(para.join(" "), el("p", "answer-p")));
+    para = [];
+  };
+  const endList = () => { list = null; };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+
+    if (!line.trim()) { flushPara(); endList(); continue; }
+
+    if (MD_RULE.test(line)) { flushPara(); endList(); continue; }
+
+    // Tabelle: Kopfzeile, Trennzeile, dann Inhalt. Ohne die Trennzeile ist
+    // es keine Tabelle, sondern ein Satz mit Strichen darin.
+    if (MD_ROW.test(line) && i + 1 < lines.length
+        && MD_ROW.test(lines[i + 1]) && MD_SEP.test(cells(lines[i + 1]).join(""))) {
+      flushPara(); endList();
+      const table = el("table", "answer-table");
+      const head = el("tr");
+      cells(line).forEach((c) => head.append(inlineMd(c, el("th"))));
+      table.append(head);
+      i += 1;
+      while (i + 1 < lines.length && MD_ROW.test(lines[i + 1])) {
+        i += 1;
+        const tr = el("tr");
+        cells(lines[i]).forEach((c) => tr.append(inlineMd(c, el("td"))));
+        table.append(tr);
+      }
+      const wrap = el("div", "answer-tablewrap");
+      wrap.append(table);
+      box.append(wrap);
+      continue;
+    }
+
+    const heading = line.match(MD_HEADING);
+    if (heading) {
+      flushPara(); endList();
+      box.append(inlineMd(heading[2], el("h4", "answer-h")));
+      continue;
+    }
+
+    const bullet = line.match(MD_BULLET);
+    const numbered = line.match(MD_NUMBER);
+    if (bullet || numbered) {
+      flushPara();
+      const want = bullet ? "UL" : "OL";
+      if (!list || list.tagName !== want) {
+        list = el(bullet ? "ul" : "ol", "answer-list");
+        box.append(list);
+      }
+      list.append(inlineMd(bullet ? bullet[1] : numbered[2], el("li")));
+      continue;
+    }
+
+    endList();
+    para.push(line.trim());
+  }
+  flushPara();
+  return box;
+}
+
 async function ask() {
   const frage = $("#askText").value.trim();
   if (frage.length < 4) { toast("Stell eine Frage.", "bad"); return; }
@@ -118,7 +226,7 @@ async function ask() {
     const res = await post("/coach/ask", { frage });
     box.replaceChildren();
     if (res.hinweis) box.append(el("p", "note warn", res.hinweis));
-    box.append(el("p", "answer", res.antwort));
+    renderMarkdown(res.antwort, box);
 
     // Woher die Antwort kommt — aus dem Abruf, nicht aus dem, was das Modell
     // selbst an Quellen nennt. Bei einer merkwürdigen Antwort ist das die
@@ -244,6 +352,23 @@ async function loadPlanned() {
   renderDays("#runDays", s.run_days);
   $("#gymMinutes").value = s.gym_minutes;
   $("#runMinutes").value = s.run_minutes;
+  renderSplit(s.split, data.split_mode);
+}
+
+// Welcher Aufbau gilt, warum er gilt und was als Nächstes dran ist. Ohne das
+// „warum" liest sich „Push" wie eine Laune — mit ihm wie eine Entscheidung.
+function renderSplit(sp, mode) {
+  if (!sp) return;
+  if (mode) $("#gymSplit").value = mode;
+  const note = $("#splitNote");
+  note.replaceChildren();
+  const head = el("span", null, `${sp.label} — ${sp.why}`);
+  note.append(head);
+  if (sp.rotation?.length > 1) {
+    note.append(el("br"));
+    note.append(el("span", null,
+      `Reihenfolge: ${sp.rotation.map((d) => d.label).join(" → ")}. ${sp.because}`));
+  }
 }
 
 function renderDays(sel, active) {
@@ -265,8 +390,10 @@ async function saveStructure() {
     gym_days: pickedDays("#gymDays"), run_days: pickedDays("#runDays"),
     gym_minutes: Number($("#gymMinutes").value) || 75,
     run_minutes: Number($("#runMinutes").value) || 45,
+    gym_split: $("#gymSplit").value,
   });
   toast("Wochenstruktur gespeichert.");
+  loadPlan();
 }
 
 function renderWish(w) {
@@ -298,6 +425,7 @@ async function loadStrength() {
   state.strength = data;
   renderProposals(data.proposals);
   renderMuscles(data.muscles);
+  renderWeekVolume(data.week_volume);
   renderSessions(data.sessions);
   renderExercises(data.exercises);
 }
@@ -350,6 +478,35 @@ function renderMuscles(m) {
   });
 }
 
+// Der Korridor der Woche: 12–20 harte Sätze je Muskelgruppe. Eine Einheit ist
+// gut, wenn sie eine Gruppe dorthin bringt — nicht, wenn sie lang war.
+function renderWeekVolume(w) {
+  $("#weekVolCard").hidden = !w;
+  if (!w) return;
+  $("#weekVolLead").textContent = w.sentence;
+  const box = $("#weekVolBars");
+  box.replaceChildren();
+  const scale = Math.max(w.max, ...w.groups.map((g) => g.sets));
+  w.groups.forEach((g) => {
+    const row = el("div", "zrow");
+    row.append(el("span", "pname", g.label));
+    const track = el("div", "ztrack");
+    // Der Korridor als Markierung im Balken, damit „genug" sichtbar ist und
+    // nicht nur als Zahl danebensteht.
+    const zone = el("div", "zband");
+    zone.style.left = `${w.min / scale * 100}%`;
+    zone.style.width = `${(w.max - w.min) / scale * 100}%`;
+    const fill = el("div", `zfill vol ${g.band}`);
+    fill.style.width = `${Math.min(100, g.sets / scale * 100)}%`;
+    track.append(fill, zone);
+    row.append(track, el("span", "zpct", de(g.sets)));
+    box.append(row);
+  });
+}
+
+// „1 Sätze" liest sich wie ein Fehler, und das ist es auch einer.
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
 function renderSessions(sessions) {
   const list = $("#sessionList");
   list.replaceChildren();
@@ -359,16 +516,37 @@ function renderSessions(sessions) {
   sessions.forEach((s) => {
     const wrap = el("details", "session");
     const sum = el("summary");
-    sum.append(el("b", null, fmtDate(s.day)),
-               el("span", "item-sub",
-                  ` ${s.exercises.length} Übungen · ${s.sets} Sätze`
-                  + (s.volume ? ` · ${s.volume.toLocaleString("de-DE")} kg` : "")));
+    const bits = [plural(s.exercises.length, "Übung", "Übungen"),
+                  plural(s.sets, "Satz", "Sätze")];
+    if (s.volume) bits.push(`${s.volume.toLocaleString("de-DE")} kg Last`);
+    if (s.volume_change_pct !== null && s.volume_change_pct !== undefined) {
+      bits.push(`${de(s.volume_change_pct, true)} % auf den gleichen Übungen`);
+    }
+    sum.append(el("b", null, fmtDate(s.day)));
+    if (s.kind_label) sum.append(el("span", "tag", s.kind_label));
+    sum.append(el("span", "item-sub", ` ${bits.join(" · ")}`));
     wrap.append(sum);
+    wrap.append(el("p", "lead", s.verdict));
+
     s.exercises.forEach((e) => {
       const line = el("div", "ex-line");
       line.append(el("span", "sn", e.name), el("span", "sv", e.summary));
+      // Der Vergleich ist der Punkt: dass es stattfand, sieht man am Datum.
+      const c = e.compare;
+      if (c) {
+        line.append(el("span",
+          `cmp ${c.better === true ? "up" : c.better === false ? "down" : ""}`,
+          c.text));
+      } else {
+        line.append(el("span", "cmp", "zum ersten Mal"));
+      }
       wrap.append(line);
     });
+
+    if (s.groups?.length) {
+      wrap.append(el("p", "hint",
+        `Sätze: ${s.groups.map((g) => `${g.label} ${de(g.sets)}`).join(" · ")}`));
+    }
     list.append(wrap);
   });
 }
@@ -990,6 +1168,7 @@ const ARROW = { steigt: "↑", fällt: "↓", hält: "→" };
 
 async function loadVital() {
   const data = await api("/vital");
+  renderBody(data.body || {});
 
   // --- Erholung ---------------------------------------------------------
   const ready = data.readiness || {};
@@ -1064,8 +1243,11 @@ async function loadVital() {
 }
 
 // Deutsche Zahlen: Der Text wird gelesen, nicht geparst.
-const de = (n, sign = false) =>
-  `${sign && n > 0 ? "+" : ""}${String(n).replace(".", ",")}`;
+// Deutsche Zahl. digits erzwingt Nachkommastellen — "83" statt "83,0" macht
+// aus einem Gewicht eine Schätzung.
+const de = (n, sign = false, digits = null) =>
+  `${sign && n > 0 ? "+" : ""}`
+  + (digits === null ? String(n) : Number(n).toFixed(digits)).replace(".", ",");
 
 const VERDICT_TONE = {
   "im Korridor": "good", stabil: "good",
@@ -1084,12 +1266,11 @@ function renderWeight(w) {
     $("#weightRate").textContent = "";
     $("#weightLead").textContent = w.hint || "Noch keine Messungen.";
     $("#weightChart").replaceChildren();
-    $("#weightBody").replaceChildren();
     return;
   }
 
   const tone = VERDICT_TONE[w.verdict] ?? "";
-  $("#weightNum").textContent = de(w.current_kg);
+  $("#weightNum").textContent = de(Math.round(w.current_kg * 10) / 10, false, 1);
   $("#weightNum").className = `ready-num ${tone === "good" ? "good"
     : tone === "warn" ? "warn" : tone === "bad" ? "bad" : ""}`;
   $("#weightRate").textContent = w.rate_pct === null ? "kg"
@@ -1109,18 +1290,9 @@ function renderWeight(w) {
     }], { height: 150, legend: false });
   }
 
-  const body = $("#weightBody");
-  body.replaceChildren();
-  (w.composition || []).forEach((c) => {
-    const row = el("div", "item");
-    const main = el("div", "item-main");
-    main.append(el("div", "item-title",
-      `${c.label}: ${de(c.value)} ${c.unit}`));
-    main.append(el("div", "item-sub",
-      `${de(c.change, true)} ${c.unit} über ${c.weeks} Wochen · ${c.what}`));
-    row.append(main);
-    body.append(row);
-  });
+  // Körperfett und Muskelmasse standen hier früher als zwei Zeilen. Sie
+  // haben inzwischen eine eigene Karte mit Verlauf und Einordnung — zweimal
+  // dieselbe Zahl auf einer Seite ist eine Zahl zu viel.
 }
 
 function vitalRow(m) {
@@ -1160,6 +1332,137 @@ function vitalRow(m) {
 }
 
 /* ================================================================ GEMÜT */
+
+function renderBody(b) {
+  const cards = ["#partCard", "#targetCard", "#compCard"];
+  if (!b.measurements) {
+    cards.forEach((sel) => { $(sel).hidden = true; });
+    return;
+  }
+  renderPartition(b.partition);
+  renderTarget(b.target);
+  renderComposition(b.composition || [], b.discipline);
+}
+
+// Die eine Frage, die beim Aufbauen zählt: Von den Kilos, die dazugekommen
+// sind — wie viel davon war Muskel? Das Gewicht allein beantwortet sie nicht.
+function renderPartition(p) {
+  $("#partCard").hidden = !p;
+  if (!p) return;
+  $("#partLead").textContent = p.sentence;
+  $("#partNote").textContent = p.note;
+
+  const bars = $("#partBars");
+  bars.replaceChildren();
+  const total = Math.abs(p.lean_kg) + Math.abs(p.fat_kg);
+  [["Fettfreie Masse", p.lean_kg, "lean"], ["Fettmasse", p.fat_kg, "fat"]]
+    .forEach(([label, kg, kind]) => {
+      const row = el("div", "zrow");
+      row.append(el("span", "pname", label));
+      const track = el("div", "ztrack");
+      const fill = el("div", `zfill ${kind} ${kg >= 0 ? "up" : "down"}`);
+      fill.style.width = `${total ? Math.abs(kg) / total * 100 : 0}%`;
+      track.append(fill);
+      row.append(track, el("span", "zpct", `${de(kg, true)} kg`));
+      bars.append(row);
+    });
+  if (p.per_week_lean !== null) {
+    bars.append(el("p", "hint",
+      `Pro Woche: ${de(p.per_week_lean, true)} kg fettfrei, `
+      + `${de(p.per_week_fat, true)} kg Fett.`));
+  }
+
+  const chart = $("#partChart");
+  chart.replaceChildren();
+  if (window.timeChart && (p.points || []).length > 2) {
+    const base = p.points[0];
+    const line = (key, label) => ({
+      key, label,
+      points: p.points.map((q) => ({
+        t: new Date(`${q.day}T12:00:00`).getTime(),
+        value: Math.round((q[key] - base[key]) * 100) / 100,
+        tip: `${fmtDate(q.day)}: ${de(Math.round(q[key] * 10) / 10)} kg`,
+      })),
+    });
+    timeChart(chart, [line("lean", "Fettfreie Masse"), line("fat", "Fettmasse")],
+              { height: 160, unit: " kg" });
+    chart.append(el("p", "hint",
+      "Veränderung gegenüber der ersten Woche — nicht die Absolutwerte. "
+      + "Die liegen 50 Kilo auseinander, und dann sieht man nichts."));
+  }
+}
+
+function renderTarget(t) {
+  $("#targetCard").hidden = !t;
+  if (!t) return;
+  const [lo, hi] = t.range_kg;
+  $("#targetNum").textContent = `${de(lo, false, 1)}–${de(hi, false, 1)}`;
+  $("#targetLead").textContent = t.sentence;
+  $("#targetNote").textContent = t.note;
+  $("#targetEta").textContent = t.eta?.text || "";
+
+  const facts = $("#targetFacts");
+  facts.replaceChildren();
+  [["Aktuell", `${de(t.weight_kg, false, 1)} kg`],
+   ["Fettfreie Masse", `${de(t.lean_kg, false, 1)} kg`],
+   ["Körperfett", `${de(t.fat_pct, false, 1)} %`],
+   ["BMI", t.bmi ? de(t.bmi) : null],
+   ["FFMI", t.ffmi ? de(t.ffmi) : null]]
+    .filter(([, v]) => v)
+    .forEach(([label, value]) => {
+      const box = el("div", "kpi");
+      box.append(el("div", "kpi-val", value), el("div", "kpi-lab", label));
+      facts.append(box);
+    });
+  if (t.ffmi_note) facts.append(el("p", "hint", t.ffmi_note));
+}
+
+function renderComposition(rows, disc) {
+  $("#compCard").hidden = !rows.length;
+  const box = $("#compRows");
+  box.replaceChildren();
+  rows.forEach((m) => {
+    const row = el("details", "vital-row");
+    const head = el("summary");
+    head.append(el("span", "v-name", m.label));
+    head.append(el("span", `v-val ${m.band === "good" ? "good"
+      : m.band === "warn" ? "off" : ""}`, `${m.text} ${m.unit}`.trim()));
+    const meta = el("span", "v-meta");
+    if (m.reference) meta.append(el("span", "v-base", m.reference));
+    if (m.change_4w) {
+      meta.append(el("span", "v-trend",
+        `${de(m.change_4w, true)} ${m.unit || ""} in 4 Wochen`.trim()));
+    }
+    if (m.change_12w) {
+      meta.append(el("span", "v-trend",
+        `${de(m.change_12w, true)} ${m.unit || ""} in 12 Wochen`.trim()));
+    }
+    head.append(meta);
+    row.append(head);
+    const chart = el("div", "v-chart");
+    row.append(chart);
+    if (window.timeChart && m.points.length > 2) {
+      timeChart(chart, [{
+        key: m.key, label: m.label,
+        points: m.points.map((q) => ({
+          t: new Date(`${q.day}T12:00:00`).getTime(), value: q.value })),
+      }], { height: 120, legend: false, unit: m.unit ? ` ${m.unit}` : "" });
+    }
+    row.append(el("p", "lead", m.sentence));
+    row.append(el("p", "hint", m.what), el("p", "hint", m.why));
+    box.append(row);
+  });
+
+  // Wie sauber gemessen wurde, gehört unter die Werte und nicht in eine
+  // eigene Karte: Es ist die Fußnote zu allem darüber.
+  const note = $("#scaleDiscipline");
+  if (!disc || !disc.total) { note.textContent = ""; return; }
+  note.textContent =
+    `${disc.in_window} von ${disc.total} Messungen lagen im Fenster ${disc.window}. `
+    + `Alles andere rechnet PULS darauf um — mit Faktor ${de(disc.factor)}, `
+    + `aus deinen eigenen Doppelmessungen gelernt.`
+    + (disc.hint ? ` ${disc.hint}` : "");
+}
 
 async function loadMood() {
   const data = await api("/mood");
@@ -1254,6 +1557,11 @@ async function openSettings() {
   $("#setRepMin").value = s.progression.rep_min;
   $("#setRepMax").value = s.progression.rep_max;
   $("#setFont").value = s.font_scale;
+  $("#setHeight").value = Math.round(s.body_height_cm);
+  $("#setAge").value = s.body_age;
+  $("#setSex").value = s.body_sex;
+  $("#setWeighFrom").value = s.weigh_window_start;
+  $("#setWeighTo").value = s.weigh_window_end;
   updateProgPreview();
   $("#versionLine").textContent = `Kennung ${s.version} · Stand ${s.built_at}`;
   await Promise.all([renderGarmin(), renderModels()]);
@@ -1275,6 +1583,11 @@ async function saveSettings() {
     prog_rep_min: Number($("#setRepMin").value),
     prog_rep_max: Number($("#setRepMax").value),
     font_scale: Number($("#setFont").value),
+    body_height_cm: Number($("#setHeight").value) || 180,
+    body_age: Number($("#setAge").value) || 30,
+    body_sex: $("#setSex").value,
+    weigh_window_start: $("#setWeighFrom").value,
+    weigh_window_end: $("#setWeighTo").value,
   });
   document.documentElement.style.setProperty("--fs", `${$("#setFont").value / 100 * 16}px`);
   toast("Gespeichert.", "good");
@@ -1394,6 +1707,7 @@ function bind() {
     post("/plan/wish", { text }).then(renderWish).catch((e) => toast(e.message, "bad"));
   };
   $("#gymMinutes").onchange = saveStructure;
+  $("#gymSplit").onchange = saveStructure;
   $("#runMinutes").onchange = saveStructure;
 
   $("#btnRead").onclick = readTraining;

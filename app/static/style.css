@@ -349,7 +349,29 @@ button.x {
 .kb-state { font-size: 0.78em; letter-spacing: 0; color: var(--ink-3); }
 .kb-state.ok { color: var(--teal); }
 .kb-state.warn { color: var(--warn); }
+/* Die Antwort des Modells, nach Markdown gesetzt. Keine pre-wrap mehr:
+   Absaetze sind jetzt Absaetze, Listen sind Listen. */
 p.answer { font-size: 1.02em; line-height: 1.65; margin: 12px 0 8px; white-space: pre-wrap; }
+.answer-p { font-size: 1.02em; line-height: 1.65; margin: 10px 0; }
+.answer-h {
+  font-size: 0.82em; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3); margin: 16px 0 6px; font-weight: 600;
+}
+.answer-list { margin: 8px 0 8px 1.1em; padding: 0; line-height: 1.6; }
+.answer-list li { margin: 4px 0; }
+.answer-p code, .answer-list code {
+  background: var(--border-soft); border-radius: 4px; padding: 1px 5px;
+  font-size: 0.9em;
+}
+/* Tabellen duerfen breiter sein als die Karte — aber nur sie, und nur in
+   ihrem eigenen Kasten. Die Seite selbst scrollt nie zur Seite. */
+.answer-tablewrap { overflow-x: auto; margin: 10px 0; }
+.answer-table { border-collapse: collapse; font-size: 0.9em; min-width: 100%; }
+.answer-table th, .answer-table td {
+  border-bottom: 1px solid var(--border-soft); padding: 6px 10px;
+  text-align: left; vertical-align: top;
+}
+.answer-table th { color: var(--ink-3); font-weight: 600; white-space: nowrap; }
 .sources {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   font-size: 0.78em; color: var(--ink-3); margin-top: 10px;
@@ -382,9 +404,9 @@ svg { width: 100%; height: auto; display: block; }
 /* ------------------------------------------------------------------ Laufen */
 /* Zonenverteilung als Balken. Eine Tabelle mit fuenf Prozentzahlen liest
    niemand — die Verteilung sieht man, oder man sieht sie nicht. */
-.zrow { display: grid; grid-template-columns: 2.2em 1fr 3.2em; gap: 8px;
+.zrow { display: grid; grid-template-columns: auto 1fr max-content; gap: 8px;
   align-items: center; margin: 5px 0; font-size: 0.85em; }
-.zname { color: var(--ink-3); }
+.zname { color: var(--ink-3); min-width: 1.8em; }
 .ztrack { background: var(--border-soft); border-radius: 3px; height: 10px;
   overflow: hidden; }
 .zfill { height: 100%; border-radius: 3px; min-width: 2px;
@@ -401,3 +423,32 @@ svg { width: 100%; height: auto; display: block; }
 .tip.ok   { border-left-color: var(--accent); }
 .tip-why { margin-top: 4px; font-size: 0.82em; color: var(--ink-3); }
 .tip-why::before { content: "gemessen: "; }
+
+/* -------------------------------------------------------------- Körperwerte */
+/* Muskel gegen Fett als zwei Balken. Zwei Zahlen nebeneinander liest man,
+   zwei Balken sieht man — und das Verhältnis ist hier die ganze Aussage. */
+.pname { color: var(--ink-3); font-size: 0.92em; }
+.zrow .pname { min-width: 0; }
+.zfill.lean { background: var(--good); }
+.zfill.fat { background: var(--warn); }
+.zfill.fat.down { background: var(--good); }
+.zfill.lean.down { background: var(--bad); }
+
+/* ------------------------------------------------- Rückblick auf Einheiten */
+/* Was die Einheit gebracht hat, steht rechts neben den Sätzen — dort, wo
+   sonst nichts stand. Auf dem Telefon rutscht es in eine eigene Zeile. */
+.ex-line { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px;
+  align-items: baseline; padding: 5px 0; font-size: 0.9em; }
+.cmp { grid-column: 1 / -1; font-size: 0.85em; color: var(--ink-3); }
+.cmp.up { color: var(--good); }
+.cmp.down { color: var(--warn); }
+.session > summary .tag { margin: 0 6px; }
+.session .lead { font-size: 0.95em; margin: 6px 0 10px; }
+
+/* Der Wochenkorridor als heller Streifen hinter dem Balken. */
+.ztrack { position: relative; }
+.zband { position: absolute; top: 0; bottom: 0;
+  background: rgba(90, 158, 115, 0.22); pointer-events: none; }
+.zfill.vol { background: var(--ink-3); position: relative; z-index: 1; }
+.zfill.vol.ok { background: var(--good); }
+.zfill.vol.high { background: var(--warn); }

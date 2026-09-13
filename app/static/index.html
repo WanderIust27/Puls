@@ -95,6 +95,17 @@
       <label>Gym <input type="number" id="gymMinutes" min="20" max="150" step="5"> min</label>
       <label>Lauf <input type="number" id="runMinutes" min="10" max="180" step="5"> min</label>
     </div>
+    <div class="row fields">
+      <label>Aufbau
+        <select id="gymSplit">
+          <option value="auto">Automatisch</option>
+          <option value="fullbody">Ganzkörper</option>
+          <option value="upper_lower">Oberkörper / Unterkörper</option>
+          <option value="ppl">Push / Pull / Beine</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint" id="splitNote"></p>
     <div class="row">
       <button id="btnPlanWeek">Woche planen</button>
       <button id="btnPushAll" class="ghost">Alles an die Uhr</button>
@@ -142,8 +153,18 @@
     <div id="muscleList"></div>
   </article>
 
-  <article class="card">
+  <article class="card wide" id="weekVolCard">
+    <h3>Diese Woche</h3>
+    <p class="lead" id="weekVolLead"></p>
+    <div id="weekVolBars"></div>
+    <p class="hint">Ein Satz zählt für die trainierte Gruppe voll und für die
+      mitbelasteten halb — ein Klimmzug geht also auch auf den Bizeps.</p>
+  </article>
+
+  <article class="card wide">
     <h3>Letzte Einheiten</h3>
+    <p class="hint">Verglichen wird jede Übung mit dem letzten Mal, an dem du
+      sie gemacht hast — und die Einheit mit der letzten gleicher Art.</p>
     <div id="sessionList" class="list"></div>
   </article>
 
@@ -251,7 +272,36 @@
     </div>
     <p class="hint" id="weightNote"></p>
     <div id="weightChart"></div>
-    <div id="weightBody"></div>
+  </article>
+
+  <article class="card wide" id="partCard" hidden>
+    <h3>Muskel oder Fett?</h3>
+    <p class="lead" id="partLead"></p>
+    <div id="partBars"></div>
+    <div id="partChart"></div>
+    <p class="hint" id="partNote"></p>
+  </article>
+
+  <article class="card wide" id="targetCard" hidden>
+    <h3>Zielgewicht</h3>
+    <div class="today-head">
+      <p class="lead" id="targetLead"></p>
+      <div class="ready">
+        <div class="ready-num" id="targetNum">–</div>
+        <div class="ready-label">kg Korridor</div>
+      </div>
+    </div>
+    <div id="targetFacts" class="kpis"></div>
+    <p class="hint" id="targetEta"></p>
+    <p class="hint" id="targetNote"></p>
+  </article>
+
+  <article class="card wide" id="compCard" hidden>
+    <h3>Körperwerte</h3>
+    <p class="hint">Wochenmittel der Waage — Einzelmessungen schwanken um mehr,
+      als sich in einer Woche ändern kann. Tippen erklärt den Wert.</p>
+    <div id="compRows"></div>
+    <p class="hint" id="scaleDiscipline"></p>
   </article>
 
   <article class="card wide" id="spikeCard" hidden>
@@ -315,6 +365,31 @@
   </label>
   <p class="hint">Der Coach liest daraus, welche Muskelgruppen und Laufarten
     Vorrang haben.</p>
+
+  <h4>Deine Körperdaten</h4>
+  <div class="row fields">
+    <label>Größe <input type="number" id="setHeight" min="120" max="230"> cm</label>
+    <label>Alter <input type="number" id="setAge" min="12" max="100"></label>
+    <label>Geschlecht
+      <select id="setSex">
+        <option value="male">männlich</option>
+        <option value="female">weiblich</option>
+      </select>
+    </label>
+  </div>
+  <p class="hint">Gehen in drei Rechnungen ein: was die Waage aus der Impedanz
+    schätzt, wie dein VO2max-Wert eingeordnet wird, und welches Zielgewicht
+    sich aus deiner Magermasse ergibt. Ohne sie rät PULS dreimal.</p>
+
+  <h4>Wiegen: Referenzfenster</h4>
+  <div class="row fields">
+    <label>von <input type="time" id="setWeighFrom"></label>
+    <label>bis <input type="time" id="setWeighTo"></label>
+  </div>
+  <p class="hint">Auf dieses Fenster rechnet PULS jede Messung um. Über den Tag
+    schwankt das Gewicht um ein bis zwei Kilo — ohne Umrechnung wäre jede
+    Abendmessung ein scheinbarer Rückschlag. Wie stark dein Körper schwankt,
+    lernt PULS aus deinen eigenen Doppelmessungen.</p>
 
   <h4>Laufziel</h4>
   <div class="row fields">

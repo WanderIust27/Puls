@@ -593,7 +593,20 @@ PROMPT_TEMPLATE = """{playbook}
 - Betrifft die Frage konkret meine Person (Schmerzen, aktuelle Werte, Termine),
   haben meine Angaben Vorrang vor den allgemeinen Auszügen.
 - Nenne die Dateiquelle, wenn du eine konkrete Zahl oder Empfehlung nutzt.
-- Antworte auf Deutsch, knapp und direkt. Keine Motivationsfloskeln."""
+- Antworte auf Deutsch, knapp und direkt. Keine Motivationsfloskeln.
+
+## Form der Antwort
+
+Die Oberfläche setzt Markdown — nutze es, aber sparsam:
+
+- Kurze Absätze. Ein Gedanke je Absatz.
+- Aufzählungen mit `-`, wenn es wirklich mehrere Punkte sind. Nicht für
+  einen einzigen Satz.
+- `**fett**` für die Zahl oder den Begriff, auf den es ankommt — höchstens
+  ein- bis zweimal je Antwort.
+- Eine Tabelle nur, wenn wirklich mehrere Werte zu vergleichen sind.
+- Keine Überschriften bei einer kurzen Antwort. Erst ab drei Absätzen.
+- Keine Emojis."""
 
 
 def build_prompt(kb: KnowledgeBase, frage: str, playbook: str,

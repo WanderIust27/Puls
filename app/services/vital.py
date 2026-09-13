@@ -503,38 +503,6 @@ def _verdict(rate_pct: float | None, direction: str) -> tuple[str, str]:
         "Das ist das Tempo, bei dem der Muskel bleibt.")
 
 
-COMPOSITION = [
-    dict(field="body_fat_pct", label="Körperfett", unit="%", digits=1,
-         what="Aus der Impedanz der Waage geschätzt, nicht gemessen."),
-    dict(field="muscle_kg", label="Muskelmasse", unit="kg", digits=1,
-         what="Ebenfalls geschätzt — gut für die Richtung, nicht als Wahrheit."),
-]
-
-
-def _composition(today: dt.date) -> list[dict[str, Any]]:
-    """Koerperfett und Muskelmasse als Wochenmittel, mit Veraenderung."""
-    from . import body
-
-    floor = (today - dt.timedelta(days=WEIGHT_WEEKS * 7)).isoformat()
-    rows = [r for r in body.measurements(WEIGHT_WEEKS * 7) if r["day"] >= floor]
-    out = []
-    for spec in COMPOSITION:
-        weeks = _weekly([{"day": r["day"], spec["field"]: r.get(spec["field"])}
-                         for r in rows], spec["field"])
-        if len(weeks) < 2:
-            continue
-        change = weeks[-1]["value"] - weeks[0]["value"]
-        out.append({
-            "key": spec["field"], "label": spec["label"], "unit": spec["unit"],
-            "value": round(weeks[-1]["value"], spec["digits"]),
-            "change": round(change, spec["digits"]),
-            "weeks": len(weeks), "what": spec["what"],
-            "points": [{"day": w["day"], "value": round(w["value"], spec["digits"])}
-                       for w in weeks],
-        })
-    return out
-
-
 def weight(today: dt.date | None = None) -> dict[str, Any]:
     """Gewichtsverlauf als Wochenmittel — und was der Trend bedeutet."""
     from . import body
@@ -566,6 +534,5 @@ def weight(today: dt.date | None = None) -> dict[str, Any]:
         "goal": goal,
         "verdict": verdict,
         "sentence": sentence,
-        "composition": _composition(today),
         "hint": None,
     }

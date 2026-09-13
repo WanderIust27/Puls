@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import re
 import threading
 from typing import Any
 
@@ -17,9 +18,11 @@ from pydantic import BaseModel
 
 from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..version import BUILT_AT, VERSION
-from ..services import (body, facts, fit_import, garmin_sync, gym_analysis,
+from ..services import (body, body_coach, facts, fit_import, garmin_sync,
+                        gym_analysis,
                         logbook, mood, ollama_client, planner, run_analysis,
                         run_coach, running, session_request,
+                        session_review, split as split_svc,
                         today as today_svc, trends,
                         vital)
 from ..services import activity_details as activity_details_svc
@@ -208,7 +211,9 @@ def plan_view() -> dict[str, Any]:
             "gym_minutes": int(get_setting("gym_minutes", "75") or 75),
             "run_minutes": int(get_setting("run_minutes", "45") or 45),
             "evening_mobility": get_setting("evening_mobility", "1") == "1",
+            "split": split_svc.overview(),
         },
+        "split_mode": get_setting("gym_split", "auto") or "auto",
         "goal": trends.goal_focus(),
     }
 
@@ -360,7 +365,8 @@ def strength_view() -> dict[str, Any]:
         it["days_since"] = ex_lib.days_since(it.get("last_performed"))
     return {
         "exercises": items,
-        "sessions": logbook.recent_sessions(8),
+        "sessions": session_review.reviews(8),
+        "week_volume": session_review.week(),
         "proposals": ex_lib.open_proposals(30),
         "muscles": trends.muscles(),
         "changes": ex_lib.recent_changes(days=21),
@@ -590,8 +596,8 @@ async def upload_fit(file: UploadFile) -> dict[str, Any]:
 
 @router.get("/vital")
 def vital_view() -> dict[str, Any]:
-    """Schlaf und Vitalwerte — das Wenige, das etwas entscheidet."""
-    return vital.overview()
+    """Schlaf, Vitalwerte und Körper — das Wenige, das etwas entscheidet."""
+    return {**vital.overview(), "body": body_coach.overview()}
 
 
 # ---------------------------------------------------------------------- Gemüt
@@ -790,12 +796,18 @@ class SettingsIn(BaseModel):
     run_minutes: int | None = None
     evening_mobility: bool | None = None
     prefer_machines: bool | None = None
+    gym_split: str | None = None
     run_goal_distance_km: float | None = None
     run_goal_time_min: float | None = None
     pullup_goal: int | None = None
     font_scale: int | None = None
     prog_rep_min: int | None = None
     prog_rep_max: int | None = None
+    body_height_cm: float | None = None
+    body_age: int | None = None
+    body_sex: str | None = None
+    weigh_window_start: str | None = None
+    weigh_window_end: str | None = None
 
 
 @router.get("/settings")
@@ -808,10 +820,17 @@ def get_settings() -> dict[str, Any]:
         "run_minutes": int(get_setting("run_minutes", "45") or 45),
         "evening_mobility": get_setting("evening_mobility", "1") == "1",
         "prefer_machines": get_setting("prefer_machines", "1") == "1",
+        "gym_split": get_setting("gym_split", "auto") or "auto",
+        "split": split_svc.overview(),
         "run_goal_distance_km": float(get_setting("run_goal_distance_km", "10") or 10),
         "run_goal_time_min": float(get_setting("run_goal_time_min", "60") or 60),
         "pullup_goal": int(get_setting("pullup_goal", "10") or 10),
         "font_scale": int(get_setting("font_scale", "100") or 100),
+        "body_height_cm": float(get_setting("body_height_cm", "180") or 180),
+        "body_age": int(get_setting("body_age", "30") or 30),
+        "body_sex": get_setting("body_sex", "male") or "male",
+        "weigh_window_start": get_setting("weigh_window_start", "06:00"),
+        "weigh_window_end": get_setting("weigh_window_end", "09:00"),
         "progression": ex_lib._scheme(),
         "api_token": get_setting("api_token", ""),
         "version": VERSION, "built_at": BUILT_AT,
@@ -827,14 +846,27 @@ def post_settings(s: SettingsIn) -> dict[str, str]:
         if value is not None:
             set_setting(key, json.dumps([d for d in value if d in WEEKDAYS]))
     for key, low, high in (("gym_minutes", 20, 150), ("run_minutes", 10, 180),
-                           ("pullup_goal", 1, 50), ("font_scale", 85, 150)):
+                           ("pullup_goal", 1, 50), ("font_scale", 85, 150),
+                           ("body_age", 12, 100)):
         value = getattr(s, key)
         if value is not None:
             set_setting(key, str(int(max(low, min(high, value)))))
+    if s.gym_split is not None and s.gym_split in split_svc.MODES:
+        set_setting("gym_split", s.gym_split)
     for key in ("evening_mobility", "prefer_machines"):
         value = getattr(s, key)
         if value is not None:
             set_setting(key, "1" if value else "0")
+    # Groesse, Alter und Geschlecht gehen in die Waagen-Schaetzung, in die
+    # VO2max-Einordnung und ins Zielgewicht. Ohne sie raet PULS dreimal.
+    if s.body_height_cm is not None:
+        set_setting("body_height_cm", str(int(max(120, min(230, s.body_height_cm)))))
+    if s.body_sex is not None and s.body_sex in ("male", "female"):
+        set_setting("body_sex", s.body_sex)
+    for key in ("weigh_window_start", "weigh_window_end"):
+        value = getattr(s, key)
+        if value is not None and re.fullmatch(r"[0-2]\d:[0-5]\d", value.strip()):
+            set_setting(key, value.strip())
     for key in ("run_goal_distance_km", "run_goal_time_min"):
         value = getattr(s, key)
         if value is not None:

@@ -56,11 +56,15 @@ with get_db() as _db:
     for _i in range(0, 57):
         _d = dt.date.today() - dt.timedelta(days=_i)
         _kg = 82.0 + 0.3 * (56 - _i) / 7
+        _fat = 16.0 + 0.4 * (56 - _i) / 56
+        _lean = _kg * (1 - _fat / 100)
         _db.execute("""INSERT INTO body_metrics(day, measured_at, weight_kg,
-                           weight_adj_kg, in_window, body_fat_pct, source)
-                       VALUES(?,?,?,?,1,?,'miscale')""",
+                           weight_adj_kg, in_window, body_fat_pct, muscle_kg,
+                           water_pct, bone_kg, lbm_kg, visceral_fat, source)
+                       VALUES(?,?,?,?,1,?,?,?,?,?,?,'miscale')""",
                     (_d.isoformat(), _d.isoformat() + "T07:10:00",
-                     round(_kg, 2), round(_kg, 2), 16.0))
+                     round(_kg, 2), round(_kg, 2), round(_fat, 1),
+                     round(_lean * 0.95, 1), 57.5, 3.3, round(_lean, 1), 6.2))
     # Zwoelf Wochen Laeufe mit allem, was die Uhr liefert — sonst prueft der
     # Test im Laufreiter leere Karten. Jeder zweite Lauf traegt eine
     # VO2max-Schaetzung, die Zonen liegen ueberwiegend locker.
@@ -225,6 +229,27 @@ try:
         ok("Ein übernommener Vorschlag verschwindet", left == props - 1,
            f"{left} statt {props}")
 
+        # --- Der Rückblick muss sagen, was die Einheit gebracht hat ------
+        week_bars = page.eval_on_selector_all("#weekVolBars .zrow", "e => e.length")
+        ok("Der Wochenkorridor steht als Balken da", week_bars == 6,
+           f"{week_bars} Gruppen")
+        ok("… mit einem Satz darüber",
+           len(page.inner_text("#weekVolLead")) > 30,
+           page.inner_text("#weekVolLead")[:60])
+        page.click("#sessionList details summary")
+        page.wait_for_timeout(400)
+        ok("Die Einheit sagt, was sie gebracht hat",
+           len(page.inner_text("#sessionList details[open] .lead")) > 30,
+           page.inner_text("#sessionList details[open] .lead")[:70])
+        cmp_lines = page.eval_on_selector_all(
+            "#sessionList details[open] .cmp", "e => e.length")
+        ok("Jede Übung trägt ihren Vergleich", cmp_lines >= 2,
+           f"{cmp_lines} Zeilen")
+        # „1 Sätze" liest sich wie ein Fehler und ist einer.
+        ok("Keine kaputte Einzahl im Rückblick",
+           "1 Sätze" not in page.inner_text("#sessionList")
+           and "1 Übungen" not in page.inner_text("#sessionList"))
+
         # --- Laufen: VO2max, Puls, Form, Tipps ---------------------------
         page.click('nav.tabs button[data-view="running"]')
         page.wait_for_timeout(2000)
@@ -276,6 +301,49 @@ try:
         page.wait_for_timeout(500)
         ok("Eine Zeile erklärt sich beim Aufklappen",
            len(page.inner_text("#vitalList .vital-row .hint")) > 30)
+
+        # --- Körper: Muskel gegen Fett, Zielgewicht, Werte ---------------
+        ok("Muskel gegen Fett steht da",
+           len(page.inner_text("#partLead")) > 40, page.inner_text("#partLead")[:70])
+        ok("… als zwei Balken",
+           page.eval_on_selector_all("#partBars .zrow", "e => e.length") == 2)
+        ok("Das Zielgewicht ist eine Spanne",
+           "–" in page.inner_text("#targetNum"), page.inner_text("#targetNum"))
+        ok("… mit BMI und FFMI daneben",
+           page.eval_on_selector_all("#targetFacts .kpi", "e => e.length") >= 4)
+        comp = page.eval_on_selector_all("#compRows .vital-row", "e => e.length")
+        ok("Die Körperwerte stehen als Zeilen da", comp >= 4, f"{comp} Zeilen")
+        ok("Die Messdisziplin steht als Fußnote darunter",
+           "Fenster" in page.inner_text("#scaleDiscipline"),
+           page.inner_text("#scaleDiscipline")[:60])
+
+        # --- Die Antwort des Modells wird als Markdown gesetzt ------------
+        # Kein Modell im Test — geprüft wird der Setzer selbst, an einer
+        # Antwort, wie das Modell sie schreibt.
+        shape = page.evaluate("""() => {
+          const box = document.createElement('div');
+          renderMarkdown(
+            '## Kurz gesagt\\n\\nDein **VO2max** liegt bei 48,5.\\n\\n'
+            + '- Erstens locker laufen\\n- Zweitens `Zone 2` halten\\n\\n'
+            + '| Zone | Anteil |\\n|---|---|\\n| Z1 | 26 % |\\n| Z2 | 52 % |',
+            box);
+          return {
+            headings: box.querySelectorAll('h4').length,
+            bold: box.querySelectorAll('b').length,
+            code: box.querySelectorAll('code').length,
+            items: box.querySelectorAll('li').length,
+            rows: box.querySelectorAll('tr').length,
+            stars: box.textContent.includes('**'),
+            pipes: box.textContent.includes('|'),
+          };
+        }""")
+        ok("Überschriften werden gesetzt", shape["headings"] == 1, str(shape))
+        ok("Fettes wird fett", shape["bold"] == 1, str(shape))
+        ok("Code wird Code", shape["code"] == 1, str(shape))
+        ok("Listen werden Listen", shape["items"] == 2, str(shape))
+        ok("Tabellen werden Tabellen", shape["rows"] == 3, str(shape))
+        ok("Und keine Sternchen bleiben stehen", not shape["stars"], str(shape))
+        ok("… und keine Striche", not shape["pipes"], str(shape))
 
         # --- Gemüt: die Zahlen müssen sichtbar reagieren ----------------
         page.click('nav.tabs button[data-view="mood"]')

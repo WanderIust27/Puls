@@ -433,13 +433,23 @@ def _run_kind(verdict: dict[str, Any]) -> str:
 
 def session_for(verdict: dict[str, Any]) -> dict[str, Any] | None:
     """Die konkrete Einheit zur Entscheidung bauen — noch nicht gespeichert."""
-    from . import planner, running as run_lib
+    from . import planner, running as run_lib, split as split_svc
 
     kind = verdict["kind"]
     minutes = verdict["minutes"]
     try:
         if kind == "gym":
-            return planner.build_gym_session(minutes, emphasis=verdict["focus"][:3])
+            # Welcher Tag des Splits dran ist, haengt an dem, was zuletzt
+            # trainiert wurde. Deshalb steht die Begruendung mit in der
+            # Entscheidung: "Zuletzt Push vor drei Tagen" erklaert den
+            # Vorschlag, "Dienstag" erklaert ihn nicht.
+            nxt = split_svc.next_day()
+            verdict["split"] = {"label": nxt["label"], "key": nxt["key"],
+                                "day": nxt["day"]["label"],
+                                "day_key": nxt["day"]["key"],
+                                "because": nxt["because"]}
+            return planner.build_gym_session(minutes, emphasis=verdict["focus"][:3],
+                                             split_day=nxt["day"])
         if kind == "home":
             return planner.build_home_session(minutes, verdict["focus"][:3],
                                               with_dumbbell=True)

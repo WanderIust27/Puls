@@ -20,6 +20,7 @@ from ..db import get_db, get_setting
 from . import exercises as ex_lib
 from . import mood
 from . import running
+from . import split as split_svc
 
 log = logging.getLogger("puls.planner")
 
@@ -215,17 +216,28 @@ def _balance_main(pool: list[dict[str, Any]], count: int,
                 if lst:
                     chosen.append(lst.pop(0))
 
-    # Danach (oder ohne Schwerpunkt) reihum: eine Übung pro Gruppe, dann auffüllen
+    # Danach (oder ohne Schwerpunkt) reihum: eine Übung pro Gruppe, dann auffüllen.
+    #
+    # lst ist bereits um das Genommene bereinigt, also wird vorne zugegriffen.
+    # Hier stand lst[round_no] — mit jeder Runde wurde ein Eintrag mehr
+    # uebersprungen, und der Hauptteil hoerte bei fuenf Uebungen auf, egal wie
+    # viele angefordert waren. Bei Ganzkoerper fiel das nicht auf, weil sechs
+    # Gruppen schon in zwei Runden genug hergeben; an einem Push-Tag mit drei
+    # Gruppen wurde die Einheit dadurch eine halbe Stunde zu kurz.
     round_no = 0
     taken = {e["id"] for e in chosen}
-    while len(chosen) < count and round_no < 4:
+    while len(chosen) < count and round_no < 6:
+        moved = False
         for g in order:
             if len(chosen) >= count:
                 break
             lst = [e for e in (by_group.get(g) or []) if e["id"] not in taken]
-            if len(lst) > round_no:
-                chosen.append(lst[round_no])
-                taken.add(lst[round_no]["id"])
+            if lst:
+                chosen.append(lst[0])
+                taken.add(lst[0]["id"])
+                moved = True
+        if not moved:
+            break                       # alle Gruppen leer, mehr gibt es nicht
         round_no += 1
 
     # Matte vor Maschine: Nach dem Aufwärmen liegt man ohnehin schon, und die
@@ -237,7 +249,8 @@ def _balance_main(pool: list[dict[str, Any]], count: int,
 
 def build_gym_session(minutes: int | None = None, name: str | None = None,
                       emphasis: list[str] | None = None,
-                      dominate: bool = False) -> dict[str, Any]:
+                      dominate: bool = False,
+                      split_day: dict[str, Any] | None = None) -> dict[str, Any]:
     """Eine komplette Gym-Einheit nach Thomas' Aufbau.
 
     emphasis nennt die Muskelgruppen, die zuerst drankommen sollen — der
@@ -247,10 +260,34 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
     dominate=True heisst: Der Schwerpunkt kommt aus einem ausdruecklichen
     Wunsch („Sixpack-Training"), nicht aus dem gerechneten Bedarf. Dann traegt
     er den Hauptteil, statt nur vorne zu stehen.
+
+    split_day ist der Tag des eingestellten Splits — Push, Pull, Beine,
+    Oberkoerper, Unterkoerper. Ohne ihn bleibt es bei Ganzkoerper. Er
+    beschraenkt den Hauptteil auf die passenden Bewegungen und steuert auch
+    die Nebenbloecke: Klimmzugarbeit am Push-Tag waere ein Widerspruch in
+    sich.
     """
     minutes = minutes or int(get_setting("gym_minutes", "75") or 75)
     sizes = _block_sizes(minutes)
     lib = ex_lib.list_exercises(only_active=True)
+
+    # Der Split entscheidet, was ueberhaupt in Frage kommt. Er wird vor den
+    # Beschwerden angewandt: Bleibt danach zu wenig uebrig, faellt lieber die
+    # Teilung als die Einheit.
+    # Ganzkoerper hat keine patterns — dann gibt es auch nichts zu benennen.
+    # "Ganzkoerper-Tag: Kettlebell-Auftakt ..." sagt nichts, was nicht ohnehin
+    # dastuende.
+    patterns = tuple(split_day.get("patterns") or ()) if split_day else ()
+    split_label = split_day.get("label") if patterns else None
+    if patterns:
+        keep = [e for e in lib if (split_svc.pattern_of(e) or "x") in patterns
+                or (e.get("slot") or "main") in split_svc.NEUTRAL_SLOTS]
+        main_left = [e for e in keep if (e.get("slot") or "main") in ("main", "mat")]
+        if len(main_left) >= max(3, sizes["main"]):
+            lib = keep
+        else:
+            patterns, split_label = (), None
+            log.debug("Split fallen gelassen: zu wenige Uebungen uebrig")
 
     # Bei einem ausdruecklichen Schwerpunkt schrumpfen Auftakt und
     # Klimmzugarbeit zugunsten des Hauptteils: Wer eine Bauch-Einheit will,
@@ -288,6 +325,17 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
     # aus dem zu bauen, was zufällig an einer Maschine hängt.
     by_slot["main"] = (by_slot.get("main") or []) + (by_slot.get("mat") or [])
 
+    # Die Reihenfolge im Hauptteil: erst, woran es laut Trend fehlt, aber nur
+    # soweit es an diesen Tag des Splits gehoert — am Push-Tag hilft es nicht,
+    # den Ruecken vorzuziehen.
+    split_groups = list(split_day.get("groups") or ()) if patterns else []
+    if split_groups:
+        main_order = ([g for g in (emphasis or []) if g in split_groups]
+                      + [g for g in split_groups
+                         if g not in (emphasis or [])])
+    else:
+        main_order = list(emphasis or [])
+
     used: list[dict[str, Any]] = []
 
     def assemble(sz: dict[str, int]) -> list[dict[str, Any]]:
@@ -315,13 +363,15 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
             out.extend(_exercise_to_steps(e))
             used.append(e)
 
-        # 3. Klimmzug-Arbeit — früh, solange du frisch bist
+        # 3. Klimmzug-Arbeit — früh, solange du frisch bist. Am Push- und am
+        # Beintag entfällt sie: Ein Klimmzug ist die Zugübung schlechthin,
+        # und der Zugtag ist dann ein anderer.
         for e in _pick(by_slot.get("pullup", []), sz["pullup"], "pu"):
             out.extend(_exercise_to_steps(e))
             used.append(e)
 
         # 4. Hauptteil an den Maschinen
-        for e in _balance_main(by_slot.get("main", []), sz["main"], emphasis,
+        for e in _balance_main(by_slot.get("main", []), sz["main"], main_order,
                                dominate=dominate):
             out.extend(_exercise_to_steps(e))
             used.append(e)
@@ -374,6 +424,7 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
     # an die Einheit selbst: Wer eine andere Zahl auf dem Zettel findet, ohne
     # zu wissen warum, glaubt eher an einen Fehler als an eine Anpassung.
     changes = ex_lib.recent_changes([e["id"] for e in used], days=10)
+    has_pullups = any(e.get("slot") == "pullup" for e in used)
 
     return {
         "adapted": adapted,
@@ -386,16 +437,23 @@ def build_gym_session(minutes: int | None = None, name: str | None = None,
         # Im Namen steht die gerechnete Dauer, nicht die gewünschte: Eine
         # Einheit, die "90 min" heißt und nach 80 vorbei ist, ist eine Ansage,
         # auf die man sich nicht verlassen kann.
-        "name": name or (f"Gym {'/'.join(emphasis_labels)} {actual_minutes} min"
-                         if emphasis_labels else f"Gym Ganzkörper {actual_minutes} min"),
+        "name": name or (f"Gym {split_label} {actual_minutes} min" if split_label
+                         else f"Gym {'/'.join(emphasis_labels)} {actual_minutes} min"
+                         if emphasis_labels
+                         else f"Gym Ganzkörper {actual_minutes} min"),
         "sport": "strength",
         "emphasis": emphasis_labels,
+        "split": split_label,
+        "split_key": (split_day or {}).get("key") if patterns else None,
         "minutes": actual_minutes,
         "minutes_requested": minutes,
-        "description": (f"Kettlebell-Auftakt, Klimmzug-Arbeit, dann Maschinen "
-                        f"({', '.join(groups)}) und Dehnen zum Abschluss."
+        "description": ((f"{split_label}-Tag: " if split_label else "")
+                        + "Kettlebell-Auftakt, "
+                        + ("Klimmzug-Arbeit, " if has_pullups else "")
+                        + f"dann der Hauptteil ({', '.join(groups)}) und "
+                        + "Dehnen zum Abschluss."
                         + (f" Schwerpunkt: {', '.join(emphasis_labels)}."
-                           if emphasis_labels else "")),
+                           if emphasis_labels and not split_label else "")),
         "steps": steps,
         "exercise_ids": [e["id"] for e in used],
     }
@@ -656,6 +714,13 @@ def plan_week(start: dt.date | None = None, include_runs: bool = True,
     except Exception as e:                                      # noqa: BLE001
         log.debug("Wochenplan ohne Trend: %s", e)
 
+    # Welcher Tag des Splits auf welchen Gym-Tag faellt. Die Reihenfolge kommt
+    # aus dem, was zuletzt trainiert wurde — nicht aus dem Wochentag.
+    gym_dates = [start + dt.timedelta(days=o) for o in range(7)
+                 if _weekday_of(start + dt.timedelta(days=o)) in gym_days]
+    rotation = split_svc.upcoming(len(gym_dates), start, gym_days) if gym_dates else []
+    split_for = {d.isoformat(): rotation[i] for i, d in enumerate(gym_dates)}
+
     out: list[dict[str, Any]] = []
     for offset in range(7):
         date = start + dt.timedelta(days=offset)
@@ -669,7 +734,8 @@ def plan_week(start: dt.date | None = None, include_runs: bool = True,
             out.append(run)
 
         if include_gym and wd in gym_days:
-            gym = build_gym_session(gym_minutes, emphasis=focus)
+            gym = build_gym_session(gym_minutes, emphasis=focus,
+                                    split_day=split_for.get(iso))
             gym["planned_date"] = iso
             gym["time_of_day"] = "abends"
             out.append(gym)
@@ -697,6 +763,7 @@ def week_overview() -> dict[str, Any]:
         "run_days": run_days,
         "run_minutes": int(get_setting("run_minutes", "25") or 25),
         "gym_days": gym_days,
+        "split": split_svc.overview(),
         "gym_minutes": int(get_setting("gym_minutes", "75") or 75),
         "evening_mobility": get_setting("evening_mobility", "1") == "1",
         "paces": {k: running.pace_s_to_str(v) for k, v in (paces or {}).items()},
