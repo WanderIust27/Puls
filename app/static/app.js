@@ -734,7 +734,7 @@ async function loadRunning() {
   }
   bests.forEach((b) => {
     goal.append(el("div", "hint",
-      `Bestes ${b.label}: ${fmtPace(b.pace_s)} am ${fmtDate(b.day)}.`));
+      `Bestes ${b.label}: ${fmtPace(b.pace_s)} am ${fmtDate(b.day)}`));
   });
 
   const trend = $("#runTrend");
@@ -749,6 +749,8 @@ async function loadRunning() {
   (data.trend.needs || []).forEach((n) => trend.append(el("li", "need", n)));
   (data.form?.hints || []).forEach((h) =>
     trend.append(el("p", `note ${h.level}`, h.text)));
+
+  renderCoach(data.coach || {});
 
   const list = $("#runList");
   list.replaceChildren();
@@ -767,6 +769,176 @@ async function loadRunning() {
     row.append(main);
     row.onclick = () => openRun(r);
     list.append(row);
+  });
+}
+
+const BAND_TONE = { good: "good", ok: "", warn: "warn", info: "" };
+
+function renderCoach(c) {
+  ["#vo2Card", "#pulseCard", "#formCard", "#runTipsCard"].forEach((sel) => {
+    $(sel).hidden = !c.runs;
+  });
+  if (!c.runs) return;
+  renderVo2(c.vo2max || {});
+  renderPulse(c.pulse || {});
+  renderRunForm(c.form || []);
+  renderRunTips(c.tips || []);
+}
+
+function renderVo2(v) {
+  $("#vo2Band").textContent = v.band || "";
+  $("#vo2Num").textContent = v.value === null || v.value === undefined
+    ? "–" : de(v.value);
+  $("#vo2Lead").textContent = v.lead || v.hint || "";
+  $("#vo2What").textContent = v.what || "";
+  $("#vo2WhyText").textContent = v.why || "";
+  $("#vo2Why").hidden = !v.what;
+
+  // Wochenbestwerte statt Einzelläufe: Die Uhr schätzt nach jedem Lauf neu,
+  // und ein kurzer oder hügeliger Lauf drückt den Wert, ohne dass sich an
+  // der Ausdauer etwas geändert hätte.
+  const chart = $("#vo2Chart");
+  chart.replaceChildren();
+  if (window.timeChart && (v.points || []).length > 2) {
+    timeChart(chart, [{
+      key: "vo2max", label: "Wochenbestwert",
+      points: v.points.map((p) => ({
+        t: new Date(`${p.day}T12:00:00`).getTime(), value: p.value,
+      })),
+    }], { height: 140, legend: false });
+  }
+
+  const races = $("#vo2Races");
+  races.replaceChildren();
+  (v.predictions || []).forEach((r) => {
+    const row = el("div", "item");
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title", `${r.label}: ${r.text}`));
+    main.append(el("div", "item-sub", `${r.pace_text}/km`));
+    row.append(main);
+    races.append(row);
+  });
+  if (v.predictions?.length) {
+    races.append(el("p", "hint",
+      "Rechnerische Prognosen aus dem VO2max-Wert (Modell nach Daniels), "
+      + "keine gelaufenen Zeiten."));
+  }
+
+  const g = v.goal;
+  $("#vo2Goal").textContent = !g ? ""
+    : g.reached
+      ? `Ziel ${de(g.distance_km)} km unter ${de(g.time_min)} min: rechnerisch `
+        + `schaffst du das schon (${g.predicted_text}).`
+      : `Ziel ${de(g.distance_km)} km unter ${de(g.time_min)} min — Prognose `
+        + `${g.predicted_text}, also ${Math.round(g.gap_s / 60)} min Rückstand. `
+        + `Nötiges Tempo: ${g.required_pace}/km.`;
+}
+
+function renderPulse(p) {
+  const kpis = $("#pulseKpis");
+  kpis.replaceChildren();
+  const entries = [
+    ["Ruhepuls", p.resting ? `${p.resting.value} bpm` : null],
+    ["Höchster gemessener Puls", p.max_seen ? `${p.max_seen.value} bpm` : null],
+    [p.average ? `Schnitt im Lauf · ${p.average.percent_of_max} % vom Maximum`
+      : "Schnitt im Lauf", p.average ? `${p.average.value} bpm` : null],
+    ["Kilometer/Woche", p.volume ? de(p.volume.km_per_week) : null],
+  ];
+  entries.forEach(([label, value]) => {
+    const box = el("div", "kpi");
+    box.append(el("div", "kpi-val", value ?? "–"), el("div", "kpi-lab", label));
+    kpis.append(box);
+  });
+
+  $("#zoneLead").textContent = p.zones?.sentence || "";
+
+  const bars = $("#zoneBars");
+  bars.replaceChildren();
+  (p.zones?.bars || []).forEach((b) => {
+    const row = el("div", "zrow");
+    row.append(el("span", "zname", `Z${b.zone}`));
+    const track = el("div", "ztrack");
+    const fill = el("div", `zfill z${b.zone}`);
+    fill.style.width = `${b.percent}%`;
+    track.append(fill);
+    row.append(track, el("span", "zpct", `${b.percent} %`));
+    bars.append(row);
+  });
+  if (p.zones) {
+    bars.append(el("p", "hint",
+      `Zone 1–2 locker, Zone 3 mittel, Zone 4–5 hart · Ziel: ${p.zones.target} % locker.`));
+  }
+
+  const rows = $("#pulseRows");
+  rows.replaceChildren();
+  [p.resting, p.efficiency, p.max_seen].forEach((m) => {
+    if (m && m.what) rows.append(explainRow(m));
+  });
+}
+
+// Ein aufklappbarer Block: Satz oben, Erklärung darunter. Dasselbe Muster wie
+// im Vitalreiter — wer die Zahl schon kennt, klappt nicht auf.
+function explainRow(m) {
+  const box = el("details", "vital-row");
+  const head = el("summary");
+  head.append(el("span", "v-name", m.sentence || ""));
+  box.append(head);
+  if (m.points?.length > 2 && window.timeChart) {
+    const chart = el("div", "v-chart");
+    box.append(chart);
+    timeChart(chart, [{
+      key: "eff", label: "Effizienz",
+      points: m.points.map((q) => ({
+        t: new Date(`${q.day}T12:00:00`).getTime(), value: q.value,
+      })),
+    }], { height: 120, legend: false });
+  }
+  box.append(el("p", "hint", m.what), el("p", "hint", m.why));
+  return box;
+}
+
+function renderRunForm(rows) {
+  const box = $("#formRows");
+  box.replaceChildren();
+  if (!rows.length) {
+    box.append(el("p", "hint",
+      "Noch keine Formdaten. Die kommen von der Uhr, sobald ein Lauf über "
+      + "2 km mit Laufdynamik aufgezeichnet wurde."));
+    return;
+  }
+  rows.forEach((m) => {
+    const row = el("details", "vital-row");
+    const head = el("summary");
+    head.append(el("span", "v-name", m.label));
+    head.append(el("span", `v-val ${BAND_TONE[m.band] === "good" ? "good"
+      : BAND_TONE[m.band] === "warn" ? "off" : ""}`,
+      `${m.text} ${m.unit}`));
+    const meta = el("span", "v-meta");
+    if (m.reference) meta.append(el("span", "v-base", m.reference));
+    if (m.delta) {
+      meta.append(el("span", "v-trend", `${de(m.delta, true)} ${m.unit} zum Vormonat`));
+    }
+    head.append(meta);
+    row.append(head);
+    row.append(el("p", "hint", m.what), el("p", "hint", m.why));
+    if (m.note) row.append(el("p", "note warn", m.note));
+    box.append(row);
+  });
+}
+
+function renderRunTips(tips) {
+  const box = $("#runTips");
+  box.replaceChildren();
+  tips.forEach((t) => {
+    const row = el("div", `item tip ${t.level || ""}`);
+    const main = el("div", "item-main");
+    main.append(el("div", "item-title", t.title));
+    main.append(el("div", "item-sub", t.text));
+    // Die Zahl, aus der der Tipp folgt — ohne sie ist es ein Ratschlag
+    // aus dem Internet und kein Coaching.
+    main.append(el("div", "tip-why", t.because));
+    row.append(main);
+    box.append(row);
   });
 }
 

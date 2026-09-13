@@ -17,8 +17,9 @@ import datetime as dt
 import logging
 from typing import Any
 
-from ..constants import (INDIRECT_GROUPS, INDIRECT_SET_WEIGHT,
-                         LONG_RUN_FACTOR, LONG_RUN_WINDOW_DAYS,
+from ..constants import (EASY_SHARE_TARGET, INDIRECT_GROUPS,
+                         INDIRECT_SET_WEIGHT, LONG_RUN_FACTOR,
+                         LONG_RUN_WINDOW_DAYS,
                          PROTEIN_PER_KG, SLEEP_TARGET_H, STAGNATION_SESSIONS,
                          VOLUME_MAX_SETS, VOLUME_MIN_SETS)
 from ..db import get_db, rows_to_dicts
@@ -102,6 +103,37 @@ def weight_trend(today: dt.date | None = None) -> dict[str, Any] | None:
     return {"now_kg": data["current_kg"], "rate_pct": data["rate_pct"],
             "rate_kg": data["rate_kg"], "goal": data["goal"]["label"],
             "verdict": data["verdict"], "weeks": data["weeks_used"]}
+
+
+# --------------------------------------------- Laufen: Puls und VO2max
+
+def running_state(today: dt.date | None = None) -> dict[str, Any] | None:
+    """VO2max und Intensitaetsverteilung — aus derselben Rechnung wie der Reiter.
+
+    Ohne das hier raet das Modell bei jeder Laufrage. Es erzaehlt dann etwas
+    ueber Intervalle, ohne zu wissen, dass schon dreissig Prozent der Laufzeit
+    hart sind — und widerspricht damit dem, was im Laufreiter steht.
+    """
+    from . import run_coach
+
+    data = run_coach._read(today or dt.date.today())
+    if not data["runs"]:
+        return None
+    vo2 = run_coach.vo2max(data, today or dt.date.today())
+    hr = run_coach.pulse(data, today or dt.date.today())
+    out: dict[str, Any] = {}
+    if vo2.get("value"):
+        out["vo2max"] = vo2["value"]
+        out["vo2_band"] = vo2.get("band")
+        out["vo2_change"] = (vo2["change"] or {}).get("delta")
+        out["vo2_weeks"] = (vo2["change"] or {}).get("weeks")
+    if hr.get("zones"):
+        out["easy_share"] = hr["zones"]["easy_share"]
+        out["hard_share"] = hr["zones"]["hard_share"]
+    if hr.get("resting"):
+        out["resting_hr"] = hr["resting"]["value"]
+        out["resting_delta"] = hr["resting"]["delta"]
+    return out or None
 
 
 # ------------------------------------------------------------- Protein
@@ -214,6 +246,33 @@ def computed_block(today: dt.date | None = None) -> str:
             f"{_de(abs(weight['rate_pct']))} % pro Woche "
             f"({_de(abs(weight['rate_kg']))} kg). Ziel {weight['goal']} — "
             f"Einordnung: {weight['verdict']}.")
+
+    run = running_state(today)
+    if run:
+        if "vo2max" in run:
+            trend = ""
+            if run.get("vo2_change") is not None and run.get("vo2_weeks"):
+                delta = run["vo2_change"]
+                way = ("gestiegen" if delta > 0 else "gefallen" if delta < 0
+                       else "unverändert")
+                trend = (f", über {run['vo2_weeks']} Wochen "
+                         + (f"um {_de(abs(delta))} Punkte {way}" if delta
+                            else way))
+            lines.append(
+                f"- VO2max: {_de(run['vo2max'])} ml/kg/min"
+                + (f" (für Alter und Geschlecht {run['vo2_band']})"
+                   if run.get("vo2_band") else "") + trend + ".")
+        if "easy_share" in run:
+            lines.append(
+                f"- Intensität der letzten vier Wochen: {run['easy_share']} % der "
+                f"Laufzeit locker (Zone 1–2), {run['hard_share']} % hart "
+                f"(Zone 4–5). Ziel: {round(EASY_SHARE_TARGET * 100)} % locker.")
+        if run.get("resting_delta") is not None:
+            way = ("gestiegen" if run["resting_delta"] > 0 else "gesunken"
+                   if run["resting_delta"] < 0 else "unverändert")
+            lines.append(
+                f"- Ruhepuls: {run['resting_hr']} bpm, gegenüber dem Monat "
+                f"davor um {_de(abs(run['resting_delta']))} Schläge {way}.")
 
     prot = protein(today)
     if prot:

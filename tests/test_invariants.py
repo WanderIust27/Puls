@@ -93,6 +93,41 @@ with TestClient(app) as client:
         check(f"{path} antwortet", a.status_code, 200)
         check(f"{path} liefert zweimal dasselbe", a.json() == b.json(), True)
 
+# --- Keine ASCII-Umlaute in dem, was der Nutzer liest -------------------
+# Im Quelltext sind "ue" und "ae" Absicht: Kommentare und Docstrings bleiben
+# ASCII. In einem Satz, der in der Oberflaeche steht, ist es ein Versehen —
+# und es faellt beim Lesen sofort auf. Diese Wortanfaenge gibt es im
+# Deutschen nur als gefaltete Umlaute.
+FOLDED = ("fuer", "ueber", "koenn", "muess", "waere", "laeuf", "schaetz",
+          "naechst", "zaehl", "faell", "groess", "hoeh", "moegl", "haeng",
+          "staerk", "erklaer", "aehnlich", "spuer", "kuerz", "laeng",
+          "hoech", "taeg", "traeg", "schliess", "grosse", "aeuss")
+
+# Schreibweisen der Uebungserkennung sind ausgenommen: "ueberzuege" steht
+# dort absichtlich, damit beide Tippweisen treffen. Gelesen wird es nie.
+SPELLING_KEYS = {"aliases", "alias"}
+
+
+def folded(node, key=None):
+    if isinstance(node, dict):
+        return [h for k, v in node.items() for h in folded(v, k)]
+    if isinstance(node, list):
+        return [h for v in node for h in folded(v, key)]
+    if isinstance(node, str) and key not in SPELLING_KEYS:
+        low = node.lower()
+        return [w for w in FOLDED if w in low]
+    return []
+
+
+with TestClient(app) as client:
+    hits = []
+    for path in get_paths:
+        r = client.get(path)
+        if r.headers.get("content-type", "").startswith("application/json"):
+            hits += [f"{path}: {w}" for w in folded(r.json())]
+check("Keine gefalteten Umlaute in den Antworten", sorted(set(hits)), [])
+
+
 # --- Der Versionsstempel muss bis in die Seite durchkommen --------------
 # Sonst laedt der Browser nach einem Update weiter die alte app.js aus
 # seinem Cache — die Datei heisst ja gleich.

@@ -223,6 +223,10 @@ with TestClient(app) as client:
     r = client.get("/api/running")
     check("Laufansicht antwortet", r.status_code, 200)
     ok("… zeigt den Lauf", any(x["id"] == run_id for x in r.json()["runs"]))
+    coach = r.json().get("coach") or {}
+    ok("… und die Auswertung dazu",
+       all(k in coach for k in ("vo2max", "pulse", "form", "tips")),
+       str(sorted(coach)))
     check("Auswertung abrufbar",
           client.get(f"/api/activities/{run_id}/analysis").status_code, 200)
     check("Detaildaten antworten",

@@ -99,7 +99,8 @@ def titles_of(name):
 EXPECTED = {
     "plan": ("Einheit auf Zuruf", "Deine Woche", "Geplante Einheiten"),
     "strength": ("Training nachtragen", "Muskelgruppen", "Letzte Einheiten"),
-    "running": ("Form", "Trend", "Läufe"),
+    "running": ("Form", "Trend", "VO2max", "Puls", "Laufform",
+                "Woran du arbeiten solltest", "Läufe"),
     "mood": ("Wie geht es dir?", "Verlauf", "Was daraus folgt"),
     "vital": ("Erholung", "Was gerade ausschlägt", "Deine Werte", "Gewicht"),
 }

@@ -61,10 +61,22 @@ with get_db() as _db:
                        VALUES(?,?,?,?,1,?,'miscale')""",
                     (_d.isoformat(), _d.isoformat() + "T07:10:00",
                      round(_kg, 2), round(_kg, 2), 16.0))
-    _db.execute("""INSERT INTO activities(sport, start_time, duration_s,
-                       distance_m, avg_hr, source, name)
-                   VALUES('running', ?, 2400, 7000, 142, 'manual', 'Testlauf')""",
-                (f"{dt.date.today().isoformat()}T07:00:00",))
+    # Zwoelf Wochen Laeufe mit allem, was die Uhr liefert — sonst prueft der
+    # Test im Laufreiter leere Karten. Jeder zweite Lauf traegt eine
+    # VO2max-Schaetzung, die Zonen liegen ueberwiegend locker.
+    for _i in range(1, 85, 3):
+        _d = dt.date.today() - dt.timedelta(days=_i)
+        _db.execute("""INSERT INTO activities(sport, start_time, duration_s,
+                           distance_m, avg_hr, max_hr, source, name, vo2max,
+                           avg_cadence, avg_stride_m, ground_contact_ms,
+                           vertical_osc_cm, vertical_ratio, avg_power,
+                           hr_zones_json)
+                       VALUES('running', ?, 2400, 7000, ?, ?, 'manual',
+                              'Lockerer Lauf', ?, 174, 1.31, 246, 8.6, 7.9,
+                              262, ?)""",
+                    (_d.isoformat() + "T07:00:00", 138 + _i % 6, 172 + _i % 8,
+                     46.0 + (84 - _i) / 60 if _i % 2 else None,
+                     '{"1": 600, "2": 1200, "3": 400, "4": 200, "5": 0}'))
     for _d in range(0, 14):
         _day = (dt.date.today() - dt.timedelta(days=_d)).isoformat()
         for _h, _m in ((7, 2), (13, 4), (21, 3)):
@@ -212,6 +224,36 @@ try:
         left = page.eval_on_selector_all("#propList .prop", "e => e.length")
         ok("Ein übernommener Vorschlag verschwindet", left == props - 1,
            f"{left} statt {props}")
+
+        # --- Laufen: VO2max, Puls, Form, Tipps ---------------------------
+        page.click('nav.tabs button[data-view="running"]')
+        page.wait_for_timeout(2000)
+        ok("Der VO2max-Wert steht da",
+           page.inner_text("#vo2Num").replace(",", "").isdigit(),
+           page.inner_text("#vo2Num"))
+        ok("… mit Einordnung fürs Alter",
+           page.inner_text("#vo2Band").strip() != "", page.inner_text("#vo2Band"))
+        ok("… und einer Kurve",
+           page.eval_on_selector_all("#vo2Chart svg path", "e => e.length") >= 1)
+        races = page.eval_on_selector_all("#vo2Races .item", "e => e.length")
+        ok("Drei Renn-Prognosen", races == 3, f"{races} Zeilen")
+        ok("Die Zonen stehen als Balken da",
+           page.eval_on_selector_all("#zoneBars .zrow", "e => e.length") == 5)
+        ok("… mit einem Satz darüber",
+           len(page.inner_text("#zoneLead")) > 30, page.inner_text("#zoneLead")[:60])
+        form_rows = page.eval_on_selector_all("#formRows .vital-row", "e => e.length")
+        ok("Die Laufform steht als Zeilen da", form_rows >= 4, f"{form_rows} Zeilen")
+        page.click("#formRows .vital-row summary")
+        page.wait_for_timeout(400)
+        ok("Eine Formzeile erklärt sich beim Aufklappen",
+           len(page.inner_text("#formRows .vital-row[open]")) > 120,
+           page.inner_text("#formRows .vital-row[open]")[:60])
+        tips = page.eval_on_selector_all("#runTips .item", "e => e.length")
+        ok("Es gibt Tipps", tips >= 1, f"{tips} Tipps")
+        # Ein Tipp ohne die Zahl, aus der er folgt, ist ein Ratschlag aus dem
+        # Internet. Deshalb steht der Beleg in jeder Zeile.
+        whys = page.eval_on_selector_all("#runTips .tip-why", "e => e.length")
+        ok("Jeder Tipp nennt seine Zahl", whys == tips, f"{whys} von {tips}")
 
         # --- Vital: Erholung, Ausschlaege, Einschlafzeit -----------------
         page.click('nav.tabs button[data-view="vital"]')

@@ -19,7 +19,8 @@ from ..db import get_db, get_setting, rows_to_dicts, set_setting
 from ..version import BUILT_AT, VERSION
 from ..services import (body, facts, fit_import, garmin_sync, gym_analysis,
                         logbook, mood, ollama_client, planner, run_analysis,
-                        running, session_request, today as today_svc, trends,
+                        run_coach, running, session_request,
+                        today as today_svc, trends,
                         vital)
 from ..services import activity_details as activity_details_svc
 from ..services import exercises as ex_lib
@@ -517,6 +518,7 @@ def running_view(limit: int = 20) -> dict[str, Any]:
                ORDER BY a.start_time DESC LIMIT ?""", (since, limit)).fetchall())
     return {"runs": runs, "trend": trends.running_trend(),
             "form": run_analysis.form_trend(365),
+            "coach": run_coach.overview(),
             "paces": running.current_paces(),
             "goal": {"distance_km": float(get_setting("run_goal_distance_km", "10") or 10),
                      "time_min": float(get_setting("run_goal_time_min", "60") or 60)}}

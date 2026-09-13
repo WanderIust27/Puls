@@ -7,13 +7,13 @@ Cloud-KI, keine Abos.
 PULS beantwortet eine Frage: **Was soll ich heute trainieren?** Alles andere
 steht dahinter.
 
-## Die vier Reiter
+## Die fünf Reiter
 
 | Reiter | Was dort steht |
 |---|---|
 | **Plan** | Die Empfehlung für heute, Einheiten auf Zuruf, deine Woche, was geplant ist |
 | **Kraft** | Training in Worten nachtragen, neue Gewichte, Muskelgruppen, Übungen |
-| **Laufen** | Form und Tempi, Trend, alle Läufe mit Karte und Kurven |
+| **Laufen** | Form und Tempi, VO2max mit Renn-Prognose, Puls und Zonen, Laufform, Tipps, alle Läufe mit Karte und Kurven |
 | **Vital** | Erholung, Einschlafzeit, was gerade ausschlägt, sechs Werte mit Erklärung |
 | **Gemüt** | Stimmung, Energie, Stress, Beschwerden — und was daraus fürs Training folgt |
 
@@ -302,6 +302,66 @@ Welche Laufart die Tagesempfehlung vorschlägt, folgt aus demselben Trend: Fehlt
 der harte Anteil, kommt ein Tempolauf; ist die längste Einheit geschrumpft und
 steht Ausdauer im Ziel, ein langer Lauf; an einem schwachen Tag immer locker.
 
+### VO2max
+
+Der Wert, der sagt, was an Tempo überhaupt möglich wäre. PULS nimmt die
+Schätzung der Uhr, und wenn es die nicht gibt, rechnet er sie aus deinem
+Cooper-Test — welcher von beiden es war, steht dabei.
+
+- **Eingeordnet nach Alter und Geschlecht** (schwach bis ausgezeichnet), nach
+  den Perzentiltabellen des Cooper Institute. 44 sind mit 24 Jahren etwas
+  anderes als mit 55.
+- **Der Verlauf als Wochenbestwerte**, nicht als Einzelläufe. Die Uhr schätzt
+  nach jedem Lauf neu, und ein kurzer oder hügeliger Lauf drückt den Wert,
+  ohne dass sich an deiner Ausdauer etwas geändert hätte. Bewertet wird erst
+  der Unterschied über zwölf Wochen — alles darunter ist Messrauschen, und
+  genau das steht auch da.
+- **Renn-Prognosen** über 5 km, 10 km und Halbmarathon, gerechnet nach
+  Daniels: Gesucht ist das Tempo, bei dem der Sauerstoffbedarf genau dem
+  entspricht, was sich über die Renndauer halten lässt. Eine reine
+  Hochrechnung wäre auf 10 km viel zu optimistisch.
+- **Der Abstand zu deinem Ziel** in Minuten, mit dem Tempo, das dafür nötig
+  wäre.
+
+### Puls
+
+Vier Dinge, die zusammen mehr sagen als jede einzeln:
+
+- **Ruhepuls** — sieben Tage gegen die drei Wochen davor. Sinkt er, wird das
+  Herz kräftiger. Steigt er um drei Schläge oder mehr, ist das selten Zufall.
+- **Höchster gemessener Puls** aus zwölf Monaten, mit dem Tag. Darauf beruhen
+  alle Zonenangaben der Uhr — stammt er aus einem lockeren Lauf, sind deine
+  Zonen zu eng gesetzt.
+- **Zonenverteilung der letzten vier Wochen** als Balken, gemessen gegen die
+  80 % locker aus `04_Cardio_Laufen_HIIT.md`. Liegt viel in Zone 3, wird genau
+  das benannt: zu hart für Erholung, zu leicht für einen Reiz.
+- **Effizienz** — Meter pro Minute je Pulsschlag. Schneller werden ist leicht;
+  schneller werden, ohne dass der Puls mitgeht, ist der eigentliche Formgewinn.
+
+### Laufform
+
+Schrittfrequenz, Bodenkontakt, vertikales Verhältnis, vertikale Bewegung,
+Schrittlänge und Laufleistung — Schnitt der Läufe über 2 km aus den letzten
+vier Wochen gegen den Monat davor. Jede Zahl mit ihrem günstigen Bereich und
+einem Satz dazu, was sie bedeutet.
+
+Zwei davon bekommen bewusst **keinen** Sollwert: Schrittlänge mal
+Schrittfrequenz ergibt schlicht das Tempo, und Watt ist eine Schätzung ohne
+Referenztabelle. Eine Zahl, die man nicht verbessern kann, mit einem Ziel zu
+versehen, wäre erfunden.
+
+### Woran du arbeiten solltest
+
+Höchstens fünf Punkte, nach Wirkung sortiert — erst die Verteilung der
+Intensität, dann der Umfang, dann der Reiz, dann die Form. Das ist die
+Reihenfolge, in der auch die Wissensdatenbank die Hebel nennt: An der Laufform
+zu feilen, solange die lockeren Läufe zu schnell sind, bringt nichts.
+
+**Unter jedem Punkt steht die Zahl, aus der er folgt** — „gemessen: 62 % deiner
+Laufzeit in Zone 1–2 statt 80 %". Ohne sie wäre es ein Ratschlag aus dem
+Internet und kein Coaching. Gibt es nichts zu korrigieren, steht das da, und es
+wird kein Tipp erfunden.
+
 ---
 
 ## Schlaf und Vitalwerte
@@ -566,8 +626,8 @@ der Kontext gelesen wird oder das Modell seinem Vorwissen folgt.
 ./tests/run_all.sh
 ```
 
-Achtzehn Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine Daten
-werden nicht angefasst.
+Dreiundzwanzig Suiten, alle ohne Netz und gegen Wegwerf-Datenbanken — deine
+Daten werden nicht angefasst.
 
 Zwei davon decken die beiden Kernstücke ab. Die eine schickt jede Schreibweise
 durch den Textleser und prüft, dass genau die Sätze herauskommen, die
@@ -586,7 +646,22 @@ stattgefunden hat, darf nicht noch einmal vorgeschlagen werden.
 Eine prüft Eigenschaften, die für die ganze API gelten: dass alle GET-Endpunkte
 fehlerfrei antworten, dass keiner davon Daten verändert, und dass zweimal
 dieselbe Abfrage dasselbe ergibt. Genau dort ist ein Fehler aufgefallen, den
-keine einzelne Prüfung gefunden hätte.
+keine einzelne Prüfung gefunden hätte. Dazu gehört seit dem Laufreiter eine
+Regel über die Sprache: Im Quelltext sind „ue" und „ae" Absicht, Kommentare
+bleiben ASCII — in einem Satz, den die App anzeigt, ist es ein Versehen. Die
+Prüfung geht alle Antworten durch und sucht nach Wortanfängen, die es im
+Deutschen nur als gefaltete Umlaute gibt. Sie hat beim ersten Lauf einen
+solchen Satz gefunden.
+
+Eine Suite nimmt sich die Laufauswertung vor, und zwar an den Stellen, an denen
+eine falsche Zahl nicht auffiele: dass der VO2max-Wochenwert das Maximum nimmt
+und nicht den Mittelwert, dass dieselbe Zahl für einen 24-Jährigen „gut" und
+für einen 55-Jährigen „sehr gut" heißt, dass eine längere Distanz in der
+Prognose nie schneller herauskommt als eine kürzere, dass Läufe unter zwei
+Kilometern nicht in den Formschnitt rutschen, und dass jeder Tipp die gemessene
+Zahl mitträgt. Ein Prüfsatz stellt dabei sicher, dass im Reiter und in dem
+Text, den das Modell zu lesen bekommt, dieselben Zahlen stehen — zwei Zahlen
+für dasselbe sind schlimmer als eine ungenaue.
 
 Eine Suite klickt die App in einem **echten Browser** durch: jeden Reiter, das
 Nachtragen bis zum übernommenen Vorschlag, die geschalteten Wochentage bis über
