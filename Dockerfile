@@ -9,6 +9,12 @@ COPY app ./app
 # Faellt die Wissensdatenbank im Container aus, liegt hier wenigstens eine
 # Kopie der Quellen — der Ordner /knowledge wird normalerweise gemountet.
 COPY knowledge ./knowledge
+# Die Testsuite gehoert mit ins Image. Nicht, um sie im Betrieb laufen zu
+# lassen, sondern weil die Wissensdatenbank nur dort messbar ist, wo sie steht:
+# tests/eval_knowledge.py braucht dieselbe Datenbank und dasselbe
+# Einbettungsmodell wie die laufende Anwendung. Kostet ein paar hundert
+# Kilobyte.
+COPY tests ./tests
 
 ENV PULS_DATA_DIR=/data
 # Die Wissensdatenbank teilt sich die Datei mit PULS.

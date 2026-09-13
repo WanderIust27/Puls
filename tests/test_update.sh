@@ -55,6 +55,27 @@ else
     say "OK  " "Die .env bleibt unangetastet"
 fi
 
+# Was die README im Container auszufuehren verspricht, muss auch im Image
+# liegen. Genau hier lag der Fehler: tests/eval_knowledge.py stand in der
+# Anleitung, aber das Dockerfile kopierte nur app/ und knowledge/.
+for pfad in $(grep -oE 'docker exec puls-coach python3? [a-z]+/' README.md \
+              | awk '{print $NF}' | tr -d '/' | sort -u); do
+    if grep -qE "^COPY $pfad " Dockerfile; then
+        say "OK  " "im Image enthalten: $pfad/ (die README ruft es dort auf)"
+    else
+        say "FAIL" "Die README ruft $pfad/ im Container auf, das Dockerfile kopiert es nicht"
+        fail=1
+    fi
+done
+
+# Sicherungen duerfen sich nicht unbegrenzt stapeln.
+if grep -q 'puls-backup-\*.db' update.sh && grep -q 'tail -n +' update.sh; then
+    say "OK  " "Alte Sicherungen werden aufgeräumt"
+else
+    say "FAIL" "update.sh räumt alte Sicherungen nicht auf"
+    fail=1
+fi
+
 echo
 if [ $fail -ne 0 ]; then
     echo "update.sh ist unvollständig."

@@ -501,6 +501,10 @@ erste Frage: lag es am Abruf oder am Modell?
 
 ### Wissensdatenbank prüfen
 
+Die Testsuite liegt im Image, damit sich die Wissensdatenbank dort messen
+lässt, wo sie steht — mit derselben Datenbank und demselben Einbettungsmodell
+wie die laufende Anwendung.
+
 ```bash
 # Trefferquote, braucht kein Modell von Ollama
 docker exec puls-coach python3 tests/eval_knowledge.py retrieval

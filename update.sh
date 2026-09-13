@@ -129,6 +129,13 @@ if docker volume inspect puls-data >/dev/null 2>&1; then
     if docker run --rm -v puls-data:/data -v "$PULS_TARGET":/backup alpine \
          sh -c 'cp /data/puls.db /backup/puls-backup-'"$stamp"'.db' 2>/dev/null; then
         c_ok "Datenbank gesichert: puls-backup-$stamp.db"
+        # Die letzten fuenf reichen. Sonst liegen nach einem Monat dreissig
+        # Kopien derselben Datenbank im Ordner und man findet nichts mehr.
+        alt=$(ls -1t puls-backup-*.db 2>/dev/null | tail -n +6)
+        if [ -n "$alt" ]; then
+            echo "$alt" | xargs rm -f
+            c_info "$(echo "$alt" | wc -l) ältere Sicherung(en) entfernt"
+        fi
     fi
 fi
 
