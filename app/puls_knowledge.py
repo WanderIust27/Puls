@@ -72,6 +72,24 @@ CHUNK_MAX = 1400
 # nicht in den Abrufindex.
 SKIP_FILES = {"11_Coach_Playbook.md", "00_README.md"}
 
+# Woerter, die in einer Frage stehen, aber nichts ueber ihren Inhalt sagen.
+# Bewusst knapp: Was hier zu viel steht, geht der Suche verloren. "Training",
+# "Muskel" und dergleichen fehlen deshalb — die sind zwar haeufig, aber sie
+# unterscheiden sehr wohl.
+STOPWORDS = {
+    "wie", "was", "wer", "wann", "wo", "warum", "wieso", "welche", "welcher",
+    "welches", "soll", "sollte", "solle", "kann", "darf", "muss", "brauche",
+    "brauch", "ich", "mir", "mich", "mein", "meine", "meinen", "meinem",
+    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem",
+    "eines", "und", "oder", "aber", "auch", "noch", "schon", "mit", "ohne",
+    "für", "fuer", "von", "vom", "bei", "aus", "auf", "über", "ueber", "unter",
+    "nach", "vor", "seit", "pro", "gibt", "geht", "habe", "haben", "hat",
+    "sind", "ist", "bin", "war", "wird", "werden", "sich", "nicht", "kein",
+    "man", "mal", "denn", "dass", "damit", "wenn", "beim", "zum", "zur",
+    "etwas", "viel", "viele", "mehr", "weniger", "gut", "gute", "guter",
+    "besser", "beste", "besten", "eigentlich", "überhaupt", "ueberhaupt",
+}
+
 # Quellenverzeichnis wird indexiert, aber abgewertet – sonst gewinnen
 # Literaturangaben gegen inhaltliche Chunks.
 DEMOTE_FILES = {"12_Quellen.md"}
@@ -114,6 +132,19 @@ def active_profile() -> EmbedProfile:
     return PROFILES[key]
 
 
+def _backend_version(profile: EmbedProfile) -> str:
+    """Version der Bibliothek, die die Vektoren rechnet."""
+    if profile.backend == "stub":
+        return "1"
+    module = {"fastembed": "fastembed",
+              "sentence-transformers": "sentence_transformers"}[profile.backend]
+    try:
+        from importlib.metadata import version
+        return version(module.replace("_", "-"))
+    except Exception:                                           # noqa: BLE001
+        return "unbekannt"
+
+
 def _normalise(vector: list[float]) -> list[float]:
     length = sum(v * v for v in vector) ** 0.5
     return [v / length for v in vector] if length else vector
@@ -133,7 +164,16 @@ class Embedder:
 
     @property
     def key(self) -> str:
-        return f"{self.profile.key}:{self.profile.model}"
+        """Womit indexiert wurde — Modell UND Version der Bibliothek.
+
+        fastembed hat mit 0.6 die Zusammenfassung der Wortvektoren umgestellt
+        (mean pooling statt CLS). Dasselbe Modell liefert seitdem andere
+        Vektoren. Stuende nur der Modellname hier, bliebe ein Index nach dem
+        Update der Bibliothek stillschweigend stehen — Fragen wuerden gegen
+        Vektoren gesucht, die nach einer anderen Regel entstanden sind. Das
+        faellt nicht auf, es wird nur schlechter.
+        """
+        return f"{self.profile.key}:{self.profile.model}@{_backend_version(self.profile)}"
 
     def _load(self):
         if self._impl is not None:
@@ -427,8 +467,19 @@ class KnowledgeBase:
 
     @staticmethod
     def _fts_query(text: str) -> str:
-        """Baut eine tolerante FTS5-Query aus der Nutzerfrage."""
-        words = re.findall(r"\w{3,}", text.lower())
+        """Baut eine tolerante FTS5-Query aus der Nutzerfrage.
+
+        Ohne Fragewoerter: "Wie schnell sollte ich in der Aufbauphase
+        zunehmen?" ergibt sonst eine ODER-Anfrage, in der "wie", "sollte",
+        "ich" und "der" in fast jedem Abschnitt vorkommen. Die zwei Woerter,
+        auf die es ankommt, gehen darin unter — die Suche findet dann den
+        laengsten Text statt den richtigen.
+        """
+        words = [w for w in re.findall(r"\w{3,}", text.lower())
+                 if w not in STOPWORDS]
+        if not words:
+            # Nur Fragewoerter: dann lieber alles nehmen als gar nichts.
+            words = re.findall(r"\w{3,}", text.lower())
         if not words:
             return ""
         return " OR ".join(f'"{w}"' for w in words[:12])

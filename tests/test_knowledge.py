@@ -96,6 +96,27 @@ kb.embedder.profile = type(kb.embedder.profile)(
 after_switch = kb.ingest(str(KB_DIR))
 check("Ein Modellwechsel baut den Index neu", after_switch["neu"], 11)
 
+# Die Kennung des Index traegt auch die Version der Einbettungs-Bibliothek.
+# fastembed hat mit 0.6 die Zusammenfassung der Wortvektoren umgestellt; ohne
+# die Version bliebe ein Index nach einem Update stillschweigend stehen.
+ok("Die Index-Kennung nennt die Version",
+   "@" in kb.embedder.key, kb.embedder.key)
+
+
+# --------------------------------------------------- Fragewörter verwässern
+
+# "Wie schnell sollte ich in der Aufbauphase zunehmen?" ergab eine Anfrage, in
+# der "wie", "sollte", "ich" und "der" in fast jedem Abschnitt vorkommen — die
+# zwei Wörter, auf die es ankommt, gingen darin unter.
+query = kb._fts_query("Wie schnell sollte ich in der Aufbauphase zunehmen?")
+ok("Fragewörter fallen aus der Volltextsuche",
+   all(f'"{w}"' not in query for w in ("wie", "sollte", "ich", "der")), query)
+ok("… die tragenden Wörter bleiben",
+   all(f'"{w}"' in query for w in ("aufbauphase", "zunehmen")), query)
+ok("Eine Frage aus lauter Fragewörtern ergibt trotzdem etwas",
+   bool(kb._fts_query("Wie und was?")), kb._fts_query("Wie und was?"))
+
+
 # ---------------------------------------------------------------- Retrieval
 
 hits = kb.search("Wie viele Sätze pro Muskelgruppe und Woche?", k=5)

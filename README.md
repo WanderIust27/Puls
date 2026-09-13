@@ -438,6 +438,13 @@ Gesucht wird hybrid: Vektorähnlichkeit über `sqlite-vec` und Volltextsuche üb
 FTS5, zusammengeführt per Reciprocal Rank Fusion. Kein zweiter Container, keine
 zweite Datenbank.
 
+Aus der Volltextsuche fallen die Fragewörter heraus. „Wie schnell sollte ich in
+der Aufbauphase zunehmen?" ergab sonst eine Anfrage, in der „wie", „sollte",
+„ich" und „der" in fast jedem Abschnitt vorkommen — die zwei Wörter, auf die es
+ankommt, gingen darin unter, und gefunden wurde der längste Text statt der
+richtige. Die Liste ist bewusst knapp gehalten: Was dort zu viel steht, geht
+der Suche verloren.
+
 **Die Dateien kommen mit dem Update.** `./update.sh` lädt `knowledge/` aus dem
 Paket mit und legt es neben `deploy.sh`; `deploy.sh` hängt den Ordner dann in
 den Container. Liegt dort nichts, nimmt PULS die Kopie aus dem Image — ein
@@ -471,7 +478,12 @@ mit 2,24 GB. Deshalb der Umweg über MiniLM, das ebenfalls 384 Dimensionen
 liefert und damit dieselbe Tabelle benutzt. Welches besser trifft, sagt keine
 Theorie, sondern der Eval-Harness. Ein Wechsel macht die gespeicherten
 Vektoren unvergleichbar; `kb_meta` merkt sich, womit indexiert wurde, und der
-Ingest baut bei einem Wechsel von selbst neu auf.
+Ingest baut bei einem Wechsel von selbst neu auf. Mitgemerkt wird auch die
+**Version** der Einbettungs-Bibliothek: `fastembed` hat mit 0.6 die
+Zusammenfassung der Wortvektoren umgestellt (mean pooling statt CLS), dasselbe
+Modell liefert seitdem andere Vektoren. Ohne die Version bliebe ein Index nach
+einem Update stillschweigend stehen — das fällt nicht auf, es wird nur
+schlechter.
 
 Die Einbettungen laufen bewusst auf der CPU im PULS-Prozess, nicht über
 Ollama: Bei `OLLAMA_MAX_LOADED_MODELS=1` würfe Ollama sonst bei jeder Frage
